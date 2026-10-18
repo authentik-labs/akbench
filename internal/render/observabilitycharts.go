@@ -13,12 +13,13 @@ import (
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
 
-// Grafana, Tempo and Pyroscope install from their upstream Helm charts,
-// like every other add-on: a Flux HelmRelease on the management cluster
-// pointed at the workload cluster (spec.kubeConfig), in
-// ObservabilityNamespace next to kube-prometheus-stack. Grafana and Tempo
-// moved to the grafana-community repository (the grafana/helm-charts copies
-// are deprecated); Pyroscope is still published in grafana/helm-charts.
+// Grafana, Tempo, Pyroscope, Loki and Alloy install from their upstream
+// Helm charts, like every other add-on: a Flux HelmRelease on the
+// management cluster pointed at the workload cluster (spec.kubeConfig), in
+// ObservabilityNamespace next to kube-prometheus-stack. Grafana, Tempo and
+// Loki moved to the grafana-community repository (the grafana/helm-charts
+// copies are deprecated); Pyroscope and Alloy are still published in
+// grafana/helm-charts.
 const (
 	GrafanaCommunityHelmRepositoryName = "grafana-community"
 	grafanaCommunityChartRepoURL       = "https://grafana-community.github.io/helm-charts"
@@ -29,18 +30,22 @@ const (
 	grafanaChartVersion   = "13.5.1"
 	tempoChartVersion     = "3.1.0"
 	pyroscopeChartVersion = "2.4.0"
+	lokiChartVersion      = "18.13.8"
+	alloyChartVersion     = "1.13.0"
 
 	GrafanaHelmReleaseName   = "grafana"
 	TempoHelmReleaseName     = "tempo"
 	PyroscopeHelmReleaseName = "pyroscope"
+	LokiHelmReleaseName      = "loki"
+	AlloyHelmReleaseName     = "alloy"
 )
 
-// GrafanaCommunityHelmRepository serves the grafana and tempo charts.
+// GrafanaCommunityHelmRepository serves the grafana, tempo and loki charts.
 func GrafanaCommunityHelmRepository(namespace string) *sourcev1.HelmRepository {
 	return helmRepository(GrafanaCommunityHelmRepositoryName, namespace, grafanaCommunityChartRepoURL)
 }
 
-// GrafanaHelmRepository serves the pyroscope chart.
+// GrafanaHelmRepository serves the pyroscope and alloy charts.
 func GrafanaHelmRepository(namespace string) *sourcev1.HelmRepository {
 	return helmRepository(GrafanaHelmRepositoryName, namespace, grafanaChartRepoURL)
 }

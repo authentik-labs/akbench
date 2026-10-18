@@ -238,8 +238,10 @@ func (r *WorkloadClusterReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 //     authentik's own AUTHENTIK_PYROSCOPE_HOST/
 //     AUTHENTIK_ERROR_REPORTING__OTEL_ENDPOINT env vars
 //     (internal/render/helmrelease.go) point at nothing.
-//   - Grafana (ensureGrafana): pre-wired with datasources for all three
-//     above, so it's useful the moment it comes up.
+//   - Loki/Alloy (ensureLoki/ensureAlloy): authentik only logs to stdout,
+//     so Alloy tails every pod's logs into Loki.
+//   - Grafana (ensureGrafana): pre-wired with datasources for Prometheus,
+//     Pyroscope, Tempo and Loki, so it's useful the moment it comes up.
 func (r *WorkloadClusterReconciler) ensureAddons(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) {
 	log := logf.FromContext(ctx)
 	type addon struct {
@@ -263,6 +265,8 @@ func (r *WorkloadClusterReconciler) ensureAddons(ctx context.Context, wc *benchv
 		{name: "cluster-autoscaler", ensure: r.ensureClusterAutoscaler, helmRelease: render.ClusterAutoscalerHelmReleaseName(wc)},
 		helmAddon("Pyroscope", r.ensurePyroscope, render.PyroscopeHelmReleaseName),
 		helmAddon("Tempo", r.ensureTempo, render.TempoHelmReleaseName),
+		helmAddon("Loki", r.ensureLoki, render.LokiHelmReleaseName),
+		helmAddon("Alloy", r.ensureAlloy, render.AlloyHelmReleaseName),
 		helmAddon("Grafana", r.ensureGrafana, render.GrafanaHelmReleaseName),
 		helmAddon("descheduler", r.ensureDescheduler, render.DeschedulerHelmReleaseName),
 	}

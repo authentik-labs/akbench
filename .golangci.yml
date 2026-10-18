@@ -51,6 +51,15 @@ linters:
         - "^enabled$"
         - "^config$"
         - "^name$"
+        # Helm chart values keys every observability chart shares.
+        - "^fullnameOverride$"
+        - "^persistence$"
+        - "^serviceMonitor$"
+        - "^size$"
+        - "^resources$"
+        - "^storage$"
+        - "^tolerations$"
+        - "^type$"
     revive:
       rules:
         - name: comment-spacings

@@ -86,12 +86,14 @@ type TraceBreakdown struct {
 
 // grafanaTarget is one deployment a testid drives, with the Grafana of its
 // own workload cluster, whose datasource proxy reaches that cluster's
-// Tempo and Pyroscope.
+// Tempo, Pyroscope and Loki.
 type grafanaTarget struct {
 	Target string
 	// Deployment is the AuthentikDeployment's name, which is also its Helm
 	// release name and so the prefix of its pods' names.
 	Deployment string
+	// Namespace is the deployment's namespace on its workload cluster.
+	Namespace string
 	// GrafanaURL is the base of Grafana's API, ending in a slash.
 	GrafanaURL    string
 	AdminPassword string
@@ -111,7 +113,7 @@ func (s *Server) grafanaTargetsForTestID(ctx context.Context, tc *benchv1alpha1.
 			targets = append(targets, grafanaTarget{Target: ref.Name, Deployment: ref.Name, Error: "deployment not found"})
 			continue
 		}
-		target := grafanaTarget{Target: topo.Spec.TargetName, Deployment: topo.Name}
+		target := grafanaTarget{Target: topo.Spec.TargetName, Deployment: topo.Name, Namespace: topo.Spec.Namespace}
 		if target.Target == "" {
 			target.Target = topo.Name
 		}
@@ -130,7 +132,7 @@ func (s *Server) grafanaTargetsForTestID(ctx context.Context, tc *benchv1alpha1.
 		wcKey := types.NamespacedName{Name: topo.Spec.ClusterRef.Name, Namespace: s.cfg.Namespace}
 		switch {
 		case topo.Spec.ClusterRef.Name == "":
-			target.Error = "deployment runs on the management cluster, which has no Tempo or Pyroscope"
+			target.Error = "deployment runs on the management cluster, which has no Tempo, Pyroscope or Loki"
 		case s.client.Get(ctx, wcKey, &wc) != nil:
 			target.Error = "workload cluster not found"
 		case wc.Status.GrafanaURL == "":

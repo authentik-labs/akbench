@@ -132,7 +132,7 @@ function roleLabel(role: WorkerPoolRole | undefined): string {
 }
 
 // The monitoring pool runs the whole observability stack (Prometheus,
-// Grafana, Tempo, Pyroscope, Alertmanager, ...) and scrapes every node plus
+// Grafana, Tempo, Pyroscope, Loki, Alertmanager, ...) and scrapes every node plus
 // k6's remote writes - on 4 GiB it ran out of memory under load and took the
 // node down with it. Choosing the Monitoring role bumps a smaller flavor to
 // this one.

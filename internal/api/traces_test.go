@@ -117,6 +117,7 @@ func traceFixture(t *testing.T, grafana http.Handler) *Server {
 	}
 	d := &benchv1alpha1.AuthentikDeployment{Name: "ak-a", Namespace: testNamespace}
 	d.Spec.ClusterRef = corev1.LocalObjectReference{Name: "bench"}
+	d.Spec.Namespace = "ak-a"
 	tc := &benchv1alpha1.TestCase{Name: "login", Namespace: testNamespace}
 	tc.Spec.DeploymentRefs = []corev1.LocalObjectReference{{Name: "ak-a"}}
 	s, _ := newServer(t, Config{}, wc, adminSecret, d, tc)

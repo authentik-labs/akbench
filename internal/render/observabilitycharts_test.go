@@ -120,6 +120,8 @@ func TestGrafanaHelmReleaseWiring(t *testing.T) {
 		"http://pyroscope.bench-system.svc.cluster.local:4040",
 		"http://tempo.bench-system.svc.cluster.local:3200",
 		`"uid":"` + TempoDatasourceUID + `"`,
+		"http://loki.bench-system.svc.cluster.local:3100",
+		`"uid":"` + LokiDatasourceUID + `"`,
 		`"path":"` + grafanaDashboardsPath + `"`,
 	} {
 		if !strings.Contains(raw, want) {
@@ -131,6 +133,72 @@ func TestGrafanaHelmReleaseWiring(t *testing.T) {
 		entry, ok := dashboards[d].(map[string]any)
 		if !ok || !json.Valid([]byte(entry["json"].(string))) {
 			t.Errorf("dashboard %s missing or not valid JSON", d)
+		}
+	}
+}
+
+func TestLokiHelmRelease(t *testing.T) {
+	wc := observabilityCluster()
+	hr, err := LokiHelmRelease(wc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hr.Name != "loki-c1" || hr.Spec.Chart.Spec.SourceRef.Name != GrafanaCommunityHelmRepositoryName || hr.Spec.TargetNamespace != ObservabilityNamespace {
+		t.Errorf("loki: name %q chart %+v target %q", hr.Name, hr.Spec.Chart.Spec, hr.Spec.TargetNamespace)
+	}
+	if len(hr.Spec.DependsOn) != 1 || hr.Spec.DependsOn[0].Name != "kube-prometheus-stack-c1" {
+		t.Errorf("loki: dependsOn %+v", hr.Spec.DependsOn)
+	}
+	v := valuesOf(t, hr)
+	if v["fullnameOverride"] != LokiServiceName || v["deploymentMode"] != "Monolithic" {
+		t.Errorf("loki: fullnameOverride %v deploymentMode %v", v["fullnameOverride"], v["deploymentMode"])
+	}
+	loki := v["loki"].(map[string]any)
+	// Alloy pushes without a tenant, so multi-tenancy must be off.
+	if loki["auth_enabled"] != false || loki["storage"].(map[string]any)["type"] != "filesystem" {
+		t.Errorf("loki config = %v", loki)
+	}
+	single := v["singleBinary"].(map[string]any)
+	if single["replicas"] != float64(1) || single["persistence"].(map[string]any)["storageClass"] != "incus-block" {
+		t.Errorf("singleBinary = %v", single)
+	}
+	raw := string(hr.Spec.Values.Raw)
+	for _, want := range []string{`"serviceMonitor":{"enabled":true}`, `"bench.goauthentik.io/pool":"monitoring"`, `"gateway":{"enabled":false}`} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("loki: values missing %s", want)
+		}
+	}
+}
+
+func TestAlloyHelmRelease(t *testing.T) {
+	wc := observabilityCluster()
+	hr, err := AlloyHelmRelease(wc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hr.Name != "alloy-c1" || hr.Spec.Chart.Spec.SourceRef.Name != GrafanaHelmRepositoryName || hr.Spec.TargetNamespace != ObservabilityNamespace {
+		t.Errorf("alloy: name %q chart %+v target %q", hr.Name, hr.Spec.Chart.Spec, hr.Spec.TargetNamespace)
+	}
+	v := valuesOf(t, hr)
+	// A DaemonSet on every node, tainted or not, reading the node's pod logs.
+	controller := v["controller"].(map[string]any)
+	if controller["type"] != "daemonset" || len(controller["tolerations"].([]any)) != 1 {
+		t.Errorf("controller = %v", controller)
+	}
+	alloy := v["alloy"].(map[string]any)
+	if alloy["mounts"].(map[string]any)["varlog"] != true || alloy["enableReporting"] != false {
+		t.Errorf("alloy = %v", alloy)
+	}
+	config := alloy["configMap"].(map[string]any)["content"].(string)
+	for _, want := range []string{
+		`url = "http://loki.bench-system.svc.cluster.local:3100/loki/api/v1/push"`,
+		`target_label  = "namespace"`,
+		`target_label  = "pod"`,
+		`"spec.nodeName=" + sys.env("K8S_NODE_NAME")`,
+		"stage.cri {}",
+	} {
+		if !strings.Contains(config, want) {
+			t.Errorf("alloy config missing %s:\n%s", want, config)
 		}
 	}
 }

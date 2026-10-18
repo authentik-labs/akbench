@@ -25,7 +25,7 @@ below.
 ## Matching the reference harness
 
 The dashboards reference datasources by the same uids the harness provisions
-(`prometheus`, `pyroscope`, `tempo`; see `grafanaDatasources`). The v2-schema
+(`prometheus`, `pyroscope`, `tempo`, `loki`; see `grafanaDatasources`). The v2-schema
 ones need Grafana 13, which the chart ships.
 
 They select on the labels the harness's `prometheus.yml.j2` attaches, which

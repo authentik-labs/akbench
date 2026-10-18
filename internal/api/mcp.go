@@ -22,7 +22,7 @@ import (
 // The MCP server (Model Context Protocol, streamable HTTP transport) at
 // /api/v1/mcp lets an LLM read the same performance analytics the web UI
 // shows: test cases and runs, the compare table, metric/resource time
-// series, trace and profile breakdowns, and alerts.
+// series, trace, profile and log breakdowns, and alerts.
 //
 // It is read-only by construction: every tool answers by dispatching a GET
 // to mcpReadRouter, which only registers read handlers, so no tool can
@@ -38,11 +38,12 @@ const mcpInstructions = `Read-only access to authentik-bench load-test analytics
 
 Concepts: an AuthentikDeployment is one authentik install under test (its "target" in metrics). A TestCase is a k6 load test against one or more deployments; its object name is the k6 "testid" every metric is labeled with. Quick TestCases execute as individual TestRuns (one per target); Burn TestCases run continuously, so their only history is in Prometheus.
 
-Typical flow: list_test_cases (or list_test_runs) to find testids and when they ran, then compare_tests for a summary table, get_metric_series / get_resource_usage for time series over a run's window (use the TestRun's status start/completion times as start/end), and get_trace_breakdown / get_profile_breakdown to explain where time goes. Durations are in seconds, ratios are 0-1.`
+Typical flow: list_test_cases (or list_test_runs) to find testids and when they ran, then compare_tests for a summary table, get_metric_series / get_resource_usage for time series over a run's window (use the TestRun's status start/completion times as start/end), get_trace_breakdown / get_profile_breakdown to explain where time goes, and get_log_breakdown for what authentik logs warnings and errors about. Durations are in seconds, ratios are 0-1.`
 
 // paramTestIDs/paramStart/paramEnd are the query parameters the metrics
-// endpoints share.
+// endpoints share; paramTestID is the breakdown endpoints' single testid.
 const (
+	paramTestID  = "testid"
 	paramTestIDs = "testids"
 	paramStart   = "start"
 	paramEnd     = "end"
@@ -81,6 +82,7 @@ func (s *Server) mcpReadRouter() http.Handler {
 	r.Get("/metrics/resources", s.listResourceMetrics)
 	r.Get("/traces/breakdown", s.traceBreakdown)
 	r.Get("/profiles/breakdown", s.profileBreakdown)
+	r.Get("/logs/breakdown", s.logBreakdown)
 	r.Get("/alerts", s.listAlerts)
 	return r
 }
@@ -348,17 +350,24 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 	mcp.AddTool(server, tool("get_trace_breakdown", "Get trace breakdown",
 		"Where request time goes, from a sample of Tempo traces per target: per stage/endpoint span counts and duration quantiles over a trailing window."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpBreakdownInput) (*mcp.CallToolResult, any, error) {
-			params := url.Values{"testid": {in.TestID}}
+			params := url.Values{paramTestID: {in.TestID}}
 			setIf(params, "window", in.Window)
 			return mcpJSON(ctx, read, "/traces/breakdown", params)
 		})
 	mcp.AddTool(server, tool("get_profile_breakdown", "Get CPU profile breakdown",
 		"Where CPU time goes, from Pyroscope: the top functions and code categories of the authentik server or worker per target over a trailing window."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpBreakdownInput) (*mcp.CallToolResult, any, error) {
-			params := url.Values{"testid": {in.TestID}}
+			params := url.Values{paramTestID: {in.TestID}}
 			setIf(params, "window", in.Window)
 			setIf(params, "component", in.Component)
 			return mcpJSON(ctx, read, "/profiles/breakdown", params)
+		})
+	mcp.AddTool(server, tool("get_log_breakdown", "Get log breakdown",
+		"What authentik logs, from Loki: per target, log lines per server/worker process by level, and the most frequent warning-or-worse events (level, logger, event) over a trailing window."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpBreakdownInput) (*mcp.CallToolResult, any, error) {
+			params := url.Values{paramTestID: {in.TestID}}
+			setIf(params, "window", in.Window)
+			return mcpJSON(ctx, read, "/logs/breakdown", params)
 		})
 	mcp.AddTool(server, tool("list_alerts", "List alerts",
 		"Currently firing alerts across every workload cluster's Alertmanager, plus clusters whose alerting can't be trusted right now."),

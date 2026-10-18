@@ -9,7 +9,8 @@ It replaces the Ansible/docker-compose harness at
   (embedded, CloudNativePG or external).
 - Runs k6 test cases from editable templates (login, OIDC, SAML, sources,
   mixed usage, breakpoint).
-- Installs Prometheus, Grafana, Pyroscope and Tempo on every workload cluster.
+- Installs Prometheus, Grafana, Pyroscope, Tempo and Loki (fed by Alloy) on
+  every workload cluster.
 - Web UI with an in-browser `kubectl` shell, a compare view and a read-only
   MCP server.
 

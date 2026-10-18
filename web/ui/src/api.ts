@@ -21,6 +21,7 @@ import {
     ObjectEvent,
     TestCaseTemplateSpec,
     TestRun,
+    LogBreakdown,
     ProfileBreakdown,
     TraceBreakdown,
     WorkloadCluster,
@@ -309,6 +310,12 @@ export const api = {
         request<ProfileBreakdown>(
             `/api/v1/profiles/breakdown?testid=${seg(testid)}&window=${seg(window)}&component=${seg(component)}`,
         ),
+
+    // -- Logs (internal/api/logs.go): each target's log lines by level and
+    // its most frequent warnings/errors, from Loki, cached server-side for
+    // two minutes.
+    logBreakdown: (testid: string, window: string) =>
+        request<LogBreakdown>(`/api/v1/logs/breakdown?testid=${seg(testid)}&window=${seg(window)}`),
 
     // -- Kubernetes Events about one bench object, newest first
     // (internal/api/objectevents.go).

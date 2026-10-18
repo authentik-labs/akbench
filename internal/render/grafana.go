@@ -14,7 +14,7 @@ import (
 )
 
 // Grafana is installed per workload cluster (same as Prometheus/Pyroscope/
-// Tempo), reached from the web UI's Grafana page through cmd/apiserver's
+// Tempo/Loki), reached from the web UI's Grafana page through cmd/apiserver's
 // own reverse proxy (internal/api/grafana_proxy.go), not the k8s API
 // server's service-proxy subresource - that subresource content-rewrites
 // absolute paths in text/html responses, unconditionally prepending its
@@ -77,13 +77,16 @@ const TempoDatasourceUID = "tempo"
 // through Grafana's datasource proxy the same way as TempoDatasourceUID.
 const PyroscopeDatasourceUID = "pyroscope"
 
+// LokiDatasourceUID is the Loki datasource's fixed uid, queried through
+// Grafana's datasource proxy the same way as TempoDatasourceUID.
+const LokiDatasourceUID = "loki"
+
 // grafanaDatasources is adapted directly from the reference harness's own
 // provisioning YAML (goauthentik/benchmark@dev:roles/metrics/files/grafana/datasources,
 // templates/datasources/prometheus.yml.j2) - same datasource shape, only the
-// hostnames changed to this project's own Service names. No Loki datasource:
-// unlike the reference harness, nothing here deploys Loki. Tempo's
-// tracesToLogsV2 (which pivoted from a trace to Loki logs) is dropped for
-// the same reason.
+// hostnames changed to this project's own Service names, plus Loki (fed by
+// Alloy rather than the reference harness's promtail). Tempo's
+// tracesToLogsV2 (which pivots from a trace to Loki logs) isn't wired up.
 func grafanaDatasources() map[string]any {
 	url := func(service string, port int) string {
 		return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service, ObservabilityNamespace, port)
@@ -107,6 +110,10 @@ func grafanaDatasources() map[string]any {
 					"serviceMap": map[string]any{"datasourceUid": "prometheus"},
 					"nodeGraph":  map[string]any{"enabled": true},
 				},
+			},
+			{
+				"name": "Loki", "type": "loki", "access": "proxy", "orgId": 1, "uid": LokiDatasourceUID,
+				"url": url(LokiServiceName, LokiPort),
 			},
 		},
 	}

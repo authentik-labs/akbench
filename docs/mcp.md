@@ -3,9 +3,9 @@
 `cmd/apiserver` also serves a read-only [MCP](https://modelcontextprotocol.io)
 server at `/api/v1/mcp` (streamable HTTP, stateless) so an LLM can analyze
 benchmark results: deployments, test cases and runs (plus their events), the
-compare table, k6 metric and CPU/memory time series, trace and CPU profile
-breakdowns, firing alerts, and raw PromQL. Every tool goes through the same
-GET handlers (and input validation) the UI uses; none can create, change,
+compare table, k6 metric and CPU/memory time series, trace, CPU profile and
+log breakdowns, firing alerts, and raw PromQL. Every tool goes through the
+same GET handlers (and input validation) the UI uses; none can create, change,
 delete or run anything.
 
 By default it requires the same bearer token (static or OIDC) as the rest of

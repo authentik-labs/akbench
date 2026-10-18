@@ -122,6 +122,14 @@ func (r *WorkloadClusterReconciler) ensureObservabilityChart(ctx context.Context
 	if err := r.removeLegacyObservabilityObjects(ctx, wc, remote, release); err != nil {
 		return err
 	}
+	return r.applyObservabilityChart(ctx, wc, repo, hr, release)
+}
+
+// applyObservabilityChart applies an observability add-on's HelmRepository
+// and HelmRelease.
+func (r *WorkloadClusterReconciler) applyObservabilityChart(ctx context.Context, wc *benchv1alpha1.WorkloadCluster,
+	repo *sourcev1.HelmRepository, hr *helmv2.HelmRelease, release string,
+) error {
 	if err := applyOwned(ctx, r.Client, r.Scheme, wc, repo); err != nil {
 		return fmt.Errorf("apply %s HelmRepository: %w", release, err)
 	}
@@ -162,8 +170,30 @@ func (r *WorkloadClusterReconciler) ensureTempo(ctx context.Context, wc *benchv1
 	return r.ensureObservabilityChart(ctx, wc, remote, render.GrafanaCommunityHelmRepository(wc.Namespace), hr, render.TempoHelmReleaseName)
 }
 
+// ensureLoki installs Grafana Loki onto the workload cluster, where Alloy
+// (ensureAlloy) ships every pod's logs. Like Tempo and Pyroscope, only
+// reached in-cluster: by Alloy, and by Grafana's datasource proxy. Neither
+// ever existed hand-rendered, so there are no legacy objects to remove.
+func (r *WorkloadClusterReconciler) ensureLoki(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) error {
+	hr, err := render.LokiHelmRelease(wc)
+	if err != nil {
+		return err
+	}
+	return r.applyObservabilityChart(ctx, wc, render.GrafanaCommunityHelmRepository(wc.Namespace), hr, render.LokiHelmReleaseName)
+}
+
+// ensureAlloy installs the Grafana Alloy DaemonSet that tails every pod's
+// container logs into Loki (render.AlloyHelmRelease).
+func (r *WorkloadClusterReconciler) ensureAlloy(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) error {
+	hr, err := render.AlloyHelmRelease(wc)
+	if err != nil {
+		return err
+	}
+	return r.applyObservabilityChart(ctx, wc, render.GrafanaHelmRepository(wc.Namespace), hr, render.AlloyHelmReleaseName)
+}
+
 // ensureGrafana installs Grafana onto the workload cluster, pre-wired with
-// Prometheus/Pyroscope/Tempo datasources and this project's own dashboards
+// Prometheus/Pyroscope/Tempo/Loki datasources and this project's own dashboards
 // (render.GrafanaHelmRelease), and records the NodePort URL cmd/apiserver's
 // reverse proxy (internal/api/grafana_proxy.go) connects to.
 func (r *WorkloadClusterReconciler) ensureGrafana(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) error {

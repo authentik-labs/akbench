@@ -440,6 +440,37 @@ export interface ProfileFunction {
     total: number;
 }
 
+// LogBreakdown mirrors internal/api/logs.go: each target's log volume from
+// its workload cluster's Loki, plus its most frequent warning-or-worse
+// events.
+export interface LogBreakdown {
+    testid: string;
+    window: string;
+    generatedAt: string;
+    targets: LogTarget[];
+}
+
+export interface LogTarget {
+    target: string;
+    lines: number;
+    linesPerSecond: number;
+    components: {
+        component: string;
+        lines: number;
+        // Lines per level; "" counts lines that aren't JSON or have no level.
+        levels: Record<string, number>;
+    }[];
+    topEvents: LogEvent[];
+    error?: string;
+}
+
+export interface LogEvent {
+    level: string;
+    logger: string;
+    event: string;
+    count: number;
+}
+
 /** readyCondition is the one condition every list view renders. */
 export function readyCondition(conditions?: Condition[]): Condition | undefined {
     return conditions?.find((c) => c.type === "Ready");

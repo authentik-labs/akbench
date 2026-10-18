@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
 import { CodeEditor } from "../components/CodeEditor";
+import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
@@ -560,6 +561,7 @@ const SECTIONS = [
     { id: "targets", label: "Targets & timeline" },
     { id: "tracing", label: "Tracing" },
     { id: "profiling", label: "Profiling" },
+    { id: "logs", label: "Logs" },
     { id: "resources", label: "Resources" },
     { id: "status", label: "Status" },
 ];
@@ -859,6 +861,7 @@ export function TestCaseViewPage() {
 
             {tc && <TraceBreakdownSection testid={name} rows={rows} baseline={baseline} />}
             {tc && <ProfileBreakdownSection testid={name} rows={rows} baseline={baseline} />}
+            {tc && <LogBreakdownSection testid={name} rows={rows} baseline={baseline} />}
 
             <Section
                 id="resources"

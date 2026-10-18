@@ -9,7 +9,7 @@ import (
 // Persistent storage for the observability stack, so a restart or a pod
 // rescheduled onto another monitoring node (e.g. after the node it ran on
 // went NotReady) keeps its data: metrics, alerts' silences, Grafana's
-// annotations (which TestRunReconciler posts per run), traces and profiles.
+// annotations (which TestRunReconciler posts per run), traces, profiles and logs.
 // Every one of them is installed from a Helm chart, which creates the
 // volumes itself from these sizes (chartPersistence, volumeClaimTemplate).
 const (
@@ -18,6 +18,7 @@ const (
 	GrafanaStorageSize      = "2Gi"
 	TempoStorageSize        = "10Gi"
 	PyroscopeStorageSize    = "10Gi"
+	LokiStorageSize         = "10Gi"
 
 	// prometheusRetentionSize keeps Prometheus' TSDB comfortably inside
 	// PrometheusStorageSize (WAL and compaction need headroom).
