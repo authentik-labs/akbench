@@ -120,9 +120,12 @@ export function TargetTable({
     onBaseline,
     sparklines,
     actions,
+    loading,
 }: {
     rows: TargetRow[];
     metrics: CompareMetric[];
+    /** loading shows placeholder metric cells until metrics first arrive. */
+    loading?: boolean;
     metricKeys?: string[];
     /** Target the per-metric Δ is relative to; Δs only show with onBaseline. */
     baseline?: string;
@@ -134,6 +137,7 @@ export function TargetTable({
     const columns = metricKeys
         .map((key) => metrics.find((m) => m.key === key))
         .filter((m): m is CompareMetric => m !== undefined);
+    const placeholders = loading && columns.length === 0 ? metricKeys.length : 0;
     const showDelta = onBaseline !== undefined && rows.length > 1;
     const baseRow = rows.find((r) => r.target === baseline) ?? rows[0];
     const dark = useDarkTheme();
@@ -150,6 +154,7 @@ export function TargetTable({
                                 {m.label}
                             </th>
                         ))}
+                        {placeholders > 0 && <th colSpan={placeholders}>Metrics</th>}
                         {sparklines && <th>p95 trend</th>}
                         <th>Runner</th>
                         {(actions || showDelta) && <th />}
@@ -190,6 +195,11 @@ export function TargetTable({
                                             />
                                         </div>
                                     )}
+                                </td>
+                            ))}
+                            {Array.from({ length: placeholders }, (_, i) => (
+                                <td key={i} aria-busy="true">
+                                    <span className="skeleton-bar" />
                                 </td>
                             ))}
                             {sparklines && (

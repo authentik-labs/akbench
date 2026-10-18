@@ -39,24 +39,38 @@ export function Section({
     title,
     description,
     actions,
+    loading,
     children,
 }: {
     id: string;
     title: ReactNode;
     description?: ReactNode;
     actions?: ReactNode;
+    /**
+     * loading marks the body as being (re)fetched: a spinner in the header,
+     * and whatever the body still shows from before dimmed until it's back.
+     */
+    loading?: boolean;
     children: ReactNode;
 }) {
     return (
-        <section className="section" id={id} aria-labelledby={`${id}-title`}>
+        <section
+            className="section"
+            id={id}
+            aria-labelledby={`${id}-title`}
+            aria-busy={loading || undefined}
+        >
             <header className="section-bar">
                 <div>
-                    <h2 id={`${id}-title`}>{title}</h2>
+                    <h2 id={`${id}-title`} className="row">
+                        {title}
+                        {loading && <Spinner />}
+                    </h2>
                     {description && <div className="muted">{description}</div>}
                 </div>
                 {actions && <div className="row">{actions}</div>}
             </header>
-            <div className="section-body">{children}</div>
+            <div className={loading ? "section-body stale" : "section-body"}>{children}</div>
         </section>
     );
 }
@@ -98,6 +112,24 @@ export function Alert({
     return <div className={`alert ${kind}`}>{children}</div>;
 }
 
+/** Spinner is a small inline busy indicator, sized to the surrounding text. */
+export function Spinner({ label = "Loading" }: { label?: string }) {
+    return <span className="spinner" role="status" aria-label={label} />;
+}
+
+/**
+ * Loading is the placeholder for a block whose data hasn't arrived yet.
+ * children says what it's waiting on, for the slow ones ("Querying Tempo…").
+ */
+export function Loading({ children = "Loading…" }: { children?: ReactNode }) {
+    return (
+        <div className="loading">
+            <Spinner />
+            <span>{children}</span>
+        </div>
+    );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
     return <div className="empty">{children}</div>;
 }
@@ -120,7 +152,7 @@ export function Table<T>({
     empty: ReactNode;
 }) {
     if (rows === undefined) {
-        return <div className="muted">Loading…</div>;
+        return <TableSkeleton columns={columns} />;
     }
     if (rows.length === 0) {
         return <Empty>{empty}</Empty>;
@@ -140,6 +172,32 @@ export function Table<T>({
                         {columns.map((c) => (
                             <td key={c.label} className={c.className}>
                                 {c.render(row)}
+                            </td>
+                        ))}
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
+/** TableSkeleton stands in for a Table's rows until they've loaded. */
+function TableSkeleton<T>({ columns, rows = 4 }: { columns: Column<T>[]; rows?: number }) {
+    return (
+        <table className="table skeleton" aria-busy="true">
+            <thead>
+                <tr>
+                    {columns.map((c) => (
+                        <th key={c.label}>{c.label}</th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {Array.from({ length: rows }, (_, i) => (
+                    <tr key={i}>
+                        {columns.map((c) => (
+                            <td key={c.label}>
+                                <span className="skeleton-bar" />
                             </td>
                         ))}
                     </tr>

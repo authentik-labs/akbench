@@ -3,7 +3,7 @@ import { formatMetricValue, relativeDelta } from "../format";
 import { TraceTarget } from "../types";
 import { useResource } from "../useResource";
 import { Delta, TargetKey, TargetRow } from "./Targets";
-import { Alert, Empty, Section, Segmented } from "./ui";
+import { Alert, Empty, Loading, Section, Segmented } from "./ui";
 
 // "Where does a login's time go" per target, from the traces authentik
 // exports to its workload cluster's Tempo (internal/api/traces.go). k6
@@ -45,6 +45,7 @@ export function TraceBreakdownSection({
     return (
         <Section
             id="tracing"
+            loading={breakdown.loading && breakdown.data !== undefined}
             title="Tracing"
             description={
                 <>
@@ -69,6 +70,7 @@ export function TraceBreakdownSection({
                         No traces for {t.target}: {t.error}
                     </Alert>
                 ))}
+            {!breakdown.data && !breakdown.error && <Loading>Querying Tempo…</Loading>}
             {breakdown.data && sampled.length === 0 ? (
                 <Empty>
                     No traces for this test in the last {traceWindow}. They need authentik's tracing

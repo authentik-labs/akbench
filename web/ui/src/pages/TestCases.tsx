@@ -16,6 +16,7 @@ import {
     errorMessage,
     Field,
     formatTimestamp,
+    Loading,
     Page,
     Section,
     SectionNav,
@@ -745,6 +746,7 @@ export function TestCaseViewPage() {
             <Section
                 id="targets"
                 title="Targets & timeline"
+                loading={summary.loading && summary.data !== undefined}
                 description={
                     profile === "Quick"
                         ? anchor
@@ -766,7 +768,9 @@ export function TestCaseViewPage() {
                     )
                 }
             >
-                {tc && rows.length === 0 ? (
+                {!tc ? (
+                    !testCase.error && <Loading />
+                ) : rows.length === 0 ? (
                     <Empty>
                         This test case has no target deployments - edit it to pick at least one.
                     </Empty>
@@ -774,6 +778,7 @@ export function TestCaseViewPage() {
                     <TargetTable
                         rows={rows}
                         metrics={summary.data?.metrics ?? []}
+                        loading={summary.loading && !summary.data}
                         baseline={baseline}
                         onBaseline={(target) => void saveBaseline(target)}
                         actions={(row) => {

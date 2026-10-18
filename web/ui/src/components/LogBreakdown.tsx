@@ -4,7 +4,7 @@ import { LogEvent, LogTarget } from "../types";
 import { useResource } from "../useResource";
 import { Delta, TargetKey, TargetRow } from "./Targets";
 import { BREAKDOWN_WINDOWS } from "./TraceBreakdown";
-import { Alert, Empty, Section, Segmented } from "./ui";
+import { Alert, Empty, Loading, Section, Segmented } from "./ui";
 
 // "What is authentik complaining about" per target, from the container logs
 // Alloy ships to its workload cluster's Loki (internal/api/logs.go). Traces
@@ -71,6 +71,7 @@ export function LogBreakdownSection({
     return (
         <Section
             id="logs"
+            loading={breakdown.loading && breakdown.data !== undefined}
             title="Logs"
             description={
                 <>
@@ -103,7 +104,7 @@ export function LogBreakdownSection({
                             No logs from {t.target}'s pods in the last {logWindow}.
                         </Alert>
                     ))}
-            {!breakdown.data && !breakdown.error && <div className="muted">Loading…</div>}
+            {!breakdown.data && !breakdown.error && <Loading>Querying Loki…</Loading>}
             {breakdown.data && logged.length === 0 ? (
                 <Empty>
                     No logs from the targets' pods in the last {logWindow}. Alloy ships every pod's

@@ -4,7 +4,7 @@ import { ProfileFunction, ProfileTarget } from "../types";
 import { useResource } from "../useResource";
 import { Delta, TargetKey, TargetRow } from "./Targets";
 import { BREAKDOWN_WINDOWS } from "./TraceBreakdown";
-import { Alert, Empty, Section, Segmented } from "./ui";
+import { Alert, Empty, Loading, Section, Segmented } from "./ui";
 
 // "What is authentik's CPU busy with" per target, from the continuous
 // profiles authentik pushes to its workload cluster's Pyroscope
@@ -77,6 +77,7 @@ export function ProfileBreakdownSection({
     return (
         <Section
             id="profiling"
+            loading={breakdown.loading && breakdown.data !== undefined}
             title="Profiling"
             description={
                 <>
@@ -119,7 +120,7 @@ export function ProfileBreakdownSection({
                             {profileWindow}.
                         </Alert>
                     ))}
-            {!breakdown.data && !breakdown.error && <div className="muted">Loading…</div>}
+            {!breakdown.data && !breakdown.error && <Loading>Querying Pyroscope…</Loading>}
             {breakdown.data && profiled.length === 0 ? (
                 <Empty>
                     No CPU profiles from the targets' {component} pods in the last {profileWindow}.

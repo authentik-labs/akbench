@@ -315,6 +315,68 @@ a.build-badge:hover {
     border-radius: var(--radius);
 }
 
+/* -- loading */
+.spinner {
+    display: inline-block;
+    flex: none;
+    width: 1em;
+    height: 1em;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: -0.15em;
+}
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    padding: 18px;
+}
+.section-body.stale {
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+table.table.skeleton td {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+.skeleton-bar {
+    display: block;
+    height: 0.8em;
+    width: 70%;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--border) 25%, var(--code-bg) 50%, var(--border) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+}
+tr:nth-child(even) .skeleton-bar {
+    width: 50%;
+}
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes shimmer {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: -100% 0;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2.4s;
+    }
+    .skeleton-bar {
+        animation: none;
+    }
+}
+
 /* -- tables */
 table.table {
     width: 100%;

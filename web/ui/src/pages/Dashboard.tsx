@@ -2,7 +2,7 @@ import { api } from "../api";
 import { NodePlacement } from "../components/Placement";
 import { Badge } from "../components/Status";
 import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
-import { Alert, Empty, formatTimestamp, Page, Stat, Table } from "../components/ui";
+import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
 import { RangePoint, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
@@ -149,7 +149,9 @@ export function DashboardPage() {
                 </div>
                 {notReadyTargets > 0 && <Badge value="Not ready" />}
             </div>
-            {testCases.data && burnTests.length === 0 ? (
+            {!testCases.data && !testCases.error ? (
+                <Loading />
+            ) : testCases.data && burnTests.length === 0 ? (
                 <Empty>
                     No burn tests running. A Burn test keeps deployments under steady load until you
                     stop it - <Link to="/testcases/new">create one</Link>.
@@ -181,6 +183,7 @@ export function DashboardPage() {
                                 rows={rows}
                                 metrics={live.data?.metrics ?? []}
                                 metricKeys={BURN_SUMMARY_METRICS}
+                                loading={live.loading && !live.data}
                                 sparklines={sparklines}
                             />
                         </div>
