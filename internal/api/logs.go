@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -31,9 +32,14 @@ import (
 // authentik logs structlog/logrus JSON with "level", "logger" and "event"
 // keys. Both queries are LogQL metric queries evaluated once at the end of
 // the window, so Loki counts server-side and only the totals come back.
+// Lines that aren't JSON (startup banners, tracebacks' continuation lines)
+// fail | json with an __error__ label, which Loki refuses to return from a
+// metric query; the levels query drops it so they count under no level.
 const (
 	logTopEvents     = 15
 	maxLogEventChars = 300
+	// maxLokiErrorBytes bounds the error body quoted from a failed query.
+	maxLokiErrorBytes = 1024
 )
 
 // logProblemLevels are the levels the top events are drawn from:
@@ -140,7 +146,7 @@ func logRange(span time.Duration) string {
 }
 
 func logLevelsQuery(selector string, span time.Duration) string {
-	return fmt.Sprintf(`sum by (%s, level) (count_over_time(%s | json level="level" [%s]))`,
+	return fmt.Sprintf(`sum by (%s, level) (count_over_time(%s | json level="level" | drop __error__, __error_details__ [%s]))`,
 		render.LokiLabelPod, selector, logRange(span))
 }
 
@@ -183,6 +189,11 @@ func (s *Server) lokiInstantQuery(ctx context.Context, lokiURL, adminPassword, q
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
+		// Loki explains a rejected query in a plain-text body.
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, maxLokiErrorBytes))
+		if text := strings.TrimSpace(string(msg)); text != "" {
+			return nil, fmt.Errorf("query Loki: %s: %s", res.Status, text)
+		}
 		return nil, fmt.Errorf("query Loki: %s", res.Status)
 	}
 	var body lokiQueryResponse

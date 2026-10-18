@@ -60,16 +60,7 @@ func TestLogBreakdown(t *testing.T) {
 	if len(got.Targets) != 1 {
 		t.Fatalf("breakdown: %+v", got)
 	}
-	selector := `{namespace="ak-a", pod=~"ak-a-authentik-(server|worker)-.+"}`
-	if !strings.Contains(levelsQuery, selector) || !strings.Contains(levelsQuery, "[900s]") || !strings.Contains(levelsQuery, "sum by (pod, level)") {
-		t.Errorf("levels query = %s", levelsQuery)
-	}
-	if !strings.Contains(eventsQuery, selector) || !strings.Contains(eventsQuery, `level=~"warning|error|critical|fatal|panic"`) {
-		t.Errorf("events query = %s", eventsQuery)
-	}
-	if ns, err := strconv.ParseInt(at, 10, 64); err != nil || time.Since(time.Unix(0, ns)) > time.Minute {
-		t.Errorf("query time = %q, want now in Unix nanoseconds", at)
-	}
+	checkLogQueries(t, levelsQuery, eventsQuery, at)
 
 	a := got.Targets[0]
 	if a.Error != "" {
@@ -99,18 +90,39 @@ func TestLogBreakdown(t *testing.T) {
 	}
 }
 
+// checkLogQueries checks the breakdown's two LogQL queries select the
+// deployment's authentik pods over a 15m window, evaluated now.
+func checkLogQueries(t *testing.T, levelsQuery, eventsQuery, at string) {
+	t.Helper()
+	selector := `{namespace="ak-a", pod=~"ak-a-authentik-(server|worker)-.+"}`
+	// Non-JSON lines would otherwise fail the whole query with JSONParserErr.
+	if !strings.Contains(levelsQuery, "| drop __error__, __error_details__") {
+		t.Errorf("levels query keeps json parse errors: %s", levelsQuery)
+	}
+	if !strings.Contains(levelsQuery, selector) || !strings.Contains(levelsQuery, "[900s]") || !strings.Contains(levelsQuery, "sum by (pod, level)") {
+		t.Errorf("levels query = %s", levelsQuery)
+	}
+	if !strings.Contains(eventsQuery, selector) || !strings.Contains(eventsQuery, `level=~"warning|error|critical|fatal|panic"`) {
+		t.Errorf("events query = %s", eventsQuery)
+	}
+	if ns, err := strconv.ParseInt(at, 10, 64); err != nil || time.Since(time.Unix(0, ns)) > time.Minute {
+		t.Errorf("query time = %q, want now in Unix nanoseconds", at)
+	}
+}
+
 func TestLogBreakdownDoesNotCacheFailures(t *testing.T) {
 	var queries atomic.Int32
 	s := traceFixture(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if queries.Add(1) == 1 {
-			w.WriteHeader(http.StatusBadGateway)
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, "pipeline error: 'JSONParserErr'\n")
 			return
 		}
 		_, _ = fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[]}}`)
 	}))
 	got := decodeBody[LogBreakdown](t, do(t, s, http.MethodGet, "/api/v1/logs/breakdown?testid=login&window=1h", nil))
-	if got.Targets[0].Error == "" {
-		t.Fatal("expected the failed query's error")
+	if e := got.Targets[0].Error; e != "query Loki: 400 Bad Request: pipeline error: 'JSONParserErr'" {
+		t.Fatalf("expected the failed query's error with Loki's reason, got %q", e)
 	}
 	got = decodeBody[LogBreakdown](t, do(t, s, http.MethodGet, "/api/v1/logs/breakdown?testid=login&window=1h", nil))
 	if a := got.Targets[0]; a.Error != "" || a.Lines != 0 || len(a.TopEvents) != 0 {
