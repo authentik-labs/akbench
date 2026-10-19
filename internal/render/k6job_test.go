@@ -3,6 +3,7 @@ package render
 import (
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,6 +116,16 @@ func TestBurnDeploymentSelectorIsUniquePerDeployment(t *testing.T) {
 	selB, _ := metav1.LabelSelectorAsMap(depB.Spec.Selector)
 	if labelsEqual(selA, selB) {
 		t.Fatalf("deployment A and B have equal selectors, they would fight over each other's pods: %v vs %v", selA, selB)
+	}
+}
+
+// TestBurnDeploymentRecreates guards against a rolling update, which would
+// run two k6 pods against the target during every rollout.
+func TestBurnDeploymentRecreates(t *testing.T) {
+	tc := &benchv1alpha1.TestCase{Name: "login", Spec: benchv1alpha1.TestCaseSpec{Profile: benchv1alpha1.ProfileBurn}}
+	dep := BurnDeployment("k6-login", "default", K6WorkloadParams{TestCase: tc, DeploymentName: "topo"})
+	if dep.Spec.Strategy.Type != appsv1.RecreateDeploymentStrategyType || dep.Spec.Strategy.RollingUpdate != nil {
+		t.Fatalf("strategy = %+v, want Recreate", dep.Spec.Strategy)
 	}
 }
 

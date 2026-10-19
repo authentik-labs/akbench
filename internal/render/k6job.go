@@ -360,6 +360,9 @@ func BurnDeployment(name, namespace string, p K6WorkloadParams) *appsv1.Deployme
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: selector,
+			// Recreate, not RollingUpdate: a rollout would briefly run old
+			// and new k6 pods side by side, doubling the load on the target
+			// (and skewing its metrics) for the overlap.
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RecreateDeploymentStrategyType,
 			},
