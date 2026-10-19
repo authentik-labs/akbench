@@ -1,17 +1,4 @@
 version: 2
-# Chart repositories the helm update below reads. Dependabot's network proxy
-# blocks hosts it doesn't know, so every repository in
-# internal/render/deps/Chart.yaml it doesn't already allow is declared here.
-registries:
-  flannel:
-    type: helm-registry
-    url: https://flannel-io.github.io/flannel
-  kubernetes:
-    type: helm-registry
-    url: https://kubernetes.github.io/autoscaler
-  grafana-community:
-    type: helm-registry
-    url: https://grafana-community.github.io/helm-charts
 updates:
 - package-ecosystem: gomod
   directory: "/"
@@ -49,10 +36,6 @@ updates:
 # (internal/render/deps, embedded by internal/render/deps.go).
 - package-ecosystem: helm
   directory: "/internal/render/deps"
-  registries:
-  - flannel
-  - kubernetes
-  - grafana-community
   schedule:
     interval: daily
     time: "04:00"
