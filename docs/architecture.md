@@ -41,7 +41,15 @@ What each component does.
   values. All three Postgres modes work: `Embedded` (bundled subchart, with a
   generated password pinned on both sides so they agree), `CNPG` (renders a
   `postgresql.cnpg.io/v1 Cluster`, waits for it healthy, reads its generated
-  app secret), `External` (reads a user-supplied secret directly). Placement's
+  app secret), `External` (reads a user-supplied secret directly).
+  `Embedded` and `CNPG` take a `maxStorageSize`: the reconciler then reads
+  the postgres volumes' usage from the kubelet (`stats/summary` through the
+  workload cluster's node proxy) every minute, and once a volume is 80% full
+  grows it by half, capped at `maxStorageSize`. Embedded patches the
+  StatefulSet's PVC (its `volumeClaimTemplates` are immutable); CNPG gets the
+  new size through `spec.storage.size`, which `status.postgresStorage.size`
+  keeps from ever shrinking back to spec's `storageSize`. The StorageClass
+  needs `allowVolumeExpansion` (the Incus CSI one has it). Placement's
   `Dedicated` mode uses the chart's own `affinity.podAntiAffinity: hard`
   preset; `Default` explicitly sets `none` so pods can share a node (the
   chart's own root default is `soft`, which would already bias them apart).

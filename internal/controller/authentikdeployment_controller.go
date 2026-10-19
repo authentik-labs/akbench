@@ -73,6 +73,9 @@ type AuthentikDeploymentReconciler struct {
 	Scheme   *runtime.Scheme
 	Tracker  *multicluster.Tracker
 	Recorder record.EventRecorder
+	// VolumeUsage reads postgres volume usage for auto-growth; nil asks
+	// the workload cluster's kubelets. Overridden in tests, which have none.
+	VolumeUsage volumeUsageFunc
 }
 
 // resolveClient returns the client this reconcile should use for
@@ -374,7 +377,7 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresRoleFix(ctx context.Con
 // +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 
 func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -427,6 +430,10 @@ func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.
 	// bearing, so a lookup failure here falls through silently rather than
 	// blocking the reconcile the way resolveClient's own failure above does.
 	wc := resolveWorkloadCluster(ctx, r.Client, topo.Namespace, topo.Spec.ClusterRef.Name)
+
+	// Before resolvePostgres: in CNPG mode, a size grown here is applied
+	// by the Cluster resolvePostgres renders.
+	storageRecheck := r.reconcilePostgresStorage(ctx, rc, &topo)
 
 	pgConn, pgReady, err := r.resolvePostgres(ctx, rc, &topo, wc)
 	if err != nil {
@@ -528,9 +535,9 @@ func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	log.Info("reconciled AuthentikDeployment", "ready", ready)
 	if requeueForBlueprint {
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: soonest(10*time.Second, storageRecheck)}, nil
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: storageRecheck}, nil
 }
 
 func (r *AuthentikDeploymentReconciler) reconcileDelete(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment) (ctrl.Result, error) {
@@ -696,6 +703,14 @@ func connectionFromSecret(sec corev1.Secret, hostKey, portKey, dbKey, userKey, p
 		User:     string(sec.Data[userKey]),
 		Password: string(sec.Data[passwordKey]),
 	}
+}
+
+// soonest is the shorter of two requeue delays, where 0 means none.
+func soonest(a, b time.Duration) time.Duration {
+	if a == 0 || (b != 0 && b < a) {
+		return b
+	}
+	return a
 }
 
 func ensureNamespace(ctx context.Context, rc client.Client, name string) error {

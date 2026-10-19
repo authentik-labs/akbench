@@ -67,6 +67,15 @@ func (r *AuthentikDeploymentReconciler) reconcileReset(ctx context.Context, rc c
 		return ctrl.Result{RequeueAfter: resetPollInterval}, nil
 	}
 
+	// The volumes auto-growth enlarged are gone; the new ones start at
+	// spec's storageSize again.
+	if topo.Status.PostgresStorage != nil {
+		topo.Status.PostgresStorage = nil
+		if err := r.Status().Update(ctx, topo); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	r.Recorder.Eventf(topo, corev1.EventTypeNormal, "Reset", "deleted the database and blueprint import jobs, reinstalling")
 	log.Info("Reset AuthentikDeployment", "name", topo.Name)
 	return ctrl.Result{}, r.clearResetAnnotation(ctx, topo)

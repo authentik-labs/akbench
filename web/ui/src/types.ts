@@ -84,8 +84,13 @@ export interface AuthentikDeploymentSpec {
     };
     postgres: {
         mode: PostgresMode;
-        embedded?: { storageSize?: string; storageClassName?: string };
-        cnpg?: { instances?: number; storageSize?: string; storageClassName?: string };
+        embedded?: { storageSize?: string; storageClassName?: string; maxStorageSize?: string };
+        cnpg?: {
+            instances?: number;
+            storageSize?: string;
+            storageClassName?: string;
+            maxStorageSize?: string;
+        };
         external?: { secretRef: { name: string }; sslMode?: string };
     };
     authentik?: {
@@ -105,6 +110,12 @@ export interface AuthentikDeploymentStatus {
     serviceEndpoint?: string;
     helmReleaseRef?: { name: string };
     cnpgClusterRef?: { name: string };
+    postgresStorage?: {
+        size?: string;
+        usedBytes?: number;
+        capacityBytes?: number;
+        lastChecked?: string;
+    };
 }
 
 export interface AuthentikDeployment {

@@ -8,6 +8,7 @@ rules:
   - ""
   resources:
   - configmaps
+  - persistentvolumeclaims
   verbs:
   - create
   - delete
@@ -32,17 +33,6 @@ rules:
   - delete
   - get
   - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - update
   - watch
 - apiGroups:
   - ""

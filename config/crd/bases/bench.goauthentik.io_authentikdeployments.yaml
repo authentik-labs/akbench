@@ -228,6 +228,13 @@ spec:
                         format: int32
                         minimum: 1
                         type: integer
+                      maxStorageSize:
+                        description: |-
+                          maxStorageSize turns on volume auto-growth: once the postgres volume
+                          is more than 80% full, the operator grows it by half its size, up to
+                          this limit. Unset leaves the volume at its initial size. Needs a
+                          StorageClass with allowVolumeExpansion.
+                        type: string
                       storageClassName:
                         type: string
                       storageSize:
@@ -238,6 +245,13 @@ spec:
                       EmbeddedPostgresSpec configures the authentik chart's bundled postgresql
                       subchart.
                     properties:
+                      maxStorageSize:
+                        description: |-
+                          maxStorageSize turns on volume auto-growth: once the postgres volume
+                          is more than 80% full, the operator grows it by half its size, up to
+                          this limit. Unset leaves the volume at its initial size. Needs a
+                          StorageClass with allowVolumeExpansion.
+                        type: string
                       storageClassName:
                         type: string
                       storageSize:
@@ -551,6 +565,31 @@ spec:
                 - Failed
                 - Archived
                 type: string
+              postgresStorage:
+                description: |-
+                  postgresStorage tracks the postgres volumes while maxStorageSize
+                  auto-growth is on.
+                properties:
+                  capacityBytes:
+                    format: int64
+                    type: integer
+                  lastChecked:
+                    description: lastChecked is when usage was last read.
+                    format: date-time
+                    type: string
+                  size:
+                    description: |-
+                      size is what the operator has grown the postgres volumes to, if it
+                      has grown them at all. It never shrinks back to spec's storageSize:
+                      a PVC can't be shrunk.
+                    type: string
+                  usedBytes:
+                    description: |-
+                      usedBytes and capacityBytes are the fullest postgres volume's
+                      filesystem usage, as its node's kubelet reported it.
+                    format: int64
+                    type: integer
+                type: object
               serviceEndpoint:
                 description: |-
                   serviceEndpoint is the in-cluster host:port a TestCase drives, e.g.

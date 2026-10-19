@@ -41,7 +41,8 @@ func CNPGAppSecretName(t *benchv1alpha1.AuthentikDeployment) string {
 
 // CNPGCluster builds the CloudNativePG Cluster CR for a deployment in CNPG
 // postgres mode: instances (>1 for HA) and storage sized/classed from
-// spec.postgres.cnpg, bootstrapped with an "authentik" database/owner so its
+// spec.postgres.cnpg (and status.postgresStorage, once auto-growth has
+// enlarged it), bootstrapped with an "authentik" database/owner so its
 // generated app secret matches the embedded mode's own username/database.
 func CNPGCluster(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.WorkloadCluster) *unstructured.Unstructured {
 	cnpg := t.Spec.Postgres.CNPG
@@ -49,12 +50,7 @@ func CNPGCluster(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workloa
 	if cnpg != nil && cnpg.Instances > 0 {
 		instances = int64(cnpg.Instances)
 	}
-	storageSize := defaultCNPGStorageSize
-	if cnpg != nil && cnpg.StorageSize != "" {
-		storageSize = cnpg.StorageSize
-	}
-
-	storage := map[string]any{"size": storageSize}
+	storage := map[string]any{"size": cnpgStorageSize(t)}
 	if cnpg != nil && cnpg.StorageClassName != "" {
 		storage["storageClass"] = cnpg.StorageClassName
 	}

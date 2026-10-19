@@ -76,6 +76,12 @@ type EmbeddedPostgresSpec struct {
 	StorageSize string `json:"storageSize,omitempty"`
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+	// maxStorageSize turns on volume auto-growth: once the postgres volume
+	// is more than 80% full, the operator grows it by half its size, up to
+	// this limit. Unset leaves the volume at its initial size. Needs a
+	// StorageClass with allowVolumeExpansion.
+	// +optional
+	MaxStorageSize string `json:"maxStorageSize,omitempty"`
 }
 
 // CNPGPostgresSpec configures a CloudNativePG Cluster provisioned for this
@@ -89,6 +95,12 @@ type CNPGPostgresSpec struct {
 	StorageSize string `json:"storageSize,omitempty"`
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+	// maxStorageSize turns on volume auto-growth: once the postgres volume
+	// is more than 80% full, the operator grows it by half its size, up to
+	// this limit. Unset leaves the volume at its initial size. Needs a
+	// StorageClass with allowVolumeExpansion.
+	// +optional
+	MaxStorageSize string `json:"maxStorageSize,omitempty"`
 }
 
 // ExternalPostgresSpec points at an operator-unmanaged Postgres instance.
@@ -205,6 +217,25 @@ type AuthentikDeploymentSpec struct {
 	Authentik AuthentikSpec `json:"authentik,omitempty"`
 }
 
+// PostgresStorageStatus reports postgres volume usage as last checked for
+// auto-growth.
+type PostgresStorageStatus struct {
+	// size is what the operator has grown the postgres volumes to, if it
+	// has grown them at all. It never shrinks back to spec's storageSize:
+	// a PVC can't be shrunk.
+	// +optional
+	Size string `json:"size,omitempty"`
+	// usedBytes and capacityBytes are the fullest postgres volume's
+	// filesystem usage, as its node's kubelet reported it.
+	// +optional
+	UsedBytes int64 `json:"usedBytes,omitempty"`
+	// +optional
+	CapacityBytes int64 `json:"capacityBytes,omitempty"`
+	// lastChecked is when usage was last read.
+	// +optional
+	LastChecked *metav1.Time `json:"lastChecked,omitempty"`
+}
+
 // AuthentikDeploymentStatus defines the observed state of AuthentikDeployment.
 type AuthentikDeploymentStatus struct {
 	// conditions report Ready, PostgresReady and HelmReleaseReady.
@@ -222,6 +253,10 @@ type AuthentikDeploymentStatus struct {
 	HelmReleaseRef *corev1.LocalObjectReference `json:"helmReleaseRef,omitempty"`
 	// +optional
 	CNPGClusterRef *corev1.LocalObjectReference `json:"cnpgClusterRef,omitempty"`
+	// postgresStorage tracks the postgres volumes while maxStorageSize
+	// auto-growth is on.
+	// +optional
+	PostgresStorage *PostgresStorageStatus `json:"postgresStorage,omitempty"`
 	// serviceEndpoint is the in-cluster host:port a TestCase drives, e.g.
 	// <release>-server.<namespace>.svc.cluster.local:80.
 	// +optional

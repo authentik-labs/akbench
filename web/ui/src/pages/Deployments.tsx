@@ -602,6 +602,28 @@ export function DeploymentSpecFields({
                             />
                         </Field>
                     )}
+                    {spec.postgres.mode === "Embedded" && (
+                        <Field
+                            label="Max storage size"
+                            help="Grows the volume by half once it is 80% full, up to this size. Empty: never grows."
+                        >
+                            <input
+                                value={spec.postgres.embedded?.maxStorageSize ?? ""}
+                                placeholder="off"
+                                onChange={(e) =>
+                                    patch({
+                                        postgres: {
+                                            ...spec.postgres,
+                                            embedded: {
+                                                ...spec.postgres.embedded,
+                                                maxStorageSize: e.target.value || undefined,
+                                            },
+                                        },
+                                    })
+                                }
+                            />
+                        </Field>
+                    )}
                     {spec.postgres.mode === "CNPG" && (
                         <>
                             <Field label="Instances">
@@ -633,6 +655,26 @@ export function DeploymentSpecFields({
                                                 cnpg: {
                                                     ...spec.postgres.cnpg,
                                                     storageSize: e.target.value || undefined,
+                                                },
+                                            },
+                                        })
+                                    }
+                                />
+                            </Field>
+                            <Field
+                                label="Max storage size"
+                                help="Grows the volume by half once it is 80% full, up to this size. Empty: never grows."
+                            >
+                                <input
+                                    value={spec.postgres.cnpg?.maxStorageSize ?? ""}
+                                    placeholder="off"
+                                    onChange={(e) =>
+                                        patch({
+                                            postgres: {
+                                                ...spec.postgres,
+                                                cnpg: {
+                                                    ...spec.postgres.cnpg,
+                                                    maxStorageSize: e.target.value || undefined,
                                                 },
                                             },
                                         })
