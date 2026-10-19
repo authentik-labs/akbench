@@ -42,7 +42,7 @@ What each component does.
   generated password pinned on both sides so they agree), `CNPG` (renders a
   `postgresql.cnpg.io/v1 Cluster`, waits for it healthy, reads its generated
   app secret), `External` (reads a user-supplied secret directly).
-  `Embedded` and `CNPG` take a `maxStorageSize`: the reconciler then reads
+  `Embedded` and `CNPG` take a `maxStorageSize` (default `12Gi`): the reconciler reads
   the postgres volumes' usage from the kubelet (`stats/summary` through the
   workload cluster's node proxy) every minute, and once a volume is 80% full
   grows it by half, capped at `maxStorageSize`. Embedded patches the

@@ -605,11 +605,11 @@ export function DeploymentSpecFields({
                     {spec.postgres.mode === "Embedded" && (
                         <Field
                             label="Max storage size"
-                            help="Grows the volume by half once it is 80% full, up to this size. Empty: never grows."
+                            help="Grows the volume by half once it is 80% full, up to this size."
                         >
                             <input
                                 value={spec.postgres.embedded?.maxStorageSize ?? ""}
-                                placeholder="off"
+                                placeholder="12Gi"
                                 onChange={(e) =>
                                     patch({
                                         postgres: {
@@ -663,11 +663,11 @@ export function DeploymentSpecFields({
                             </Field>
                             <Field
                                 label="Max storage size"
-                                help="Grows the volume by half once it is 80% full, up to this size. Empty: never grows."
+                                help="Grows the volume by half once it is 80% full, up to this size."
                             >
                                 <input
                                     value={spec.postgres.cnpg?.maxStorageSize ?? ""}
-                                    placeholder="off"
+                                    placeholder="12Gi"
                                     onChange={(e) =>
                                         patch({
                                             postgres: {

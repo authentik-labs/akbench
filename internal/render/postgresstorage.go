@@ -14,6 +14,10 @@ const (
 	// a volume by, as a fraction of its current size.
 	postgresStorageGrowFactor = 1.5
 
+	// defaultPostgresMaxStorageSize caps auto-growth when the deployment
+	// sets no maxStorageSize of its own.
+	defaultPostgresMaxStorageSize = "12Gi"
+
 	gibibyte = 1 << 30
 
 	// cnpgClusterLabel/cnpgPVCRoleLabel are the labels CNPG puts on every
@@ -25,21 +29,27 @@ const (
 )
 
 // PostgresMaxStorageSize is the maxStorageSize set for the deployment's
-// postgres mode, or "" when auto-growth is off (always for External, whose
-// storage the operator doesn't manage).
+// postgres mode, defaultPostgresMaxStorageSize when unset, or "" when
+// auto-growth doesn't apply (External, whose storage the operator doesn't
+// manage).
 func PostgresMaxStorageSize(t *benchv1alpha1.AuthentikDeployment) string {
+	size := ""
 	switch t.Spec.Postgres.Mode {
 	case benchv1alpha1.PostgresCNPG:
 		if t.Spec.Postgres.CNPG != nil {
-			return t.Spec.Postgres.CNPG.MaxStorageSize
+			size = t.Spec.Postgres.CNPG.MaxStorageSize
 		}
 	case benchv1alpha1.PostgresExternal:
+		return ""
 	default: // PostgresEmbedded
 		if t.Spec.Postgres.Embedded != nil {
-			return t.Spec.Postgres.Embedded.MaxStorageSize
+			size = t.Spec.Postgres.Embedded.MaxStorageSize
 		}
 	}
-	return ""
+	if size == "" {
+		return defaultPostgresMaxStorageSize
+	}
+	return size
 }
 
 // EmbeddedPostgresPVCName is the data PVC of the bundled subchart's

@@ -54,6 +54,10 @@ func TestPostgresMaxStorageSize(t *testing.T) {
 	if got := PostgresMaxStorageSize(topo); got != "10Gi" {
 		t.Errorf("Embedded: got %q, want 10Gi", got)
 	}
+	topo.Spec.Postgres.Embedded = nil
+	if got := PostgresMaxStorageSize(topo); got != "12Gi" {
+		t.Errorf("Embedded, unset: got %q, want the 12Gi default", got)
+	}
 	topo.Spec.Postgres.Mode = benchv1alpha1.PostgresExternal
 	if got := PostgresMaxStorageSize(topo); got != "" {
 		t.Errorf("External: got %q, want none", got)

@@ -76,10 +76,10 @@ type EmbeddedPostgresSpec struct {
 	StorageSize string `json:"storageSize,omitempty"`
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
-	// maxStorageSize turns on volume auto-growth: once the postgres volume
-	// is more than 80% full, the operator grows it by half its size, up to
-	// this limit. Unset leaves the volume at its initial size. Needs a
-	// StorageClass with allowVolumeExpansion.
+	// maxStorageSize caps volume auto-growth: once the postgres volume is
+	// more than 80% full, the operator grows it by half its size, up to this
+	// limit (12Gi when unset). Needs a StorageClass with
+	// allowVolumeExpansion.
 	// +optional
 	MaxStorageSize string `json:"maxStorageSize,omitempty"`
 }
@@ -95,10 +95,10 @@ type CNPGPostgresSpec struct {
 	StorageSize string `json:"storageSize,omitempty"`
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
-	// maxStorageSize turns on volume auto-growth: once the postgres volume
-	// is more than 80% full, the operator grows it by half its size, up to
-	// this limit. Unset leaves the volume at its initial size. Needs a
-	// StorageClass with allowVolumeExpansion.
+	// maxStorageSize caps volume auto-growth: once the postgres volume is
+	// more than 80% full, the operator grows it by half its size, up to this
+	// limit (12Gi when unset). Needs a StorageClass with
+	// allowVolumeExpansion.
 	// +optional
 	MaxStorageSize string `json:"maxStorageSize,omitempty"`
 }
