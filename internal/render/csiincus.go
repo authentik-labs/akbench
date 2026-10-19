@@ -56,7 +56,11 @@ const (
 	// project, so attaching failed ("Failed to fetch instance ... in
 	// project \"default\": Instance not found") for any cluster whose
 	// connection Secret names another project.
-	csiIncusChartVersion = "0.1.4"
+	// 0.1.5 reports volume stats (NodeGetVolumeStats), without which the
+	// kubelet has no usage for these volumes: no kubelet_volume_stats_*
+	// metrics for the postgres disk chart, and nothing for postgres
+	// storage auto-growth to act on.
+	csiIncusChartVersion = "0.1.5"
 
 	CSIIncusHelmReleaseName = "csi-incus"
 
