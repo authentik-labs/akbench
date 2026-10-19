@@ -34,5 +34,5 @@ dex:
 # speaks the server's protocol version; Dependabot ignores majors for it.
 postgresRoleFix:
   image:
-    repository: docker.io/library/postgres
+    repository: postgres
     tag: 17.11-bookworm
