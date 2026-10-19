@@ -57,7 +57,7 @@ func TestDeschedulerHelmRelease(t *testing.T) {
 	if hr.Spec.KubeConfig == nil || hr.Spec.KubeConfig.SecretRef.Name != "wc-1-kubeconfig" {
 		t.Errorf("kubeConfig = %+v, want secretRef wc-1-kubeconfig", hr.Spec.KubeConfig)
 	}
-	if hr.Spec.Chart.Spec.Chart != deschedulerChartName || hr.Spec.Chart.Spec.Version != deschedulerChartVersion {
-		t.Errorf("chart = %s@%s, want %s@%s", hr.Spec.Chart.Spec.Chart, hr.Spec.Chart.Spec.Version, deschedulerChartName, deschedulerChartVersion)
+	if hr.Spec.Chart.Spec.Chart != deschedulerChartName || hr.Spec.Chart.Spec.Version != deschedulerChart.Version {
+		t.Errorf("chart = %s@%s, want %s@%s", hr.Spec.Chart.Spec.Chart, hr.Spec.Chart.Spec.Version, deschedulerChartName, deschedulerChart.Version)
 	}
 }

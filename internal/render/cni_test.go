@@ -11,8 +11,8 @@ func TestCNIHelmRepository(t *testing.T) {
 	if repo.Namespace != "default" {
 		t.Errorf("namespace = %q, want default", repo.Namespace)
 	}
-	if repo.Spec.URL != cniChartRepoURL {
-		t.Errorf("url = %q, want %q", repo.Spec.URL, cniChartRepoURL)
+	if repo.Spec.URL != cniChart.Repository {
+		t.Errorf("url = %q, want %q", repo.Spec.URL, cniChart.Repository)
 	}
 }
 

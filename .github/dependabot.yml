@@ -32,3 +32,17 @@ updates:
   open-pull-requests-limit: 10
   assignees:
   - BeryJu
+# Charts and images the operator installs onto workload clusters
+# (internal/render/deps, embedded by internal/render/deps.go).
+- package-ecosystem: helm
+  directory: "/internal/render/deps"
+  schedule:
+    interval: daily
+    time: "04:00"
+  open-pull-requests-limit: 10
+  assignees:
+  - BeryJu
+  ignore:
+  # Must match the authentik chart's default postgresql.image major.
+  - dependency-name: "docker.io/library/postgres"
+    update-types: ["version-update:semver-major"]

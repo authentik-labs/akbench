@@ -18,17 +18,15 @@ import (
 const (
 	CNIHelmRepositoryName = "flannel"
 	cniChartName          = "flannel"
-	cniChartRepoURL       = "https://flannel-io.github.io/flannel"
-
-	// cniChartVersion is pinned - matches the chart version last verified
-	// working; bump deliberately.
-	cniChartVersion = "v0.28.9"
 
 	CNIHelmReleaseName = "flannel"
 
 	// CNINamespace matches the original vendored manifest's namespace.
 	CNINamespace = "kube-flannel"
 )
+
+// cniChart is the version and repository deps/Chart.yaml pins.
+var cniChart = pinnedChart(cniChartName)
 
 // CNIHelmRepository is the (singleton, per-namespace) HelmRepository
 // pointing at the official Flannel chart repo.
@@ -37,7 +35,7 @@ func CNIHelmRepository(namespace string) *sourcev1.HelmRepository {
 		Name:      CNIHelmRepositoryName,
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
-			URL:      cniChartRepoURL,
+			URL:      cniChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -59,7 +57,7 @@ func CNIHelmRelease(wc *benchv1alpha1.WorkloadCluster) *helmv2.HelmRelease {
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   cniChartName,
-					Version: cniChartVersion,
+					Version: cniChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      CNIHelmRepositoryName,

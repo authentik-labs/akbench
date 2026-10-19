@@ -15,12 +15,10 @@ import (
 // "/" (starts an authorization-code flow) and "/auth/callback" (receives
 // it). The tag is pinned to the newest version actually published to
 // ghcr.io/beryju/oidc-test-client (confirmed directly against the registry's
-// own tag list, not assumed) rather than left floating on :latest - bump
-// deliberately.
-const (
-	OIDCTestClientImage = "ghcr.io/beryju/oidc-test-client:2.7.1"
-	OIDCTestClientPort  = 9009
-)
+// own tag list, not assumed) rather than left floating on :latest, in deps/values.yaml.
+var OIDCTestClientImage = pinnedImage("oidcTestClient")
+
+const OIDCTestClientPort = 9009
 
 // OIDCTestClientName is deterministic from the TestCase name plus the
 // specific AuthentikDeployment it targets - a TestCase driving more than

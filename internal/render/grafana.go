@@ -200,7 +200,7 @@ func GrafanaHelmRelease(wc *benchv1alpha1.WorkloadCluster) (*helmv2.HelmRelease,
 		"dashboards":         map[string]any{"benchmarks": grafanaDashboards},
 	}
 	monitoringPlacement(wc, values)
-	hr, err := observabilityHelmRelease(wc, GrafanaHelmReleaseName, "grafana", grafanaChartVersion, GrafanaCommunityHelmRepositoryName, values)
+	hr, err := observabilityHelmRelease(wc, GrafanaHelmReleaseName, "grafana", pinnedChart("grafana").Version, GrafanaCommunityHelmRepositoryName, values)
 	if err != nil {
 		return nil, err
 	}

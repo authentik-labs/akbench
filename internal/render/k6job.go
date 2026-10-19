@@ -14,12 +14,12 @@ import (
 )
 
 // K6Image is the k6 image every rendered workload runs. Pinned rather than
-// left to "latest" so a benchmark run is reproducible. Must be >=0.57.0:
+// left to "latest" so a benchmark run is reproducible (deps/values.yaml). Must be >=0.57.0:
 // login.ts uses TypeScript syntax (type-only imports, interfaces, typed
 // consts), and k6 only transpiles .ts files natively without extra flags
 // from that version on - earlier images fail every run with a script parse
 // error before a single request is ever sent.
-const K6Image = "grafana/k6:0.57.0"
+var K6Image = pinnedImage("k6")
 
 // K6BrowserImage is grafana/k6's browser-capable build (bundled Chromium,
 // launched with --no-sandbox per k6's own docs) - not wired to any TestCase

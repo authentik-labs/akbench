@@ -29,11 +29,6 @@ import (
 const (
 	MetricsServerHelmRepositoryName = "metrics-server"
 	metricsServerChartName          = "metrics-server"
-	metricsServerChartRepoURL       = "https://kubernetes-sigs.github.io/metrics-server"
-
-	// metricsServerChartVersion is pinned - matches the chart version last
-	// verified working; bump deliberately.
-	metricsServerChartVersion = "3.14.0"
 
 	MetricsServerHelmReleaseName = "metrics-server"
 
@@ -43,6 +38,9 @@ const (
 	MetricsServerNamespace = "kube-system"
 )
 
+// metricsServerChart is the version and repository deps/Chart.yaml pins.
+var metricsServerChart = pinnedChart(metricsServerChartName)
+
 // MetricsServerHelmRepository is the (singleton, per-namespace)
 // HelmRepository pointing at the official metrics-server chart repo.
 func MetricsServerHelmRepository(namespace string) *sourcev1.HelmRepository {
@@ -50,7 +48,7 @@ func MetricsServerHelmRepository(namespace string) *sourcev1.HelmRepository {
 		Name:      MetricsServerHelmRepositoryName,
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
-			URL:      metricsServerChartRepoURL,
+			URL:      metricsServerChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -91,7 +89,7 @@ func MetricsServerHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *apiexte
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   metricsServerChartName,
-					Version: metricsServerChartVersion,
+					Version: metricsServerChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      MetricsServerHelmRepositoryName,

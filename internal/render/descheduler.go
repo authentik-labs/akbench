@@ -43,11 +43,6 @@ import (
 const (
 	DeschedulerHelmRepositoryName = "descheduler"
 	deschedulerChartName          = "descheduler"
-	deschedulerChartRepoURL       = "https://kubernetes-sigs.github.io/descheduler"
-
-	// deschedulerChartVersion is pinned - matches the chart version last
-	// verified working; bump deliberately.
-	deschedulerChartVersion = "0.37.0"
 
 	DeschedulerHelmReleaseName = "descheduler"
 
@@ -62,6 +57,9 @@ const (
 	deschedulerSchedule = "*/15 * * * *"
 )
 
+// deschedulerChart is the version and repository deps/Chart.yaml pins.
+var deschedulerChart = pinnedChart(deschedulerChartName)
+
 // DeschedulerHelmRepository is the (singleton, per-namespace) HelmRepository
 // pointing at the official descheduler chart repo.
 func DeschedulerHelmRepository(namespace string) *sourcev1.HelmRepository {
@@ -69,7 +67,7 @@ func DeschedulerHelmRepository(namespace string) *sourcev1.HelmRepository {
 		Name:      DeschedulerHelmRepositoryName,
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
-			URL:      deschedulerChartRepoURL,
+			URL:      deschedulerChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -108,7 +106,7 @@ func DeschedulerHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *apiextens
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   deschedulerChartName,
-					Version: deschedulerChartVersion,
+					Version: deschedulerChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      DeschedulerHelmRepositoryName,

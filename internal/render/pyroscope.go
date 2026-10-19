@@ -26,7 +26,7 @@ const (
 func PyroscopeHelmRelease(wc *benchv1alpha1.WorkloadCluster) (*helmv2.HelmRelease, error) {
 	pyroscope := map[string]any{"persistence": chartPersistence(wc, PyroscopeStorageSize)}
 	monitoringPlacement(wc, pyroscope)
-	return observabilityHelmRelease(wc, PyroscopeHelmReleaseName, "pyroscope", pyroscopeChartVersion, GrafanaHelmRepositoryName, map[string]any{
+	return observabilityHelmRelease(wc, PyroscopeHelmReleaseName, "pyroscope", pinnedChart("pyroscope").Version, GrafanaHelmRepositoryName, map[string]any{
 		"fullnameOverride": PyroscopeServiceName,
 		"alloy":            map[string]any{"enabled": false},
 		"minio":            map[string]any{"enabled": false},

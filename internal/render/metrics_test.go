@@ -64,8 +64,8 @@ func TestKubePrometheusStackHelmRepository(t *testing.T) {
 	if repo.Namespace != "default" {
 		t.Errorf("namespace = %q, want default", repo.Namespace)
 	}
-	if repo.Spec.URL != kubePrometheusStackChartRepoURL {
-		t.Errorf("url = %q, want %q", repo.Spec.URL, kubePrometheusStackChartRepoURL)
+	if repo.Spec.URL != kubePrometheusStackChart.Repository {
+		t.Errorf("url = %q, want %q", repo.Spec.URL, kubePrometheusStackChart.Repository)
 	}
 }
 

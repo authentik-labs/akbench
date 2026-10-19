@@ -22,16 +22,7 @@ import (
 // grafana/helm-charts.
 const (
 	GrafanaCommunityHelmRepositoryName = "grafana-community"
-	grafanaCommunityChartRepoURL       = "https://grafana-community.github.io/helm-charts"
 	GrafanaHelmRepositoryName          = "grafana"
-	grafanaChartRepoURL                = "https://grafana.github.io/helm-charts"
-
-	// Chart versions, pinned like every other add-on's.
-	grafanaChartVersion   = "13.5.1"
-	tempoChartVersion     = "3.1.0"
-	pyroscopeChartVersion = "2.4.0"
-	lokiChartVersion      = "18.13.8"
-	alloyChartVersion     = "1.13.0"
 
 	GrafanaHelmReleaseName   = "grafana"
 	TempoHelmReleaseName     = "tempo"
@@ -42,12 +33,12 @@ const (
 
 // GrafanaCommunityHelmRepository serves the grafana, tempo and loki charts.
 func GrafanaCommunityHelmRepository(namespace string) *sourcev1.HelmRepository {
-	return helmRepository(GrafanaCommunityHelmRepositoryName, namespace, grafanaCommunityChartRepoURL)
+	return helmRepository(GrafanaCommunityHelmRepositoryName, namespace, pinnedChart("grafana").Repository)
 }
 
 // GrafanaHelmRepository serves the pyroscope and alloy charts.
 func GrafanaHelmRepository(namespace string) *sourcev1.HelmRepository {
-	return helmRepository(GrafanaHelmRepositoryName, namespace, grafanaChartRepoURL)
+	return helmRepository(GrafanaHelmRepositoryName, namespace, pinnedChart("pyroscope").Repository)
 }
 
 func helmRepository(name, namespace, url string) *sourcev1.HelmRepository {

@@ -1,0 +1,49 @@
+# Not a real chart: the pinned version and repository of every Helm chart
+# the operator installs onto a workload cluster, embedded by
+# internal/render/deps.go. It's laid out as a Helm umbrella chart only so
+# Dependabot's helm ecosystem (.github/dependabot.yml) keeps the versions
+# current. Each dependency's name is the upstream chart name.
+apiVersion: v2
+name: akbench-deps
+version: 0.0.0
+dependencies:
+  - name: flannel
+    version: v0.28.9
+    repository: https://flannel-io.github.io/flannel
+  - name: cluster-autoscaler
+    version: 9.59.0
+    repository: https://kubernetes.github.io/autoscaler
+  # csi-incus 0.1.1 fixed AttachVolume failing with "Instance %q not found"
+  # (NodeID vs. Incus instance name); 0.1.2 the by-id lookup for QEMU's
+  # scsi-id naming; 0.1.3 csi-resizer's missing cluster-scoped pods RBAC;
+  # 0.1.4 Incus project support; 0.1.5 NodeGetVolumeStats, which the
+  # postgres disk chart and storage auto-growth depend on.
+  - name: csi-incus
+    version: 0.1.5
+    repository: oci://ghcr.io/beryju/charts
+  - name: descheduler
+    version: 0.37.0
+    repository: https://kubernetes-sigs.github.io/descheduler
+  - name: metrics-server
+    version: 3.14.0
+    repository: https://kubernetes-sigs.github.io/metrics-server
+  - name: kube-prometheus-stack
+    version: 91.4.0
+    repository: https://prometheus-community.github.io/helm-charts
+  # grafana, tempo and loki moved to grafana-community (the grafana/helm-charts
+  # copies are deprecated); pyroscope and alloy are still in grafana.
+  - name: grafana
+    version: 13.5.1
+    repository: https://grafana-community.github.io/helm-charts
+  - name: tempo
+    version: 3.1.0
+    repository: https://grafana-community.github.io/helm-charts
+  - name: loki
+    version: 18.13.8
+    repository: https://grafana-community.github.io/helm-charts
+  - name: pyroscope
+    version: 2.4.0
+    repository: https://grafana.github.io/helm-charts
+  - name: alloy
+    version: 1.13.0
+    repository: https://grafana.github.io/helm-charts

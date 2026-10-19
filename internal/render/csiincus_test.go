@@ -20,8 +20,8 @@ func TestCSIIncusHelmRepositoryIsOCI(t *testing.T) {
 	if repo.Spec.Type != sourcev1.HelmRepositoryTypeOCI {
 		t.Errorf("type = %q, want %q", repo.Spec.Type, sourcev1.HelmRepositoryTypeOCI)
 	}
-	if repo.Spec.URL != csiIncusOCIRepoURL {
-		t.Errorf("url = %q, want %q", repo.Spec.URL, csiIncusOCIRepoURL)
+	if repo.Spec.URL != csiIncusChart.Repository {
+		t.Errorf("url = %q, want %q", repo.Spec.URL, csiIncusChart.Repository)
 	}
 }
 

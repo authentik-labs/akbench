@@ -36,12 +36,10 @@ import (
 const (
 	ClusterAutoscalerHelmRepositoryName = "cluster-autoscaler"
 	clusterAutoscalerChartName          = "cluster-autoscaler"
-	clusterAutoscalerChartRepoURL       = "https://kubernetes.github.io/autoscaler"
-
-	// clusterAutoscalerChartVersion is pinned - matches the chart version
-	// last verified working; bump deliberately.
-	clusterAutoscalerChartVersion = "9.59.0"
 )
+
+// clusterAutoscalerChart is the version and repository deps/Chart.yaml pins.
+var clusterAutoscalerChart = pinnedChart(clusterAutoscalerChartName)
 
 // ClusterAutoscalerHelmReleaseName is unique per WorkloadCluster (unlike
 // CNI/CSI/metrics-server, which each only ever install once per *workload*
@@ -89,7 +87,7 @@ func ClusterAutoscalerHelmRepository(namespace string) *sourcev1.HelmRepository 
 		Name:      ClusterAutoscalerHelmRepositoryName,
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
-			URL:      clusterAutoscalerChartRepoURL,
+			URL:      clusterAutoscalerChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -162,7 +160,7 @@ func ClusterAutoscalerHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *api
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   clusterAutoscalerChartName,
-					Version: clusterAutoscalerChartVersion,
+					Version: clusterAutoscalerChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      ClusterAutoscalerHelmRepositoryName,

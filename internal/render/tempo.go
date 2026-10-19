@@ -45,5 +45,5 @@ func TempoHelmRelease(wc *benchv1alpha1.WorkloadCluster) (*helmv2.HelmRelease, e
 		"serviceMonitor": map[string]any{"enabled": true},
 	}
 	monitoringPlacement(wc, values)
-	return observabilityHelmRelease(wc, TempoHelmReleaseName, "tempo", tempoChartVersion, GrafanaCommunityHelmRepositoryName, values)
+	return observabilityHelmRelease(wc, TempoHelmReleaseName, "tempo", pinnedChart("tempo").Version, GrafanaCommunityHelmRepositoryName, values)
 }

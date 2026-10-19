@@ -14,8 +14,8 @@ func TestMetricsServerHelmRepository(t *testing.T) {
 	if repo.Namespace != "default" {
 		t.Errorf("namespace = %q, want default", repo.Namespace)
 	}
-	if repo.Spec.URL != metricsServerChartRepoURL {
-		t.Errorf("url = %q, want %q", repo.Spec.URL, metricsServerChartRepoURL)
+	if repo.Spec.URL != metricsServerChart.Repository {
+		t.Errorf("url = %q, want %q", repo.Spec.URL, metricsServerChart.Repository)
 	}
 }
 

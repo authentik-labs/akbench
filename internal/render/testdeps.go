@@ -29,18 +29,23 @@ import (
 //     Unlike the other three, authentik talks to dex back-channel (token and
 //     userinfo requests), so dex must be reachable from the deployment's own
 //     cluster - true whenever the runner is that same cluster (the default).
-const (
-	SAMLTestSPImage = "ghcr.io/beryju/saml-test-sp:1.4"
-	SAMLTestSPPort  = 9009
+//
+// Images are pinned in deps/values.yaml.
+var (
+	SAMLTestSPImage  = pinnedImage("samlTestSP")
+	SAMLTestIdPImage = pinnedImage("samlTestIdP")
+	DexImage         = pinnedImage("dex")
+)
 
-	SAMLTestIdPImage = "ghcr.io/beryju/saml-test-idp:0.11"
-	SAMLTestIdPPort  = 9009
+const (
+	SAMLTestSPPort = 9009
+
+	SAMLTestIdPPort = 9009
 	// SAMLTestIdPUsername/Password are saml-test-idp's hardcoded user1.
 	SAMLTestIdPUsername = "user1"
 	SAMLTestIdPPassword = "user1pass"
 
-	DexImage = "ghcr.io/dexidp/dex:v2.46.0"
-	DexPort  = 5556
+	DexPort = 5556
 	// DexEmail/DexPassword log in to dex's one static password entry (dex's
 	// local connector prompts for the email). DexUsername is what authentik
 	// enrolls the user as - distinct from saml-test-idp's user1 so a template

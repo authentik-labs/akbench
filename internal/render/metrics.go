@@ -65,15 +65,13 @@ const (
 const (
 	kubePrometheusStackHelmRepositoryName = "kube-prometheus-stack"
 	kubePrometheusStackChartName          = "kube-prometheus-stack"
-	kubePrometheusStackChartRepoURL       = "https://prometheus-community.github.io/helm-charts"
-
-	// kubePrometheusStackChartVersion is pinned - matches the chart version
-	// last verified working; bump deliberately.
-	kubePrometheusStackChartVersion = "91.4.0"
 
 	KubePrometheusStackHelmReleaseName = "kube-prometheus-stack"
 	kubePrometheusStackFullname        = "kube-prometheus-stack"
 )
+
+// kubePrometheusStackChart is the version and repository deps/Chart.yaml pins.
+var kubePrometheusStackChart = pinnedChart(kubePrometheusStackChartName)
 
 // KubePrometheusStackHelmRepository is the (singleton, per-namespace)
 // HelmRepository pointing at the official prometheus-community chart repo.
@@ -82,7 +80,7 @@ func KubePrometheusStackHelmRepository(namespace string) *sourcev1.HelmRepositor
 		Name:      kubePrometheusStackHelmRepositoryName,
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
-			URL:      kubePrometheusStackChartRepoURL,
+			URL:      kubePrometheusStackChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -316,7 +314,7 @@ func KubePrometheusStackHelmValues(wc *benchv1alpha1.WorkloadCluster) (*apiexten
 // own doc comment on this) - both explicitly set to CreateReplace instead,
 // since prometheus-operator's Prometheus/ServiceMonitor/PrometheusRule/etc.
 // CRDs (bundled in the chart's own crds/ subchart) are exactly what this
-// install exists to provide, and bumping kubePrometheusStackChartVersion
+// install exists to provide, and bumping kubePrometheusStackChart.Version
 // later should actually update them rather than silently stay on whatever
 // version first got installed.
 func KubePrometheusStackHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *apiextensionsv1.JSON) *helmv2.HelmRelease {
@@ -330,7 +328,7 @@ func KubePrometheusStackHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *a
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   kubePrometheusStackChartName,
-					Version: kubePrometheusStackChartVersion,
+					Version: kubePrometheusStackChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      kubePrometheusStackHelmRepositoryName,

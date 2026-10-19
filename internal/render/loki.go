@@ -55,7 +55,7 @@ func LokiHelmRelease(wc *benchv1alpha1.WorkloadCluster) (*helmv2.HelmRelease, er
 	singleBinary := map[string]any{valuesKeyReplicas: 1, "persistence": persistence}
 	monitoringPlacement(wc, singleBinary)
 	off := map[string]any{"enabled": false}
-	return observabilityHelmRelease(wc, LokiHelmReleaseName, "loki", lokiChartVersion, GrafanaCommunityHelmRepositoryName, map[string]any{
+	return observabilityHelmRelease(wc, LokiHelmReleaseName, "loki", pinnedChart("loki").Version, GrafanaCommunityHelmRepositoryName, map[string]any{
 		"fullnameOverride": LokiServiceName,
 		"deploymentMode":   "Monolithic",
 		"loki": map[string]any{
@@ -146,7 +146,7 @@ loki.write "default" {
 // DaemonSet tolerating every taint, since authentik's own pools may be
 // tainted and their logs are the point. Usage reporting is off.
 func AlloyHelmRelease(wc *benchv1alpha1.WorkloadCluster) (*helmv2.HelmRelease, error) {
-	return observabilityHelmRelease(wc, AlloyHelmReleaseName, "alloy", alloyChartVersion, GrafanaHelmRepositoryName, map[string]any{
+	return observabilityHelmRelease(wc, AlloyHelmReleaseName, "alloy", pinnedChart("alloy").Version, GrafanaHelmRepositoryName, map[string]any{
 		"fullnameOverride": alloyFullname,
 		"alloy": map[string]any{
 			"configMap":       map[string]any{"content": alloyLogsConfig()},

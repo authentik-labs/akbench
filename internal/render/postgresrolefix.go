@@ -38,7 +38,7 @@ func EmbeddedPostgresStatefulSetName(t *benchv1alpha1.AuthentikDeployment) strin
 // real values.yaml and a live pod's actual image) purely so this psql
 // client's protocol version matches the server it's talking to; bump this
 // if that default ever changes.
-const postgresRoleFixImage = "docker.io/library/postgres:17.11-bookworm"
+var postgresRoleFixImage = pinnedImage("postgresRoleFix")
 
 // PostgresRoleFixJobName is deterministic and NOT content-hashed (unlike
 // BlueprintJobName): this fixup has no changing "content" to version across

@@ -24,43 +24,10 @@ import (
 // existed - Flux/helm-controller already handles upgrades, rollback, and
 // drift the hand-rolled createAll() helper never did.
 const (
-	// CSIIncusHelmRepositoryName/csiIncusChartName/csiIncusOCIRepoURL locate
+	// CSIIncusHelmRepositoryName/csiIncusChartName/csiIncusChart.Repository locate
 	// the chart itself.
 	CSIIncusHelmRepositoryName = "csi-incus"
 	csiIncusChartName          = "csi-incus"
-	csiIncusOCIRepoURL         = "oci://ghcr.io/beryju/charts"
-
-	// csiIncusChartVersion is pinned rather than "*" (as AuthentikDeployment's
-	// chart version defaults to) since this project doesn't yet expose a
-	// per-WorkloadCluster override for it - bump deliberately when
-	// csi-incus cuts a new chart release.
-	// 0.1.1 fixed ControllerPublishVolume/AttachVolume failing with
-	// "Instance %q not found" for every node (the reported CSI NodeID
-	// didn't match the underlying Incus instance name).
-	// 0.1.2 fixed NodeStageVolume/MountDevice failing with "no
-	// /dev/disk/by-id entry for serial %q after waiting" - the node
-	// plugin's by-id lookup didn't account for the extra dash QEMU's own
-	// scsi-id naming inserts before a serial that already starts with a
-	// dash-adjacent segment (device name/serial vs. the on-disk
-	// "scsi-0QEMU_QEMU_HARDDISK_incus_csi--<id>" symlink actually created).
-	// 0.1.3 fixed the csi-resizer sidecar's own ClusterRole missing
-	// cluster-scoped `pods: get/list/watch` - every resize attempt
-	// (csi-resizer polling the pod mounting the PVC to detect a running
-	// FilesystemResizePending condition) failed with "pods is forbidden...
-	// cannot list resource \"pods\" at the cluster scope", confirmed live
-	// on default-dev-vm-incus. No live RBAC patch was applied as a
-	// stop-gap (would have needed explicit approval); this version bump is
-	// the real fix.
-	// 0.1.4 added Incus project support (incus.project): without it the
-	// controller looked every instance and volume up in the "default"
-	// project, so attaching failed ("Failed to fetch instance ... in
-	// project \"default\": Instance not found") for any cluster whose
-	// connection Secret names another project.
-	// 0.1.5 reports volume stats (NodeGetVolumeStats), without which the
-	// kubelet has no usage for these volumes: no kubelet_volume_stats_*
-	// metrics for the postgres disk chart, and nothing for postgres
-	// storage auto-growth to act on.
-	csiIncusChartVersion = "0.1.5"
 
 	CSIIncusHelmReleaseName = "csi-incus"
 
@@ -79,6 +46,9 @@ const (
 	CSIIncusStorageClassName = "incus-block"
 )
 
+// csiIncusChart is the version and repository deps/Chart.yaml pins.
+var csiIncusChart = pinnedChart(csiIncusChartName)
+
 // CSIIncusHelmRepository is the (singleton, per-namespace) OCI HelmRepository
 // pointing at csi-incus's published chart.
 func CSIIncusHelmRepository(namespace string) *sourcev1.HelmRepository {
@@ -87,7 +57,7 @@ func CSIIncusHelmRepository(namespace string) *sourcev1.HelmRepository {
 		Namespace: namespace,
 		Spec: sourcev1.HelmRepositorySpec{
 			Type:     sourcev1.HelmRepositoryTypeOCI,
-			URL:      csiIncusOCIRepoURL,
+			URL:      csiIncusChart.Repository,
 			Interval: metav1.Duration{Duration: helmRepoInterval},
 		},
 	}
@@ -178,7 +148,7 @@ func CSIIncusHelmRelease(wc *benchv1alpha1.WorkloadCluster, values *apiextension
 			Chart: &helmv2.HelmChartTemplate{
 				Spec: helmv2.HelmChartTemplateSpec{
 					Chart:   csiIncusChartName,
-					Version: csiIncusChartVersion,
+					Version: csiIncusChart.Version,
 					SourceRef: helmv2.CrossNamespaceObjectReference{
 						Kind:      sourcev1.HelmRepositoryKind,
 						Name:      CSIIncusHelmRepositoryName,
