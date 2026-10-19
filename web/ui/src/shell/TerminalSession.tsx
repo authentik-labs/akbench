@@ -46,11 +46,13 @@ const theme = {
 
 export function TerminalSession({
     context,
+    namespace,
     prefill,
     active,
     onStatus,
 }: {
     context: string;
+    namespace?: string;
     prefill?: string;
     active: boolean;
     onStatus: (status: SessionStatus) => void;
@@ -157,7 +159,7 @@ export function TerminalSession({
 
         (async () => {
             try {
-                const { ticket } = await api.createShellSession(context);
+                const { ticket } = await api.createShellSession(context, namespace);
                 if (cancelled) {
                     return;
                 }

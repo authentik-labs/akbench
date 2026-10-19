@@ -203,6 +203,7 @@ export function TestRunViewPage() {
                                 to={shellLinkForCluster(
                                     cluster,
                                     `kubectl logs -n ${namespace} job/${jobName} --tail=500`,
+                                    namespace,
                                 )}
                             >
                                 k6 logs

@@ -3,17 +3,24 @@
 
 import type { AuthentikDeploymentSpec } from "../types";
 
-/**
- * shellLink opens the shell on a kubeconfig context, optionally with a
- * command typed at the prompt - typed only, never run: the user still
- * presses Enter (see sanitizePrefill).
- */
-export function shellLink(context: string, prefill?: string): string {
-    const params = new URLSearchParams({ context });
+function withOptions(params: URLSearchParams, prefill?: string, namespace?: string): string {
+    if (namespace) {
+        params.set("namespace", namespace);
+    }
     if (prefill) {
         params.set("prefill", prefill);
     }
     return `/shell?${params.toString()}`;
+}
+
+/**
+ * shellLink opens the shell on a kubeconfig context, optionally with a
+ * command typed at the prompt - typed only, never run: the user still
+ * presses Enter (see sanitizePrefill) - and optionally in a namespace, which
+ * becomes the session context's default so follow-up commands land there too.
+ */
+export function shellLink(context: string, prefill?: string, namespace?: string): string {
+    return withOptions(new URLSearchParams({ context }), prefill, namespace);
 }
 
 /**
@@ -22,15 +29,28 @@ export function shellLink(context: string, prefill?: string): string {
  * it <name>-admin@<name>, but the page reads the real mapping from the
  * backend rather than assuming that).
  */
-export function shellLinkForCluster(cluster: string | undefined, prefill?: string): string {
+export function shellLinkForCluster(
+    cluster: string | undefined,
+    prefill?: string,
+    namespace?: string,
+): string {
     if (!cluster) {
-        return shellLink("management", prefill);
+        return shellLink("management", prefill, namespace);
     }
-    const params = new URLSearchParams({ cluster });
-    if (prefill) {
-        params.set("prefill", prefill);
-    }
-    return `/shell?${params.toString()}`;
+    return withOptions(new URLSearchParams({ cluster }), prefill, namespace);
+}
+
+// A DNS-1123 label, as the backend requires of a session namespace.
+const NAMESPACE_RE = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+
+/**
+ * sanitizeNamespace returns value if it is a valid namespace name, else
+ * undefined - a malformed ?namespace= opens the shell in the context's own
+ * default rather than failing.
+ */
+export function sanitizeNamespace(value: string | null): string | undefined {
+    const ns = value?.trim();
+    return ns && NAMESPACE_RE.test(ns) ? ns : undefined;
 }
 
 /**

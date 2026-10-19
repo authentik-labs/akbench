@@ -78,9 +78,9 @@ FROM debian:trixie-slim
 # bash-completion for the shell itself; fzf for interactive kubectx/kubens;
 # jq/less/curl because a kubectl session without them is miserable;
 # ncurses-base (already in the base image) covers TERM=xterm-256color.
-# vim-tiny serves `kubectl edit`.
+# nano is the default $EDITOR (`kubectl edit`); vim-tiny is there for vi users.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash-completion ca-certificates curl fzf jq less tini vim-tiny \
+    && apt-get install -y --no-install-recommends bash-completion ca-certificates curl fzf jq less nano tini vim-tiny \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=kubectl /kubectl /usr/local/bin/kubectl
 COPY --from=kubectx /usr/local/bin/kubectx /usr/local/bin/kubectx

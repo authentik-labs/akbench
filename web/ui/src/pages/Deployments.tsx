@@ -906,7 +906,11 @@ export function DeploymentViewPage() {
                     <div className="row">
                         <Link
                             className="button"
-                            to={shellLinkForCluster(cluster, `kubectl get pods -n ${ns} -o wide`)}
+                            to={shellLinkForCluster(
+                                cluster,
+                                `kubectl get pods -n ${ns} -o wide`,
+                                ns,
+                            )}
                         >
                             Pods
                         </Link>
@@ -915,6 +919,7 @@ export function DeploymentViewPage() {
                             to={shellLinkForCluster(
                                 cluster,
                                 `kubectl logs -n ${ns} deploy/${name}-authentik-server -f --tail=200`,
+                                ns,
                             )}
                         >
                             Server logs
@@ -924,6 +929,7 @@ export function DeploymentViewPage() {
                             to={shellLinkForCluster(
                                 cluster,
                                 `kubectl logs -n ${ns} deploy/${name}-authentik-worker -f --tail=200`,
+                                ns,
                             )}
                         >
                             Worker logs
@@ -933,6 +939,7 @@ export function DeploymentViewPage() {
                             to={shellLinkForCluster(
                                 cluster,
                                 `kubectl get events -n ${ns} --sort-by=.lastTimestamp`,
+                                ns,
                             )}
                         >
                             Events
@@ -943,6 +950,7 @@ export function DeploymentViewPage() {
                                 to={shellLinkForCluster(
                                     cluster,
                                     `kubectl describe statefulset -n ${ns} ${name}-postgresql`,
+                                    ns,
                                 )}
                             >
                                 Postgres
@@ -951,7 +959,11 @@ export function DeploymentViewPage() {
                         <Link
                             className="button"
                             title="Open the shell with a psql session on this deployment's database ready to run."
-                            to={shellLinkForCluster(cluster, psqlCommand(name, ns ?? "", d.spec))}
+                            to={shellLinkForCluster(
+                                cluster,
+                                psqlCommand(name, ns ?? "", d.spec),
+                                ns,
+                            )}
                         >
                             psql
                         </Link>

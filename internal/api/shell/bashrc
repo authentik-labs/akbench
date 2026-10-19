@@ -4,9 +4,22 @@
 # History expansion only ever gets in the way of pasted commands.
 set +H
 
-# Current kubeconfig context in the prompt, read straight from the session's
-# own kubeconfig so it follows `kubectl config use-context`.
-__bench_ctx() { sed -n 's/^current-context: //p' "$KUBECONFIG"; }
+# Current kubeconfig context - and its namespace, if it has one - in the
+# prompt, read straight from the session's own kubeconfig so it follows
+# `kubectl config use-context` and `kcn`/kubens. Plain awk rather than
+# kubectl: this runs on every prompt.
+__bench_ctx() {
+  awk '
+    function flush() { if (name != "") nsof[name] = ns; name = ""; ns = "" }
+    /^current-context: / { cur = $2 }
+    /^[^ -]/ { flush(); inctx = ($0 ~ /^contexts:/); next }
+    !inctx { next }
+    /^- / { flush(); sub(/^- /, "  ") }
+    /^    namespace: / { ns = $2 }
+    /^  name: / { name = $2 }
+    END { flush(); printf "%s", cur; if (nsof[cur] != "") printf " (%s)", nsof[cur] }
+  ' "$KUBECONFIG"
+}
 PS1='[$(__bench_ctx)] \w \$ '
 
 alias k=kubectl

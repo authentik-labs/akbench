@@ -8,9 +8,9 @@ package api
 // Auth: a browser's WebSocket API cannot set an Authorization header, so the
 // handshake carries a ticket instead of the bearer token:
 //
-//  1. POST /api/v1/shell/sessions {"context": "<name>"} - an ordinary
-//     bearer-authenticated request - validates the context and mints a
-//     random ticket bound to it. Tickets are single-use and expire after
+//  1. POST /api/v1/shell/sessions {"context": "<name>", "namespace": "<ns>"}
+//     - an ordinary bearer-authenticated request - validates the context
+//     (and the optional namespace) and mints a random ticket bound to them. Tickets are single-use and expire after
 //     shellTicketTTL.
 //  2. GET /api/v1/shell/connect?ticket=<ticket> upgrades to a WebSocket.
 //     The ticket is redeemed (and so invalidated) before anything else
@@ -51,6 +51,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/clientcmd"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -100,6 +101,8 @@ type shellContext struct {
 
 type shellTicket struct {
 	context string
+	// namespace, if set, becomes the session context's default namespace.
+	namespace string
 	// user is who minted the ticket (principal), for the session's log lines.
 	user    string
 	expires time.Time
@@ -117,7 +120,7 @@ func newShellState() *shellState {
 	return &shellState{tickets: map[string]shellTicket{}}
 }
 
-func (st *shellState) mint(contextName, user string, now time.Time) (string, error) {
+func (st *shellState) mint(contextName, namespace, user string, now time.Time) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -130,7 +133,12 @@ func (st *shellState) mint(contextName, user string, now time.Time) (string, err
 			delete(st.tickets, t)
 		}
 	}
-	st.tickets[ticket] = shellTicket{context: contextName, user: user, expires: now.Add(shellTicketTTL)}
+	st.tickets[ticket] = shellTicket{
+		context:   contextName,
+		namespace: namespace,
+		user:      user,
+		expires:   now.Add(shellTicketTTL),
+	}
 	return ticket, nil
 }
 
@@ -220,6 +228,9 @@ func (s *Server) createShellSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Context string `json:"context"`
+		// Namespace optionally starts the session in that namespace, the
+		// way `kubectl config set-context --current --namespace` would.
+		Namespace string `json:"namespace"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&body); err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
@@ -236,8 +247,17 @@ func (s *Server) createShellSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("unknown kubeconfig context %q", body.Context))
 		return
 	}
+	// Only a well-formed name: it ends up in the session's kubeconfig. It
+	// need not exist - kubectl reports that itself, on the first command.
+	if body.Namespace != "" {
+		if errs := validation.IsDNS1123Label(body.Namespace); len(errs) > 0 {
+			writeError(w, r, http.StatusBadRequest,
+				fmt.Sprintf("invalid namespace %q: %s", body.Namespace, strings.Join(errs, "; ")))
+			return
+		}
+	}
 	now := time.Now()
-	ticket, err := s.shell.mint(body.Context, principal(r.Context()), now)
+	ticket, err := s.shell.mint(body.Context, body.Namespace, principal(r.Context()), now)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, err.Error())
 		return
@@ -287,7 +307,7 @@ func (s *Server) connectShell(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.shell.release()
 
-	dir, err := prepareShellHome(raw, contextName)
+	dir, err := prepareShellHome(raw, contextName, redeemed.namespace)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, err.Error())
 		return
@@ -312,7 +332,8 @@ func (s *Server) connectShell(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(websocket.StatusInternalError, "could not start shell")
 		return
 	}
-	log.Info("Started shell session", "user", redeemed.user, "context", contextName, "pid", cmd.Process.Pid)
+	log.Info("Started shell session",
+		"user", redeemed.user, "context", contextName, "namespace", redeemed.namespace, "pid", cmd.Process.Pid)
 
 	// Not the request context: that one is cancelled the moment the
 	// handler returns, and the teardown below has to outlive it.
@@ -422,8 +443,9 @@ func killShellSession(pid int, exited <-chan struct{}, grace time.Duration) {
 
 // prepareShellHome creates the session's private HOME: its own copy of the
 // kubeconfig with the chosen context selected (so `kubectl config
-// use-context` only ever affects this one session), and a shell rc file.
-func prepareShellHome(rawKubeconfig []byte, contextName string) (string, error) {
+// use-context` only ever affects this one session) and, if one was asked
+// for, namespace as that context's default, and a shell rc file.
+func prepareShellHome(rawKubeconfig []byte, contextName, namespace string) (string, error) {
 	dir, err := os.MkdirTemp("", "bench-shell-")
 	if err != nil {
 		return "", err
@@ -434,6 +456,9 @@ func prepareShellHome(rawKubeconfig []byte, contextName string) (string, error) 
 		return "", err
 	}
 	cfg.CurrentContext = contextName
+	if c, ok := cfg.Contexts[contextName]; ok && namespace != "" {
+		c.Namespace = namespace
+	}
 	if err := clientcmd.WriteToFile(*cfg, filepath.Join(dir, "kubeconfig")); err != nil {
 		_ = os.RemoveAll(dir)
 		return "", err
@@ -455,7 +480,10 @@ func shellEnv(home string) []string {
 		"KUBECONFIG=" + filepath.Join(home, "kubeconfig"),
 		"TERM=xterm-256color",
 		"LANG=C.UTF-8",
-		"EDITOR=vi",
+		// nano over vi: `kubectl edit` shouldn't trap anyone who has never
+		// quit vim. VISUAL too, since some tools prefer it.
+		"EDITOR=nano",
+		"VISUAL=nano",
 	}
 }
 

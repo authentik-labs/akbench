@@ -1,7 +1,7 @@
 import { api, MANAGEMENT_CLUSTER, ShellContext } from "../api";
 import { Alert } from "../components/ui";
 import { useResource } from "../useResource";
-import { sanitizePrefill } from "./links";
+import { sanitizeNamespace, sanitizePrefill } from "./links";
 import { SessionStatus, TerminalSession } from "./TerminalSession";
 
 // The kubectl shell: tabs of real shells, one backend process each, against
@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router";
 interface Session {
     id: number;
     context: string;
+    namespace?: string;
     prefill?: string;
     status: SessionStatus;
 }
@@ -51,11 +52,12 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [activeID, setActiveID] = useState<number>();
     const [picked, setPicked] = useState(MANAGEMENT_CLUSTER);
+    const [pickedNamespace, setPickedNamespace] = useState("");
     const [linkError, setLinkError] = useState<string>();
 
-    const open = useCallback((context: string, prefill?: string) => {
+    const open = useCallback((context: string, namespace?: string, prefill?: string) => {
         const id = nextID++;
-        setSessions((s) => [...s, { id, context, prefill, status: "connecting" }]);
+        setSessions((s) => [...s, { id, context, namespace, prefill, status: "connecting" }]);
         setActiveID(id);
     }, []);
 
@@ -75,7 +77,11 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
         const context = resolveContext(contexts.data, params);
         if (context) {
             setLinkError(undefined);
-            open(context, sanitizePrefill(params.get("prefill")) || undefined);
+            open(
+                context,
+                sanitizeNamespace(params.get("namespace")),
+                sanitizePrefill(params.get("prefill")) || undefined,
+            );
         } else {
             setLinkError(
                 `No kubeconfig context for ${params.get("context") ?? `cluster "${params.get("cluster")}"`} - ` +
@@ -111,7 +117,7 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
                             <button
                                 className={`small ${s.id === activeID ? "active" : ""}`}
                                 onClick={() => setActiveID(s.id)}
-                                title={s.context}
+                                title={s.namespace ? `${s.context} (${s.namespace})` : s.context}
                             >
                                 {s.status === "connected"
                                     ? "●"
@@ -119,6 +125,7 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
                                       ? "○"
                                       : "✕"}{" "}
                                 {shortName(s.context)}
+                                {s.namespace && <span className="muted"> {s.namespace}</span>}
                             </button>
                             <button
                                 className="small linkish"
@@ -142,10 +149,26 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
                             </option>
                         ))}
                     </select>
+                    <input
+                        value={pickedNamespace}
+                        onChange={(e) => setPickedNamespace(e.target.value)}
+                        placeholder="namespace (optional)"
+                        aria-label="Namespace"
+                        aria-invalid={
+                            pickedNamespace.trim() !== "" && !sanitizeNamespace(pickedNamespace)
+                        }
+                        title="Start the shell with this as the context's default namespace"
+                        spellCheck={false}
+                        autoCapitalize="off"
+                        size={20}
+                    />
                     <button
                         className="small primary"
-                        onClick={() => open(picked)}
-                        disabled={!contexts.data?.length}
+                        onClick={() => open(picked, sanitizeNamespace(pickedNamespace))}
+                        disabled={
+                            !contexts.data?.length ||
+                            (pickedNamespace.trim() !== "" && !sanitizeNamespace(pickedNamespace))
+                        }
                     >
                         New shell
                     </button>
@@ -165,6 +188,7 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
                 <div key={s.id} className={`shell-pane ${s.id === activeID ? "active" : ""}`}>
                     <TerminalSession
                         context={s.context}
+                        namespace={s.namespace}
                         prefill={s.prefill}
                         active={visible && s.id === activeID}
                         onStatus={(status) => setStatus(s.id, status)}

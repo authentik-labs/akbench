@@ -362,10 +362,10 @@ export const api = {
     // -- Shell (internal/api/shell.go)
     shellContexts: () =>
         request<List<ShellContext>>("/api/v1/shell/contexts").then((r) => r.items ?? []),
-    createShellSession: (context: string) =>
+    createShellSession: (context: string, namespace?: string) =>
         request<{ ticket: string; expiresAt: string }>(
             "/api/v1/shell/sessions",
-            json("POST", { context }),
+            json("POST", { context, namespace }),
         ),
 
     // -- Live updates (internal/api/events.go): mint a ticket, then open

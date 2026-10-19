@@ -1,5 +1,11 @@
 import type { AuthentikDeploymentSpec } from "../types";
-import { psqlCommand, sanitizePrefill, shellLink, shellLinkForCluster } from "./links";
+import {
+    psqlCommand,
+    sanitizeNamespace,
+    sanitizePrefill,
+    shellLink,
+    shellLinkForCluster,
+} from "./links";
 
 import { describe, expect, it } from "vitest";
 
@@ -31,6 +37,25 @@ describe("shell links", () => {
     it("falls back to the management context without a cluster", () => {
         expect(shellLinkForCluster(undefined)).toBe("/shell?context=management");
         expect(shellLinkForCluster("wc1")).toBe("/shell?cluster=wc1");
+    });
+
+    it("encodes a namespace", () => {
+        expect(shellLinkForCluster("wc1", "kubectl get pods", "ak-1")).toBe(
+            "/shell?cluster=wc1&namespace=ak-1&prefill=kubectl+get+pods",
+        );
+        expect(shellLink("management", undefined, "ak-1")).toBe(
+            "/shell?context=management&namespace=ak-1",
+        );
+    });
+});
+
+describe("sanitizeNamespace", () => {
+    it("accepts DNS-1123 labels only", () => {
+        expect(sanitizeNamespace("ak-1")).toBe("ak-1");
+        expect(sanitizeNamespace(" ak-1 ")).toBe("ak-1");
+        for (const bad of [null, "", "Upper", "a b", "a/b", "-x", "a".repeat(64)]) {
+            expect(sanitizeNamespace(bad)).toBeUndefined();
+        }
     });
 });
 

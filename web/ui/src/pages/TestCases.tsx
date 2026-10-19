@@ -793,6 +793,7 @@ export function TestCaseViewPage() {
                                         to={shellLinkForCluster(
                                             cluster,
                                             `kubectl logs -n ${tc.metadata.namespace} deploy/${row.burnWorkload} -f --tail=200`,
+                                            tc.metadata.namespace,
                                         )}
                                     >
                                         k6 logs

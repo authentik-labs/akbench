@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // testKubeconfig mirrors render.ShellKubeconfig's output shape: a
@@ -55,9 +57,10 @@ func shellServer(t *testing.T) *Server {
 	return s
 }
 
-func mintTicket(t *testing.T, s *Server, contextName string) string {
+func mintTicket(t *testing.T, s *Server, contextName, namespace string) string {
 	t.Helper()
-	rec := do(t, s, http.MethodPost, "/api/v1/shell/sessions", map[string]string{"context": contextName})
+	rec := do(t, s, http.MethodPost, "/api/v1/shell/sessions",
+		map[string]string{"context": contextName, "namespace": namespace})
 	requireStatus(t, rec, http.StatusCreated)
 	return decodeBody[struct {
 		Ticket string `json:"ticket"`
@@ -98,6 +101,39 @@ func TestShellSessionRejectsUnknownContext(t *testing.T) {
 	}
 }
 
+func TestShellSessionRejectsInvalidNamespace(t *testing.T) {
+	s := shellServer(t)
+	for _, ns := range []string{"Upper", "has space", "a/b", "-lead", strings.Repeat("a", 64)} {
+		rec := do(t, s, http.MethodPost, "/api/v1/shell/sessions",
+			map[string]string{"context": "management", "namespace": ns})
+		requireStatus(t, rec, http.StatusBadRequest)
+	}
+}
+
+func TestPrepareShellHomeSetsNamespace(t *testing.T) {
+	for _, ns := range []string{"", "ak-1"} {
+		dir, err := prepareShellHome([]byte(testKubeconfig), "wc1-admin@wc1", ns)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := clientcmd.LoadFromFile(filepath.Join(dir, "kubeconfig"))
+		_ = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.CurrentContext != "wc1-admin@wc1" {
+			t.Errorf("current-context = %q, want wc1-admin@wc1", cfg.CurrentContext)
+		}
+		if got := cfg.Contexts["wc1-admin@wc1"].Namespace; got != ns {
+			t.Errorf("namespace = %q, want %q", got, ns)
+		}
+		// Only the selected context is touched.
+		if got := cfg.Contexts["management"].Namespace; got != "" {
+			t.Errorf("management namespace = %q, want empty", got)
+		}
+	}
+}
+
 func TestShellConnectRejectsMissingOrBogusTicket(t *testing.T) {
 	s := shellServer(t)
 	for _, target := range []string{"/api/v1/shell/connect", "/api/v1/shell/connect?ticket=nope"} {
@@ -114,7 +150,7 @@ func TestShellTicketIsSingleUseAndExpires(t *testing.T) {
 	st := newShellState()
 	now := time.Now()
 
-	ticket, err := st.mint("management", "alice", now)
+	ticket, err := st.mint("management", "", "alice", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +161,7 @@ func TestShellTicketIsSingleUseAndExpires(t *testing.T) {
 		t.Fatal("ticket redeemed twice")
 	}
 
-	expired, _ := st.mint("management", "alice", now)
+	expired, _ := st.mint("management", "", "alice", now)
 	if _, ok := st.redeem(expired, now.Add(shellTicketTTL+time.Second)); ok {
 		t.Fatal("expired ticket accepted")
 	}
@@ -147,7 +183,7 @@ func TestShellSessionEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)
 
-	ticket := mintTicket(t, s, "wc1-admin@wc1")
+	ticket := mintTicket(t, s, "wc1-admin@wc1", "ak-1")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/shell/connect?ticket=" + ticket
@@ -170,7 +206,8 @@ func TestShellSessionEndToEnd(t *testing.T) {
 	}
 	send(shellMessage{Type: "resize", Cols: 120, Rows: 40})
 	send(shellMessage{Type: "data", Data: "sleep 300 & echo BG=$!; echo PID=$$; " +
-		"echo CTX=$(sed -n 's/^current-context: //p' \"$KUBECONFIG\"); echo LEAK=${BENCH_API_TOKEN:-none}; " +
+		"echo CTX=$(sed -n 's/^current-context: //p' \"$KUBECONFIG\"); echo PROMPT=$(__bench_ctx | tr ' ' _); " +
+		"echo EDITOR=$EDITOR; echo LEAK=${BENCH_API_TOKEN:-none}; " +
 		"echo SIZE=$(stty size); echo DONE\n"})
 
 	var out bytes.Buffer
@@ -192,6 +229,12 @@ func TestShellSessionEndToEnd(t *testing.T) {
 	}
 	if got := field("CTX"); got != "wc1-admin@wc1" {
 		t.Errorf("current-context = %q, want wc1-admin@wc1", got)
+	}
+	if got := field("PROMPT"); got != "wc1-admin@wc1_(ak-1)" {
+		t.Errorf("prompt context = %q, want wc1-admin@wc1_(ak-1)", got)
+	}
+	if got := field("EDITOR"); got != "nano" {
+		t.Errorf("EDITOR = %q, want nano", got)
 	}
 	if got := field("LEAK"); got != "none" {
 		t.Errorf("backend environment leaked into the shell: BENCH_API_TOKEN=%q", got)

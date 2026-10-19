@@ -88,6 +88,7 @@ export function StatusBadge({
                             to={shellLink(
                                 MANAGEMENT_CLUSTER,
                                 `kubectl describe ${kind} ${name}${namespace ? ` -n ${namespace}` : ""}`,
+                                namespace,
                             )}
                         >
                             Describe in shell (events) →
