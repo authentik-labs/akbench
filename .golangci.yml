@@ -58,6 +58,10 @@ linters:
         - "^size$"
         - "^resources$"
         - "^storage$"
+        # kube-prometheus-stack values keys, the node-exporter app label and
+        # Grafana's datasource type - unrelated uses of the same word (the
+        # datasource uid has its own constant).
+        - "^prometheus$"
         - "^tolerations$"
         - "^type$"
     revive:

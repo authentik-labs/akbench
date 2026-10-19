@@ -67,6 +67,10 @@ func GrafanaProxyPathPrefix(wc *benchv1alpha1.WorkloadCluster) string {
 	return fmt.Sprintf("/grafana-proxy/%s/", wc.Name)
 }
 
+// PrometheusDatasourceUID is the Prometheus datasource's fixed uid, which
+// the Tempo datasource's service map also points at.
+const PrometheusDatasourceUID = "prometheus"
+
 // TempoDatasourceUID is the Tempo datasource's fixed uid in
 // grafanaDatasources below - cmd/apiserver queries Tempo through Grafana's
 // own datasource proxy (/api/datasources/proxy/uid/<uid>/...), since Tempo
@@ -88,33 +92,27 @@ const LokiDatasourceUID = "loki"
 // Alloy rather than the reference harness's promtail). Tempo's
 // tracesToLogsV2 (which pivots from a trace to Loki logs) isn't wired up.
 func grafanaDatasources() map[string]any {
-	url := func(service string, port int) string {
-		return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service, ObservabilityNamespace, port)
+	datasource := func(name, typ, uid, service string, port int, jsonData map[string]any) map[string]any {
+		ds := map[string]any{
+			"name": name, "type": typ, "access": "proxy", "orgId": 1, "uid": uid,
+			"url": fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service, ObservabilityNamespace, port),
+		}
+		if jsonData != nil {
+			ds["jsonData"] = jsonData
+		}
+		return ds
 	}
 	return map[string]any{
 		"apiVersion": 1,
 		"datasources": []map[string]any{
-			{
-				"name": "Prometheus", "type": "prometheus", "access": "proxy", "orgId": 1, "uid": "prometheus",
-				"url":      url(PrometheusServiceName, PrometheusPort),
-				"jsonData": map[string]any{"timeInterval": "15s"},
-			},
-			{
-				"name": "Pyroscope", "type": "grafana-pyroscope-datasource", "access": "proxy", "orgId": 1, "uid": PyroscopeDatasourceUID,
-				"url": url(PyroscopeServiceName, PyroscopePort),
-			},
-			{
-				"name": "Tempo", "type": "tempo", "access": "proxy", "orgId": 1, "uid": TempoDatasourceUID,
-				"url": url(TempoServiceName, TempoQueryPort),
-				"jsonData": map[string]any{
-					"serviceMap": map[string]any{"datasourceUid": "prometheus"},
-					"nodeGraph":  map[string]any{"enabled": true},
-				},
-			},
-			{
-				"name": "Loki", "type": "loki", "access": "proxy", "orgId": 1, "uid": LokiDatasourceUID,
-				"url": url(LokiServiceName, LokiPort),
-			},
+			datasource("Prometheus", "prometheus", PrometheusDatasourceUID, PrometheusServiceName, PrometheusPort,
+				map[string]any{"timeInterval": "15s"}),
+			datasource("Pyroscope", "grafana-pyroscope-datasource", PyroscopeDatasourceUID, PyroscopeServiceName, PyroscopePort, nil),
+			datasource("Tempo", "tempo", TempoDatasourceUID, TempoServiceName, TempoQueryPort, map[string]any{
+				"serviceMap": map[string]any{"datasourceUid": PrometheusDatasourceUID},
+				"nodeGraph":  map[string]any{"enabled": true},
+			}),
+			datasource("Loki", "loki", LokiDatasourceUID, LokiServiceName, LokiPort, nil),
 		},
 	}
 }

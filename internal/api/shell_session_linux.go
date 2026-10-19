@@ -36,12 +36,12 @@ func processSession(pid int) int {
 		return -1
 	}
 	stat := string(raw)
-	end := strings.LastIndexByte(stat, ')')
-	if end < 0 {
+	_, rest, ok := strings.CutLast(stat, ")")
+	if !ok {
 		return -1
 	}
 	// After ')': state ppid pgrp session ...
-	fields := strings.Fields(stat[end+1:])
+	fields := strings.Fields(rest)
 	if len(fields) < 4 {
 		return -1
 	}

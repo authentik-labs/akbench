@@ -91,37 +91,9 @@ func (r *WorkloadClusterReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, r.Status().Update(ctx, &wc)
 	}
 
-	// applyCreateOnly, not applyOwned: CAPI's own webhooks/defaulting mutate
-	// these objects' specs after creation (rollout strategy defaults, etc.)
-	// in ways this operator's freshly-rendered object never has, so a
-	// spec-equality check against them never matches - see applyCreateOnly's
-	// doc comment for what that caused when this used applyOwned instead.
-	// LXCMachineTemplates/KubeadmConfigTemplates are safe to create-only even
-	// for a spec.workerPools edit: workerMachineTemplateName folds the
-	// pool's flavor into the object's own name, so an edited flavor always
-	// means a brand new object here, never an update to an existing one.
-	for _, obj := range []client.Object{
-		render.LXCCluster(&wc),
-		render.ControlPlaneLXCMachineTemplate(&wc),
-	} {
-		if err := applyCreateOnly(ctx, r.Client, r.Scheme, &wc, obj); err != nil {
-			return ctrl.Result{}, fmt.Errorf("apply %s: %w", obj.GetObjectKind().GroupVersionKind().Kind, err)
-		}
-	}
-	for _, pool := range wc.Spec.WorkerPools {
-		for _, obj := range []client.Object{
-			render.WorkerLXCMachineTemplate(&wc, pool),
-			render.WorkerKubeadmConfigTemplate(&wc, pool),
-		} {
-			if err := applyCreateOnly(ctx, r.Client, r.Scheme, &wc, obj); err != nil {
-				return ctrl.Result{}, fmt.Errorf("apply %s for pool %q: %w", obj.GetObjectKind().GroupVersionKind().Kind, pool.Name, err)
-			}
-		}
-	}
-
-	cluster := render.Cluster(&wc)
-	if err := applyCreateOnly(ctx, r.Client, r.Scheme, &wc, cluster); err != nil {
-		return ctrl.Result{}, fmt.Errorf("apply Cluster: %w", err)
+	cluster, err := r.applyClusterObjects(ctx, &wc)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	var existing clusterv1.Cluster
@@ -196,6 +168,45 @@ func (r *WorkloadClusterReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+// applyClusterObjects applies the Cluster API objects that make up the
+// workload cluster itself - LXCCluster, the control-plane and per-pool
+// machine templates, and the Cluster - and returns the rendered Cluster.
+func (r *WorkloadClusterReconciler) applyClusterObjects(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) (*clusterv1.Cluster, error) {
+	// applyCreateOnly, not applyOwned: CAPI's own webhooks/defaulting mutate
+	// these objects' specs after creation (rollout strategy defaults, etc.)
+	// in ways this operator's freshly-rendered object never has, so a
+	// spec-equality check against them never matches - see applyCreateOnly's
+	// doc comment for what that caused when this used applyOwned instead.
+	// LXCMachineTemplates/KubeadmConfigTemplates are safe to create-only even
+	// for a spec.workerPools edit: workerMachineTemplateName folds the
+	// pool's flavor into the object's own name, so an edited flavor always
+	// means a brand new object here, never an update to an existing one.
+	for _, obj := range []client.Object{
+		render.LXCCluster(wc),
+		render.ControlPlaneLXCMachineTemplate(wc),
+	} {
+		if err := applyCreateOnly(ctx, r.Client, r.Scheme, wc, obj); err != nil {
+			return nil, fmt.Errorf("apply %s: %w", obj.GetObjectKind().GroupVersionKind().Kind, err)
+		}
+	}
+	for _, pool := range wc.Spec.WorkerPools {
+		for _, obj := range []client.Object{
+			render.WorkerLXCMachineTemplate(wc, pool),
+			render.WorkerKubeadmConfigTemplate(wc, pool),
+		} {
+			if err := applyCreateOnly(ctx, r.Client, r.Scheme, wc, obj); err != nil {
+				return nil, fmt.Errorf("apply %s for pool %q: %w", obj.GetObjectKind().GroupVersionKind().Kind, pool.Name, err)
+			}
+		}
+	}
+
+	cluster := render.Cluster(wc)
+	if err := applyCreateOnly(ctx, r.Client, r.Scheme, wc, cluster); err != nil {
+		return nil, fmt.Errorf("apply Cluster: %w", err)
+	}
+	return cluster, nil
 }
 
 // ensureAddons installs every best-effort, idempotent addon a Ready control

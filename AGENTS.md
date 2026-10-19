@@ -72,6 +72,12 @@ make lint-fix
 make test        # envtest + unit + contract tests
 ```
 
+Always run the linter and get it to `0 issues` before considering a change
+done - CI's Lint job fails on any issue, including ones that predate your
+change. On macOS also run `GOOS=linux bin/golangci-lint run`: CI lints on
+Linux, and `*_linux.go` files (e.g. `internal/api/shell_session_linux.go`)
+aren't checked by a local `make lint` otherwise.
+
 **After editing `web/ui`:**
 ```
 make ui-lint-fix # oxfmt + oxlint --fix (@goauthentik/oxfmt-config, @goauthentik/oxlint-config)
