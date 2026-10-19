@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { colorFor, formatMetricValue, onlyTargets, stepFor } from "../format";
 import { useDarkTheme } from "../theme";
-import { CompareMetric, RangeResponse } from "../types";
+import { CompareMetric, PostgresMetric, RangeResponse } from "../types";
 import { useResource } from "../useResource";
 
 import {
@@ -443,6 +443,101 @@ export function ResourceCharts({
                     component={component}
                     testids={testids}
                     endSeconds={endSeconds}
+                    rangeSeconds={rangeSeconds}
+                />
+            ))}
+        </div>
+    );
+}
+
+/**
+ * PostgresChart is one metric of a deployment's own postgres, one line per
+ * pod or PVC (labelled by the series' target), not tied to any test.
+ */
+export function PostgresChart({
+    deployment,
+    metric,
+    rangeSeconds = 900,
+    refreshMs = 15000,
+    height = 260,
+}: {
+    deployment: string;
+    metric: PostgresMetric;
+    rangeSeconds?: number;
+    refreshMs?: number;
+    height?: number;
+}) {
+    const { data: windowed, error } = useResource<WindowedRange>(
+        () => {
+            const end = Math.floor(Date.now() / 1000);
+            const window = { start: end - rangeSeconds, end };
+            return api
+                .postgresMetrics(
+                    deployment,
+                    metric,
+                    window.start,
+                    window.end,
+                    stepFor(rangeSeconds),
+                )
+                .then((response) => ({ response, window }));
+        },
+        [deployment, metric, rangeSeconds],
+        refreshMs,
+    );
+
+    const data = windowed?.response;
+    const unit = data?.metric.unit ?? "";
+    const theme = useChartTheme();
+    const datasets = useMemo(
+        () =>
+            (data?.series ?? []).map((s, i) => ({
+                label: s.target,
+                data: (s.points ?? []).map((p) => ({ x: p.time, y: p.value })),
+                borderColor: colorFor(i, theme.dark),
+                backgroundColor: colorFor(i, theme.dark),
+                spanGaps: true,
+            })),
+        [data, theme.dark],
+    );
+    const hasData = datasets.some((d) => d.data.length > 0);
+    const options = useMemo(
+        () => rangeChartOptions(unit, datasets.length > 1, theme, windowed?.window),
+        [unit, datasets.length, theme, windowed?.window],
+    );
+
+    return (
+        <div className="panel">
+            <h3>{data?.metric.label ?? metric}</h3>
+            {error && <div className="alert error">{error}</div>}
+            {!hasData ? (
+                <div className="muted" style={{ height, display: "grid", placeItems: "center" }}>
+                    No data in this window yet.
+                </div>
+            ) : (
+                <div style={{ height }}>
+                    <Line data={{ datasets }} options={options} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** PostgresCharts is a deployment's postgres CPU, memory, disk usage and disk IO. */
+export function PostgresCharts({
+    deployment,
+    rangeSeconds,
+}: {
+    deployment: string;
+    rangeSeconds?: number;
+}) {
+    const metrics: PostgresMetric[] = ["cpu", "memory", "disk", "io"];
+    return (
+        <div className="grid2">
+            {metrics.map((metric) => (
+                <PostgresChart
+                    key={metric}
+                    deployment={deployment}
+                    metric={metric}
                     rangeSeconds={rangeSeconds}
                 />
             ))}

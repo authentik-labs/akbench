@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
 import { CodeEditor } from "../components/CodeEditor";
-import { MetricsGrid } from "../components/MetricsChart";
+import { MetricsGrid, PostgresCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { NodePlacement } from "../components/Placement";
 import { ConditionList, StatusBadge } from "../components/Status";
@@ -964,14 +964,22 @@ export function DeploymentViewPage() {
 
             <div className="section-head">
                 <h2>Metrics</h2>
-                {testids.length > 0 && (
-                    <TimeRangeSelect
-                        value={range}
-                        sinceStartLabel={burnStart !== undefined ? "Since burn start" : undefined}
-                        onChange={setRange}
-                    />
-                )}
+                <TimeRangeSelect
+                    value={range}
+                    sinceStartLabel={burnStart !== undefined ? "Since burn start" : undefined}
+                    onChange={setRange}
+                />
             </div>
+            {d && d.spec.postgres.mode !== "External" && (
+                <>
+                    <h3>Postgres</h3>
+                    <PostgresCharts
+                        deployment={name}
+                        rangeSeconds={timeRangeSeconds(range, burnStart)}
+                    />
+                    <h3>Tests</h3>
+                </>
+            )}
             {testids.length === 0 ? (
                 <Empty>No test cases reference this deployment yet.</Empty>
             ) : (

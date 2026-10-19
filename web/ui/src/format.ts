@@ -19,6 +19,9 @@ export function formatMetricValue(value: number | undefined, unit: string): stri
     if (unit === "bytes") {
         return formatBytes(value);
     }
+    if (unit === "bytes/s") {
+        return `${formatBytes(value)}/s`;
+    }
     return value >= 100 ? value.toFixed(0) : value.toFixed(2);
 }
 

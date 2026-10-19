@@ -14,6 +14,7 @@ import {
     IncusProbe,
     Infrastructure,
     PodPlacement,
+    PostgresMetric,
     RangeResponse,
     TestCase,
     TestCaseSpec,
@@ -289,6 +290,20 @@ export const api = {
             `/api/v1/metrics/resources?testids=${seg(testids.join(","))}` +
                 `&resource=${seg(resource)}&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}` +
                 (component ? `&component=${seg(component)}` : ""),
+        ),
+    // A deployment's own postgres over time, independent of any test: one
+    // line per postgres pod (or data PVC, for disk). Same RangeResponse
+    // shape, with each line's legend in target (internal/api/postgresmetrics.go).
+    postgresMetrics: (
+        name: string,
+        metric: PostgresMetric,
+        startSeconds: number,
+        endSeconds: number,
+        step: string,
+    ) =>
+        request<RangeResponse>(
+            `/api/v1/deployments/${seg(name)}/postgres-metrics?metric=${seg(metric)}` +
+                `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
         ),
 
     // -- Grafana proxy (internal/api/grafana_session.go): sets the cookie the

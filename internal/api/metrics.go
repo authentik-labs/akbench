@@ -661,6 +661,9 @@ func (s *Server) promRange(ctx context.Context, baseURL, query, start, end, step
 // compareMetrics' queries are now grouped by.
 type promSeries struct {
 	Target string
+	// Labels is the series' full label set, for callers grouping by
+	// something other than target.
+	Labels map[string]string
 	Points []RangePoint
 }
 
@@ -705,7 +708,7 @@ func (s *Server) promRangeMulti(ctx context.Context, baseURL, query, start, end,
 			}
 			points = append(points, RangePoint{Time: int64(ts), Value: value})
 		}
-		series = append(series, promSeries{Target: result.Metric["target"], Points: points})
+		series = append(series, promSeries{Target: result.Metric["target"], Labels: result.Metric, Points: points})
 	}
 	return series, nil
 }

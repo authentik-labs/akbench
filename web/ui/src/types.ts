@@ -572,3 +572,6 @@ export interface ClusterNodes {
     pools: ClusterPool[];
     machines: ClusterMachine[];
 }
+
+/** The charts /deployments/{name}/postgres-metrics serves. */
+export type PostgresMetric = "cpu" | "memory" | "disk" | "io";

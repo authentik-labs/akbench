@@ -24,6 +24,10 @@ describe("formatMetricValue", () => {
         expect(formatMetricValue(undefined, "s")).toBe("-");
     });
 
+    it("renders a byte rate with a per-second suffix", () => {
+        expect(formatMetricValue(1536, "bytes/s")).toBe("1.5 KiB/s");
+    });
+
     it("renders a ratio as a percentage with one decimal", () => {
         expect(formatMetricValue(0.4567, "ratio")).toBe("45.7%");
     });
