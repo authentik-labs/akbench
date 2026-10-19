@@ -8,7 +8,7 @@
 k6:
   image:
     repository: grafana/k6
-    tag: 0.57.0
+    tag: 2.3.0
 
 oidcTestClient:
   image:

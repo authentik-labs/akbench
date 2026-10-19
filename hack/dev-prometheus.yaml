@@ -34,7 +34,7 @@ spec:
             - --storage.tsdb.path=/prometheus
             - --web.enable-remote-write-receiver
             - --web.enable-lifecycle
-            # k6's K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true (set in
+            # k6's K6_FEATURES=native-histograms (set in
             # render.K6WorkloadParams.EnvVars) pushes native histograms;
             # without this flag Prometheus 500s every remote-write request.
             - --enable-feature=native-histograms

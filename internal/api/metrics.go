@@ -23,7 +23,7 @@ import (
 // written against the metric names k6's experimental-prometheus-rw output
 // actually produces: counters get a _total suffix, rates a _rate suffix,
 // gauges none, and trends - which the k6 workloads run with
-// K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true - become native histograms
+// K6_FEATURES=native-histograms - become native histograms
 // named after their base unit, hence k6_http_req_duration_seconds and values
 // in seconds rather than k6's native milliseconds.
 type CompareMetric struct {

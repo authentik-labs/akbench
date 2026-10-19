@@ -108,7 +108,7 @@ func TestCompare(t *testing.T) {
 		t.Fatalf("a metric with no data was reported anyway: %v", body.Results[0].Values)
 	}
 	// The p95 query has to be the native-histogram form: k6 runs with
-	// TREND_AS_NATIVE_HISTOGRAM, so there is no le label to quantile over.
+	// K6_FEATURES=native-histograms, so there is no le label to quantile over.
 	// It also has to group `by (target)`, so a testid with more than one
 	// deployment shows separate rows instead of one summed line.
 	wantP95 := `histogram_quantile(0.95, sum by (target) (rate(k6_http_req_duration_seconds{testid="login-a"}[5m])))`
