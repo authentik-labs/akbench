@@ -146,7 +146,7 @@ func prometheusCompatServices() []map[string]any {
 // KubePrometheusStackHelmValues builds spec.values for the
 // kube-prometheus-stack chart install:
 //   - enableRemoteWriteReceiver, for k6's own experimental-prometheus-rw
-//     output. Native-histogram ingestion (K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true)
+//     output. Native-histogram ingestion (K6_FEATURES=native-histograms)
 //     needed no matching --enable-feature flag here - confirmed directly
 //     against the chart's own pinned Prometheus image (v3.14.0-distroless)
 //     that "native-histograms" isn't even a recognized feature name on

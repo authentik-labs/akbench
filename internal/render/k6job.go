@@ -105,7 +105,7 @@ func (p K6WorkloadParams) EnvVars() []corev1.EnvVar {
 		{Name: "SEED", Value: fmt.Sprintf("%d", tc.Seed())},
 		{Name: "USERS_FILE", Value: UsersFilePath},
 		{Name: "K6_PROMETHEUS_RW_SERVER_URL", Value: p.RemoteWriteURL},
-		{Name: "K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM", Value: "true"},
+		{Name: "K6_FEATURES", Value: "native-histograms"},
 		{Name: "K6_PROMETHEUS_RW_PUSH_INTERVAL", Value: "1s"},
 	}, p.Dependencies.EnvVars()...)
 }
