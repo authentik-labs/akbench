@@ -120,28 +120,12 @@ export function TestCasesPage() {
         }
     }
 
-    return (
-        <Page
-            title="Test cases"
-            subtitle="k6 load tests against one or more deployments. Burn runs until stopped; Quick runs once per test run."
-            actions={
-                <>
-                    <Link className="button" to="/pull-requests/new">
-                        Compare a PR
-                    </Link>
-                    <Link className="button primary" to="/testcases/new">
-                        New test case
-                    </Link>
-                </>
-            }
-        >
-            <Alert>{testCases.error}</Alert>
+    function table(rows: TestCase[] | undefined, empty: string) {
+        return (
             <Table
-                rows={testCases.data?.toSorted(
-                    (a, b) => Number(!!a.spec.archived) - Number(!!b.spec.archived),
-                )}
+                rows={rows}
                 rowKey={(tc) => tc.metadata.name}
-                empty="No test cases yet."
+                empty={empty}
                 columns={[
                     {
                         label: "Name",
@@ -225,6 +209,37 @@ export function TestCasesPage() {
                     },
                 ]}
             />
+        );
+    }
+
+    return (
+        <Page
+            title="Test cases"
+            subtitle="k6 load tests against one or more deployments. Burn runs until stopped; Quick runs once per test run."
+            actions={
+                <>
+                    <Link className="button" to="/pull-requests/new">
+                        Compare a PR
+                    </Link>
+                    <Link className="button primary" to="/testcases/new">
+                        New test case
+                    </Link>
+                </>
+            }
+        >
+            <Alert>{testCases.error}</Alert>
+            <Section id="active" title="Active">
+                {table(
+                    testCases.data?.filter((tc) => !tc.spec.archived),
+                    "No active test cases.",
+                )}
+            </Section>
+            <Section id="archived" title="Archived">
+                {table(
+                    testCases.data?.filter((tc) => tc.spec.archived),
+                    "No archived test cases.",
+                )}
+            </Section>
         </Page>
     );
 }
