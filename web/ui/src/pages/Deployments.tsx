@@ -291,6 +291,8 @@ function DeploymentForm({
                     onExtraValuesChange={setExtraValuesYAML}
                 />
 
+                {existing && <GeneratedHelmValues name={existing.metadata.name} />}
+
                 <div className="form-actions">
                     <button type="submit" className="primary" disabled={saving}>
                         {saving ? "Saving…" : existing ? "Save changes" : "Create deployment"}
@@ -301,6 +303,21 @@ function DeploymentForm({
                 </div>
             </form>
         </Page>
+    );
+}
+
+/**
+ * GeneratedHelmValues shows the chart values the operator last applied to the
+ * HelmRelease - the form plus extra values, as authentik actually gets them.
+ */
+function GeneratedHelmValues({ name }: { name: string }) {
+    const values = useResource(() => api.getHelmValues(name), [name], 0);
+    return (
+        <details>
+            <summary>Generated Helm values (as last applied)</summary>
+            <Alert>{values.error}</Alert>
+            <pre className="yaml">{values.data?.valuesYAML || "Not generated yet."}</pre>
+        </details>
     );
 }
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -82,4 +83,26 @@ func TestPutExtraValuesUnknownDeployment(t *testing.T) {
 	rec := do(t, s, http.MethodPut, "/api/v1/deployments/does-not-exist/extra-values",
 		extraValuesBody{ValuesYAML: ""})
 	requireStatus(t, rec, http.StatusNotFound)
+}
+
+func TestGetHelmValues(t *testing.T) {
+	s, _ := newServer(t, Config{})
+	rec := do(t, s, http.MethodGet, "/api/v1/deployments/topo-a/helm-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[extraValuesBody](t, rec).ValuesYAML; got != "" {
+		t.Fatalf("valuesYAML before HelmRelease exists = %q, want empty", got)
+	}
+
+	hr := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "helm.toolkit.fluxcd.io/v2",
+		"kind":       "HelmRelease",
+		"metadata":   map[string]any{"name": "topo-a", "namespace": testNamespace},
+		"spec":       map[string]any{"values": map[string]any{"authentik": map[string]any{"log_level": "debug"}}},
+	}}
+	s, _ = newServer(t, Config{}, hr)
+	rec = do(t, s, http.MethodGet, "/api/v1/deployments/topo-a/helm-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got, want := decodeBody[extraValuesBody](t, rec).ValuesYAML, "authentik:\n  log_level: debug\n"; got != want {
+		t.Fatalf("valuesYAML = %q, want %q", got, want)
+	}
 }

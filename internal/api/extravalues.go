@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	"github.com/go-chi/chi/v5"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 
@@ -116,4 +118,29 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusOK, body)
+}
+
+// getHelmValues returns the fully generated chart values (extra values
+// included) as last applied to the deployment's HelmRelease, or an empty
+// string before the operator has created it.
+func (s *Server) getHelmValues(w http.ResponseWriter, r *http.Request) {
+	hr := &unstructured.Unstructured{}
+	hr.SetGroupVersionKind(helmv2.GroupVersion.WithKind("HelmRelease"))
+	// render.HelmReleaseName is the deployment name.
+	key := types.NamespacedName{Name: chi.URLParam(r, "name"), Namespace: s.cfg.Namespace}
+	if err := s.client.Get(r.Context(), key, hr); err != nil {
+		if apierrors.IsNotFound(err) {
+			writeJSON(w, r, http.StatusOK, extraValuesBody{})
+			return
+		}
+		writeAPIError(w, r, err)
+		return
+	}
+	values, _, _ := unstructured.NestedMap(hr.Object, "spec", "values")
+	out, err := yaml.Marshal(values)
+	if err != nil {
+		writeAPIError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, extraValuesBody{ValuesYAML: string(out)})
 }

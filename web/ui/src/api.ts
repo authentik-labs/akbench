@@ -210,6 +210,8 @@ export const api = {
         request<AuthentikDeployment>(`/api/v1/deployments/${seg(name)}/reset`, json("POST", {})),
     getExtraValues: (name: string) =>
         request<{ valuesYAML: string }>(`/api/v1/deployments/${seg(name)}/extra-values`),
+    getHelmValues: (name: string) =>
+        request<{ valuesYAML: string }>(`/api/v1/deployments/${seg(name)}/helm-values`),
     setExtraValues: (name: string, valuesYAML: string) =>
         request<{ valuesYAML: string }>(
             `/api/v1/deployments/${seg(name)}/extra-values`,
