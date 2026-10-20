@@ -47,8 +47,38 @@ import { useResource } from "../useResource";
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
-function setArchived(tc: TestCase, archived: boolean, reload: () => void) {
+/**
+ * deploymentsCheckbox offers to also delete the deployments only tc drives -
+ * deleting one another test case drives would pull it out from under that
+ * test case too. own is empty (and checkbox undefined) when there are none.
+ */
+function deploymentsCheckbox(tc: TestCase, all: TestCase[]) {
+    const usedElsewhere = new Set(
+        all
+            .filter((other) => other.metadata.name !== tc.metadata.name)
+            .flatMap((other) => testCaseDeployments(other.spec).map((d) => d.name)),
+    );
+    const own = testCaseDeployments(tc.spec)
+        .map((d) => d.name)
+        .filter((d) => !usedElsewhere.has(d));
+    const shared = testCaseDeployments(tc.spec).length - own.length;
+    const checkbox =
+        own.length > 0
+            ? {
+                  label:
+                      `Also delete its ${own.length === 1 ? "deployment" : `${own.length} deployments`} (${own.join(", ")})` +
+                      (shared > 0 ? ` - ${shared} shared with other test cases stay` : ""),
+              }
+            : undefined;
+    return { own, checkbox };
+}
+
+async function setArchived(tc: TestCase, archived: boolean, reload: () => void) {
     const name = tc.metadata.name;
+    // Unarchiving never offers it; a failed lookup just skips the offer.
+    const { own, checkbox } = archived
+        ? deploymentsCheckbox(tc, await api.testCases().catch(() => []))
+        : { own: [], checkbox: undefined };
     return confirmAndRun(
         {
             title: archived ? "Archive test case" : "Unarchive test case",
@@ -56,8 +86,14 @@ function setArchived(tc: TestCase, archived: boolean, reload: () => void) {
                 ? `Archive test case "${name}"? It stops running but stays listed with its past runs.`
                 : `Unarchive test case "${name}"?${tc.spec.profile === "Burn" ? " Its burn starts again." : ""}`,
             confirmLabel: archived ? "Archive" : "Unarchive",
+            checkbox,
         },
-        () => api.updateTestCase(name, { spec: { ...tc.spec, archived } }),
+        async (withDeployments) => {
+            await api.updateTestCase(name, { spec: { ...tc.spec, archived } });
+            if (withDeployments) {
+                await Promise.all(own.map((d) => api.deleteDeployment(d)));
+            }
+        },
         reload,
         archived ? `Archived ${name}` : `Unarchived ${name}`,
     );
@@ -68,33 +104,14 @@ export function TestCasesPage() {
 
     function deleteTestCase(tc: TestCase) {
         const name = tc.metadata.name;
-        // Only offer the deployments no other test case drives - deleting a
-        // shared one would pull it out from under that test case too.
-        const usedElsewhere = new Set(
-            (testCases.data ?? [])
-                .filter((other) => other.metadata.name !== name)
-                .flatMap((other) => testCaseDeployments(other.spec).map((d) => d.name)),
-        );
-        const own = testCaseDeployments(tc.spec)
-            .map((d) => d.name)
-            .filter((d) => !usedElsewhere.has(d));
-        const shared = testCaseDeployments(tc.spec).length - own.length;
+        const { own, checkbox } = deploymentsCheckbox(tc, testCases.data ?? []);
         return confirmAndRun(
             {
                 title: "Delete test case",
                 message: `Delete test case "${name}"?`,
                 confirmLabel: "Delete",
                 danger: true,
-                checkbox:
-                    own.length > 0
-                        ? {
-                              label:
-                                  `Also delete its ${own.length === 1 ? "deployment" : `${own.length} deployments`} (${own.join(", ")})` +
-                                  (shared > 0
-                                      ? ` - ${shared} shared with other test cases stay`
-                                      : ""),
-                          }
-                        : undefined,
+                checkbox,
             },
             async (withDeployments) => {
                 await api.deleteTestCase(name);
