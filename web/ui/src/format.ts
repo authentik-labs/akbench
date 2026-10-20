@@ -252,10 +252,12 @@ export function parseTimeRange(
 
 /**
  * timeRangeSeconds resolves a range to the seconds the charts span, ending
- * at endSeconds. SINCE_START spans from startSeconds (with a minute of lead
- * in), rounded up to 5 minutes so the window - and with it every chart's
- * query - doesn't change on every render; without a known start it falls
- * back to the shortest range.
+ * at endSeconds. SINCE_START spans from startSeconds rounded down to the
+ * minute, so the window - and with it every chart's query - doesn't change on
+ * every render. Rounding down rather than up keeps the window from opening
+ * before k6's first samples land: startSeconds is when its pod was created,
+ * and scheduling, startup and the first remote-write push all come after.
+ * Without a known start it falls back to the shortest range.
  */
 export function timeRangeSeconds(
     value: string,
@@ -266,7 +268,7 @@ export function timeRangeSeconds(
         if (startSeconds === undefined) {
             return TIME_RANGES[0].seconds;
         }
-        return Math.max(300, Math.ceil((endSeconds - startSeconds + 60) / 300) * 300);
+        return Math.max(60, Math.floor((endSeconds - startSeconds) / 60) * 60);
     }
     return TIME_RANGES.find((r) => r.value === value)?.seconds ?? TIME_RANGES[0].seconds;
 }

@@ -238,9 +238,10 @@ describe("timeRangeSeconds", () => {
         expect(timeRangeSeconds("90d")).toBe(90 * 86400);
     });
 
-    it('spans "since start" with a minute of lead-in, rounded up to 5 minutes', () => {
-        expect(timeRangeSeconds(SINCE_START, 10_000, 10_000 + 3600)).toBe(3900);
-        expect(timeRangeSeconds(SINCE_START, 10_000, 10_010)).toBe(300);
+    it('spans "since start" rounded down to the minute, never opening before the start', () => {
+        expect(timeRangeSeconds(SINCE_START, 10_000, 10_000 + 3600)).toBe(3600);
+        expect(timeRangeSeconds(SINCE_START, 10_000, 10_000 + 3659)).toBe(3600);
+        expect(timeRangeSeconds(SINCE_START, 10_000, 10_010)).toBe(60);
     });
 });
 
