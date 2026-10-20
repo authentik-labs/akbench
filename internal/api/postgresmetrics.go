@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -14,11 +15,11 @@ import (
 	"github.com/authentik-labs/akbench/internal/render"
 )
 
-// postgresQuery is one line group of a postgres chart. Query takes %[1]q
-// the namespace, %[2]q the postgres pods' name regex, %[3]q their data
-// PVCs' name regex and %[4]s the rate() window, and groups by By - the
-// pod or PVC each resulting line is named after.
-type postgresQuery struct {
+// deploymentQuery is one line group of a deployment-scoped chart (postgres
+// or worker). Its Query's format verbs are the owning chart set's own (see
+// postgresMetrics, workerMetrics), and it groups by By - the label each
+// resulting line is named after, or nothing for a single line named Name.
+type deploymentQuery struct {
 	// Name prefixes each line's legend entry, when a chart has more than
 	// one query (used/capacity, read/write).
 	Name  string
@@ -26,10 +27,10 @@ type postgresQuery struct {
 	Query string
 }
 
-type postgresMetric struct {
+type deploymentChart struct {
 	Label   string
 	Unit    string
-	Queries []postgresQuery
+	Queries []deploymentQuery
 }
 
 const (
@@ -45,20 +46,22 @@ const (
 // charts to the database server itself.
 const postgresContainers = `container=~"postgres|postgresql"`
 
-// postgresMetrics is keyed by the ?metric= query param. CPU, memory and IO
+// postgresMetrics is keyed by the ?metric= query param. Each Query takes
+// %[1]q the namespace, %[2]q the postgres pods' name regex, %[3]q their data
+// PVCs' name regex and %[4]s the rate() window. CPU, memory and IO
 // come from cAdvisor; disk from the kubelet's volume stats, the same numbers
 // the operator's auto-growth reads (AuthentikDeploymentReconciler's
 // reconcilePostgresStorage), so the chart shows what it grows on.
-var postgresMetrics = map[string]postgresMetric{
-	metricCPU: {Label: "Postgres CPU", Unit: "cores", Queries: []postgresQuery{{
+var postgresMetrics = map[string]deploymentChart{
+	metricCPU: {Label: "Postgres CPU", Unit: "cores", Queries: []deploymentQuery{{
 		By:    byPod,
 		Query: `sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=%[1]q, pod=~%[2]q, ` + postgresContainers + `}[%[4]s]))`,
 	}}},
-	"memory": {Label: "Postgres memory", Unit: unitBytes, Queries: []postgresQuery{{
+	"memory": {Label: "Postgres memory", Unit: unitBytes, Queries: []deploymentQuery{{
 		By:    byPod,
 		Query: `sum by (pod) (container_memory_working_set_bytes{namespace=%[1]q, pod=~%[2]q, ` + postgresContainers + `})`,
 	}}},
-	"disk": {Label: "Postgres disk usage", Unit: unitBytes, Queries: []postgresQuery{
+	"disk": {Label: "Postgres disk usage", Unit: unitBytes, Queries: []deploymentQuery{
 		{
 			Name:  "used",
 			By:    byPVC,
@@ -70,7 +73,7 @@ var postgresMetrics = map[string]postgresMetric{
 			Query: `max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=%[1]q, persistentvolumeclaim=~%[3]q})`,
 		},
 	}},
-	"io": {Label: "Postgres disk IO", Unit: "bytes/s", Queries: []postgresQuery{
+	"io": {Label: "Postgres disk IO", Unit: "bytes/s", Queries: []deploymentQuery{
 		{
 			Name:  "read",
 			By:    byPod,
@@ -103,8 +106,25 @@ func postgresSelectors(d *benchv1alpha1.AuthentikDeployment) (pods, pvcs string)
 // disk), per query. Uses metricsRange's response shape, with each line's
 // legend in target.
 func (s *Server) listPostgresMetrics(w http.ResponseWriter, r *http.Request) {
+	s.serveDeploymentChart(w, r, postgresMetrics, func(d *benchv1alpha1.AuthentikDeployment, query, window string) (string, error) {
+		if d.Spec.Postgres.Mode == benchv1alpha1.PostgresExternal {
+			return "", errors.New("an external postgres runs outside the cluster and isn't monitored")
+		}
+		pods, pvcs := postgresSelectors(d)
+		return fmt.Sprintf(query, d.Spec.Namespace, pods, pvcs, window), nil
+	})
+}
+
+// serveDeploymentChart runs one of charts (picked by ?metric=) for the
+// {name} AuthentikDeployment over ?start=&end=[&window=][&step=], against
+// the Prometheus scraping its cluster. fill renders each query for the
+// deployment, or rejects a deployment the charts can't cover (answered 400).
+func (s *Server) serveDeploymentChart(
+	w http.ResponseWriter, r *http.Request, charts map[string]deploymentChart,
+	fill func(d *benchv1alpha1.AuthentikDeployment, query, window string) (string, error),
+) {
 	q := r.URL.Query()
-	metric, ok := postgresMetrics[q.Get("metric")]
+	metric, ok := charts[q.Get("metric")]
 	if !ok {
 		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("unknown metric %q", q.Get("metric")))
 		return
@@ -136,29 +156,37 @@ func (s *Server) listPostgresMetrics(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, err)
 		return
 	}
-	if d.Spec.Postgres.Mode == benchv1alpha1.PostgresExternal {
-		writeError(w, r, http.StatusBadRequest, "an external postgres runs outside the cluster and isn't monitored")
-		return
+	queries := make([]string, 0, len(metric.Queries))
+	for _, pq := range metric.Queries {
+		query, err := fill(&d, pq.Query, window)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, err.Error())
+			return
+		}
+		queries = append(queries, query)
 	}
 	promURL := s.prometheusURLForCluster(r.Context(), d.Spec.ClusterRef.Name)
 
-	pods, pvcs := postgresSelectors(&d)
 	resp := rangeResponse{
 		Metric: CompareMetric{Key: q.Get("metric"), Label: metric.Label, Unit: metric.Unit},
 		Series: []RangeSeries{},
 	}
-	for _, pq := range metric.Queries {
-		query := fmt.Sprintf(pq.Query, d.Spec.Namespace, pods, pvcs, window)
-		series, err := s.promRangeMulti(r.Context(), promURL, query, start, end, step)
+	for i, pq := range metric.Queries {
+		series, err := s.promRangeMulti(r.Context(), promURL, queries[i], start, end, step)
 		if err != nil {
 			writeError(w, r, http.StatusBadGateway, err.Error())
 			return
 		}
 		slices.SortFunc(series, func(a, b promSeries) int { return strings.Compare(a.Labels[pq.By], b.Labels[pq.By]) })
 		for _, ps := range series {
-			label := ps.Labels[pq.By]
-			if pq.Name != "" {
-				label = pq.Name + " · " + label
+			var label string
+			switch {
+			case pq.By == "":
+				label = pq.Name
+			case pq.Name != "":
+				label = pq.Name + " · " + ps.Labels[pq.By]
+			default:
+				label = ps.Labels[pq.By]
 			}
 			resp.Series = append(resp.Series, RangeSeries{Target: label, Points: ps.Points})
 		}

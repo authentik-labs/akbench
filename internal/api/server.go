@@ -222,6 +222,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/deployments/{name}/sql", s.runSQL)
 			r.Post("/deployments/{name}/reset", s.resetDeployment)
 			r.Get("/deployments/{name}/postgres-metrics", s.listPostgresMetrics)
+			r.Get("/deployments/{name}/worker-metrics", s.listWorkerMetrics)
 
 			r.Post("/testcases/{name}/runs", s.createRun)
 

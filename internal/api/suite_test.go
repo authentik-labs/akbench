@@ -165,8 +165,17 @@ func fakePrometheus(t *testing.T, handler func(query string) (value, target stri
 // parses, answering every query with the points the test hands it.
 func fakePrometheusRange(t *testing.T, handler func(query string) [][2]any) *httptest.Server {
 	t.Helper()
+	return fakePrometheusRangeLabels(t, func(query string) (map[string]string, [][2]any) {
+		return map[string]string{}, handler(query)
+	})
+}
+
+// fakePrometheusRangeLabels is fakePrometheusRange with the one series'
+// labels set by handler too.
+func fakePrometheusRangeLabels(t *testing.T, handler func(query string) (map[string]string, [][2]any)) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		points := handler(r.URL.Query().Get("query"))
+		labels, points := handler(r.URL.Query().Get("query"))
 		w.Header().Set("Content-Type", "application/json")
 		values := make([]any, len(points))
 		for i, p := range points {
@@ -174,7 +183,7 @@ func fakePrometheusRange(t *testing.T, handler func(query string) [][2]any) *htt
 		}
 		result := []any{}
 		if points != nil {
-			result = []any{map[string]any{"metric": map[string]string{}, "values": values}}
+			result = []any{map[string]any{"metric": labels, "values": values}}
 		}
 		body := map[string]any{
 			"status": "success",

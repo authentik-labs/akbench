@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { colorFor, formatMetricValue, onlyTargets, stepFor } from "../format";
 import { useDarkTheme } from "../theme";
-import { CompareMetric, PostgresMetric, RangeResponse } from "../types";
+import { CompareMetric, PostgresMetric, RangeResponse, WorkerMetric } from "../types";
 import { useResource } from "../useResource";
 
 import {
@@ -451,18 +451,22 @@ export function ResourceCharts({
 }
 
 /**
- * PostgresChart is one metric of a deployment's own postgres, one line per
- * pod or PVC (labelled by the series' target), not tied to any test.
+ * DeploymentChart is one chart of a deployment's own components (postgres,
+ * worker), one line per series the backend returns, labelled by the
+ * series' target - not tied to any test. fetch runs the range query for
+ * the window.
  */
-export function PostgresChart({
+function DeploymentChart({
     deployment,
     metric,
+    fetch,
     rangeSeconds = 900,
     refreshMs = 15000,
     height = 260,
 }: {
     deployment: string;
-    metric: PostgresMetric;
+    metric: string;
+    fetch: (start: number, end: number, step: string) => Promise<RangeResponse>;
     rangeSeconds?: number;
     refreshMs?: number;
     height?: number;
@@ -471,16 +475,12 @@ export function PostgresChart({
         () => {
             const end = Math.floor(Date.now() / 1000);
             const window = { start: end - rangeSeconds, end };
-            return api
-                .postgresMetrics(
-                    deployment,
-                    metric,
-                    window.start,
-                    window.end,
-                    stepFor(rangeSeconds),
-                )
-                .then((response) => ({ response, window }));
+            return fetch(window.start, window.end, stepFor(rangeSeconds)).then((response) => ({
+                response,
+                window,
+            }));
         },
+        // Not fetch: a fresh closure every render. deployment and metric are what it closes over.
         [deployment, metric, rangeSeconds],
         refreshMs,
     );
@@ -534,10 +534,50 @@ export function PostgresCharts({
     return (
         <div className="grid2">
             {metrics.map((metric) => (
-                <PostgresChart
+                <DeploymentChart
                     key={metric}
                     deployment={deployment}
                     metric={metric}
+                    fetch={(start, end, step) =>
+                        api.postgresMetrics(deployment, metric, start, end, step)
+                    }
+                    rangeSeconds={rangeSeconds}
+                />
+            ))}
+        </div>
+    );
+}
+
+/**
+ * WorkerCharts is a deployment's authentik worker: background tasks
+ * processed and their p95 duration per actor, the queue, task failures, and
+ * the database queries the worker runs.
+ */
+export function WorkerCharts({
+    deployment,
+    rangeSeconds,
+}: {
+    deployment: string;
+    rangeSeconds?: number;
+}) {
+    const metrics: WorkerMetric[] = [
+        "tasks",
+        "duration",
+        "queue",
+        "failures",
+        "db_queries",
+        "db_duration",
+    ];
+    return (
+        <div className="grid2">
+            {metrics.map((metric) => (
+                <DeploymentChart
+                    key={metric}
+                    deployment={deployment}
+                    metric={metric}
+                    fetch={(start, end, step) =>
+                        api.workerMetrics(deployment, metric, start, end, step)
+                    }
                     rangeSeconds={rangeSeconds}
                 />
             ))}

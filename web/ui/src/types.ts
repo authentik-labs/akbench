@@ -575,3 +575,12 @@ export interface ClusterNodes {
 
 /** The charts /deployments/{name}/postgres-metrics serves. */
 export type PostgresMetric = "cpu" | "memory" | "disk" | "io";
+
+/** The charts /deployments/{name}/worker-metrics serves. */
+export type WorkerMetric =
+    | "tasks"
+    | "duration"
+    | "queue"
+    | "failures"
+    | "db_queries"
+    | "db_duration";

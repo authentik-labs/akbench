@@ -25,6 +25,7 @@ import {
     LogBreakdown,
     ProfileBreakdown,
     TraceBreakdown,
+    WorkerMetric,
     WorkloadCluster,
     WorkloadClusterSpec,
 } from "./types";
@@ -305,6 +306,20 @@ export const api = {
     ) =>
         request<RangeResponse>(
             `/api/v1/deployments/${seg(name)}/postgres-metrics?metric=${seg(metric)}` +
+                `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
+        ),
+    // A deployment's own authentik worker over time: background task
+    // throughput, latency, queue and failures, and its database queries.
+    // Same RangeResponse shape as postgresMetrics (internal/api/workermetrics.go).
+    workerMetrics: (
+        name: string,
+        metric: WorkerMetric,
+        startSeconds: number,
+        endSeconds: number,
+        step: string,
+    ) =>
+        request<RangeResponse>(
+            `/api/v1/deployments/${seg(name)}/worker-metrics?metric=${seg(metric)}` +
                 `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
         ),
 

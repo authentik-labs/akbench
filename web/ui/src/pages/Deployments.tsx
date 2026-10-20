@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
 import { CodeEditor } from "../components/CodeEditor";
-import { MetricsGrid, PostgresCharts } from "../components/MetricsChart";
+import { MetricsGrid, PostgresCharts, WorkerCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { NodePlacement } from "../components/Placement";
 import { ConditionList, StatusBadge } from "../components/Status";
@@ -999,6 +999,15 @@ export function DeploymentViewPage() {
                     onChange={setRange}
                 />
             </div>
+            {d && (
+                <>
+                    <h3>Worker</h3>
+                    <WorkerCharts
+                        deployment={name}
+                        rangeSeconds={timeRangeSeconds(range, burnStart)}
+                    />
+                </>
+            )}
             {d && d.spec.postgres.mode !== "External" && (
                 <>
                     <h3>Postgres</h3>
@@ -1006,9 +1015,9 @@ export function DeploymentViewPage() {
                         deployment={name}
                         rangeSeconds={timeRangeSeconds(range, burnStart)}
                     />
-                    <h3>Tests</h3>
                 </>
             )}
+            {d && <h3>Tests</h3>}
             {testids.length === 0 ? (
                 <Empty>No test cases reference this deployment yet.</Empty>
             ) : (
