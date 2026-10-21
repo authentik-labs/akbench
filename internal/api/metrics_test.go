@@ -117,6 +117,35 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+// A long window reads the recording rules, and falls back to the raw query
+// for a metric they have nothing for (a Prometheus without the rules).
+func TestCompareLongWindowUsesRecordingRules(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheus(t, func(query string) (string, string, bool) {
+		seen[query] = true
+		if strings.Contains(query, "k6_iterations") {
+			return "7", "", !strings.Contains(query, "testid_target:")
+		}
+		return "3", "", strings.Contains(query, "testid_target:")
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/compare?testids=login-a&window=259200s", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	body := decodeBody[struct {
+		Results []struct {
+			Values map[string]float64 `json:"values"`
+		} `json:"results"`
+	}](t, rec)
+	if got := body.Results[0].Values; got["http_reqs"] != 3 || got["iterations"] != 7 {
+		t.Fatalf("values %v, want http_reqs from the recording rule and iterations from the raw fallback", got)
+	}
+	if seen[`sum by (target) (rate(k6_http_reqs_total{testid="login-a"}[259200s]))`] {
+		t.Fatalf("raw http_reqs query ran despite recorded data; queries seen: %v", seen)
+	}
+}
+
 // A TestCase driving more than one deployment must show one compare row per
 // target rather than collapsing them into a single summed number - the
 // entire reason compareMetrics' queries group `by (target)` in the first

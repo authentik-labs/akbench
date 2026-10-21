@@ -13,10 +13,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"k8s.io/apimachinery/pkg/types"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
+	"github.com/authentik-labs/akbench/internal/render"
 )
 
 // CompareMetric is one column of the test-comparison table. The queries are
@@ -36,7 +39,16 @@ type CompareMetric struct {
 	// Better records which direction is an improvement, so the UI can
 	// highlight a winner without hardcoding per-metric knowledge.
 	Better string `json:"better"`
+	// Recorded is Query's equivalent over render's k6 recording rules, same
+	// two verbs, used for windows of at least recordedMinWindow. Empty for
+	// the instant gauges, which are cheap at any window.
+	Recorded string `json:"-"`
 }
+
+// recordedMinWindow is the shortest compare window answered from the
+// recording rules. Below it the raw query is cheap, and the rules' 1m
+// resolution would show up as lag.
+const recordedMinWindow = model.Duration(time.Hour)
 
 // fill renders Query for one label selector and range window. A query with
 // a range selector ("[%s]" or "[%[2]s]") takes both; one without (a plain
@@ -78,23 +90,28 @@ const (
 var compareMetrics = []CompareMetric{
 	{
 		Key: metricKeyHTTPReqs, Label: "HTTP requests/s", Unit: "req/s", Better: betterHigher,
-		Query: `sum by (target) (rate(k6_http_reqs_total{%s}[%s]))`,
+		Query:    `sum by (target) (rate(k6_http_reqs_total{%s}[%s]))`,
+		Recorded: `sum by (target) (avg_over_time(` + render.RecordedHTTPReqs + `{%s}[%s]))`,
 	},
 	{
 		Key: metricKeyIterations, Label: "Transactions/s", Unit: "tx/s", Better: betterHigher,
-		Query: `sum by (target) (rate(k6_iterations_total{%s}[%s]))`,
+		Query:    `sum by (target) (rate(k6_iterations_total{%s}[%s]))`,
+		Recorded: `sum by (target) (avg_over_time(` + render.RecordedIterations + `{%s}[%s]))`,
 	},
 	{
 		Key: "http_req_duration_p95", Label: "Request duration p95", Unit: "s", Better: betterLower,
-		Query: `histogram_quantile(0.95, sum by (target) (rate(k6_http_req_duration_seconds{%s}[%s])))`,
+		Query:    `histogram_quantile(0.95, sum by (target) (rate(k6_http_req_duration_seconds{%s}[%s])))`,
+		Recorded: `histogram_quantile(0.95, sum by (target) (sum_over_time(` + render.RecordedHTTPReqDuration + `{%s}[%s])))`,
 	},
 	{
 		Key: "http_req_duration_p99", Label: "Request duration p99", Unit: "s", Better: betterLower,
-		Query: `histogram_quantile(0.99, sum by (target) (rate(k6_http_req_duration_seconds{%s}[%s])))`,
+		Query:    `histogram_quantile(0.99, sum by (target) (rate(k6_http_req_duration_seconds{%s}[%s])))`,
+		Recorded: `histogram_quantile(0.99, sum by (target) (sum_over_time(` + render.RecordedHTTPReqDuration + `{%s}[%s])))`,
 	},
 	{
 		Key: "iteration_duration_p95", Label: "Transaction duration p95", Unit: "s", Better: betterLower,
-		Query: `histogram_quantile(0.95, sum by (target) (rate(k6_iteration_duration_seconds{%s}[%s])))`,
+		Query:    `histogram_quantile(0.95, sum by (target) (rate(k6_iteration_duration_seconds{%s}[%s])))`,
+		Recorded: `histogram_quantile(0.95, sum by (target) (sum_over_time(` + render.RecordedIterationDuration + `{%s}[%s])))`,
 	},
 	{
 		Key: "http_req_failed", Label: "Failed requests", Unit: "ratio", Better: betterLower,
@@ -104,6 +121,12 @@ var compareMetrics = []CompareMetric{
 		// k6 dashboard and the error-rate alert use.
 		Query: `sum by (target) (rate(k6_http_reqs_total{%[1]s, expected_response="false"}[%[2]s]))` +
 			` / sum by (target) (rate(k6_http_reqs_total{%[1]s}[%[2]s]))`,
+		// "or ... * 0": a test without a single failure has no failed series
+		// to record, and an empty result would fall back to the slow raw
+		// query on every poll.
+		Recorded: `(sum by (target) (sum_over_time(` + render.RecordedHTTPReqsFailed + `{%[1]s}[%[2]s]))` +
+			` or 0 * sum by (target) (sum_over_time(` + render.RecordedHTTPReqs + `{%[1]s}[%[2]s])))` +
+			` / sum by (target) (sum_over_time(` + render.RecordedHTTPReqs + `{%[1]s}[%[2]s]))`,
 	},
 	{
 		Key: "checks", Label: "Passing checks", Unit: "ratio", Better: betterHigher,
@@ -417,7 +440,7 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 
 		for _, baseURL := range baseURLs {
 			for _, m := range compareMetrics {
-				samples, err := s.promInstantMulti(r.Context(), baseURL, m.fill(selector, window), at)
+				samples, err := s.compareSamples(r.Context(), baseURL, m, selector, window, at)
 				if err != nil {
 					// The rest of this Prometheus' metrics would fail the
 					// same way; move on to the next one.
@@ -446,6 +469,23 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Errors = errs.byTestID
 	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// compareSamples answers one metric of compare, from the recording rules
+// for a long window. An empty recorded result falls back to the raw query:
+// a Prometheus without the rules (the management cluster's), or a test
+// whose data predates them. A test that started before the rules existed
+// is summarised over only the part they cover.
+func (s *Server) compareSamples(
+	ctx context.Context, baseURL string, m CompareMetric, selector, window, at string,
+) ([]promSample, error) {
+	if d, err := model.ParseDuration(window); err == nil && m.Recorded != "" && d >= recordedMinWindow {
+		samples, err := s.promInstantMulti(ctx, baseURL, fmt.Sprintf(m.Recorded, selector, window), at)
+		if err != nil || len(samples) > 0 {
+			return samples, err
+		}
+	}
+	return s.promInstantMulti(ctx, baseURL, m.fill(selector, window), at)
 }
 
 // RangePoint is one (timestamp, value) sample of a metricsRange result.

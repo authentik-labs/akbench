@@ -262,6 +262,7 @@ func KubePrometheusStackHelmValues(wc *benchv1alpha1.WorkloadCluster) (*apiexten
 		"prometheusOperator": prometheusOperator,
 		"additionalPrometheusRulesMap": map[string]any{
 			defaultAlertRulesKey: map[string]any{"groups": DefaultAlertRuleGroups()},
+			recordingRulesKey:    map[string]any{"groups": K6RecordingRuleGroups()},
 		},
 		"kube-state-metrics": kubeStateMetrics,
 		// host is the label the reference harness's dashboards select nodes
