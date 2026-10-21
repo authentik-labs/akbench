@@ -1,5 +1,6 @@
 import { api, MANAGEMENT_CLUSTER } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
+import { MonitoringCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { AddonList, Badge, ConditionList, StatusBadge } from "../components/Status";
 import { toast } from "../components/Toast";
@@ -837,6 +838,7 @@ export function ClusterViewPage() {
                                     </Link>
                                 )}
                             </div>
+                            {status?.prometheusURL && <MonitoringCharts cluster={name} />}
                         </>
                     )}
                 </>

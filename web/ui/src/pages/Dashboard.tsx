@@ -16,6 +16,10 @@ const BURN_SUMMARY_METRICS = ["iterations", "iteration_duration_p95", "http_req_
 const TREND_METRIC = "iteration_duration_p95";
 const TREND_RANGE_SECONDS = 6 * 3600;
 const DAY_MS = 86400 * 1000;
+// Where each workload cluster's own observability stack runs
+// (render.ObservabilityNamespace). An alert there means the numbers on this
+// page may be wrong, so it's raised as a banner rather than just counted.
+const OBSERVABILITY_NAMESPACE = "bench-system";
 
 export function DashboardPage() {
     const deployments = useResource(() => api.deployments(), [], 15000);
@@ -71,6 +75,7 @@ export function DashboardPage() {
     const slowest = worst("iteration_duration_p95");
     const mostFailing = worst("http_req_failed");
     const firing = (alerts.data?.items ?? []).filter((a) => a.state === "active");
+    const monitoringAlerts = firing.filter((a) => a.labels.namespace === OBSERVABILITY_NAMESPACE);
 
     const quickRuns = [...(runs.data ?? [])].sort((a, b) =>
         (b.metadata.creationTimestamp ?? "").localeCompare(a.metadata.creationTimestamp ?? ""),
@@ -101,6 +106,13 @@ export function DashboardPage() {
             }
         >
             <Alert>{deployments.error ?? testCases.error ?? runs.error ?? live.error}</Alert>
+            {monitoringAlerts.map((a) => (
+                <Alert key={`${a.cluster}/${a.labels.alertname}/${a.startsAt}`}>
+                    <Link to="/alerts">{a.labels.alertname}</Link> on{" "}
+                    <Link to={`/clusters/${a.cluster}`}>{a.cluster}</Link>
+                    {a.annotations.summary && `: ${a.annotations.summary}`}
+                </Alert>
+            ))}
             <div className="stats">
                 <Stat
                     value={live.data ? formatMetricValue(sustained, "tx/s") : "-"}

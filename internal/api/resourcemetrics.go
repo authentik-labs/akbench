@@ -46,11 +46,11 @@ type resourceMetric struct {
 var resourceMetrics = map[string]resourceMetric{
 	metricCPU: {
 		Label: "CPU",
-		Unit:  "cores",
+		Unit:  unitCores,
 		Query: `sum(rate(container_cpu_usage_seconds_total{namespace=%[1]q, container!="", container!="POD"%[3]s}[%[2]s])` +
 			` and on (pod) kube_pod_owner{namespace=%[1]q, owner_kind!="Job"})`,
 	},
-	"memory": {
+	metricMemory: {
 		Label: "Memory",
 		Unit:  unitBytes,
 		Query: `sum(container_memory_working_set_bytes{namespace=%[1]q, container!="", container!="POD"%[3]s}` +

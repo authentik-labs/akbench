@@ -1,7 +1,13 @@
 import { api } from "../api";
 import { colorFor, formatMetricValue, onlyTargets, stepFor } from "../format";
 import { useDarkTheme } from "../theme";
-import { CompareMetric, PostgresMetric, RangeResponse, WorkerMetric } from "../types";
+import {
+    CompareMetric,
+    MonitoringMetric,
+    PostgresMetric,
+    RangeResponse,
+    WorkerMetric,
+} from "../types";
 import { useResource } from "../useResource";
 
 import {
@@ -579,6 +585,25 @@ export function WorkerCharts({
                         api.workerMetrics(deployment, metric, start, end, step)
                     }
                     rangeSeconds={rangeSeconds}
+                />
+            ))}
+        </div>
+    );
+}
+
+/** MonitoringCharts is a workload cluster's observability stack: CPU, memory and disk. */
+export function MonitoringCharts({ cluster }: { cluster: string }) {
+    const metrics: MonitoringMetric[] = ["cpu", "memory", "disk"];
+    return (
+        <div className="grid2">
+            {metrics.map((metric) => (
+                <DeploymentChart
+                    key={metric}
+                    deployment={cluster}
+                    metric={metric}
+                    fetch={(start, end, step) =>
+                        api.monitoringMetrics(cluster, metric, start, end, step)
+                    }
                 />
             ))}
         </div>

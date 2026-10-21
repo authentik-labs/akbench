@@ -13,6 +13,7 @@ import {
     IncusCredentialInput,
     IncusProbe,
     Infrastructure,
+    MonitoringMetric,
     PodPlacement,
     PostgresMetric,
     RangeResponse,
@@ -320,6 +321,20 @@ export const api = {
     ) =>
         request<RangeResponse>(
             `/api/v1/deployments/${seg(name)}/worker-metrics?metric=${seg(metric)}` +
+                `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
+        ),
+
+    // A workload cluster's observability stack (bench-system) over time.
+    // Same RangeResponse shape as postgresMetrics (internal/api/monitoringmetrics.go).
+    monitoringMetrics: (
+        cluster: string,
+        metric: MonitoringMetric,
+        startSeconds: number,
+        endSeconds: number,
+        step: string,
+    ) =>
+        request<RangeResponse>(
+            `/api/v1/clusters/${seg(cluster)}/monitoring-metrics?metric=${seg(metric)}` +
                 `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
         ),
 

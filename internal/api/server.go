@@ -204,6 +204,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/clusters/{name}", s.getCluster)
 			r.Delete("/clusters/{name}", s.deleteCluster)
 			r.Get("/clusters/{name}/nodes", s.listClusterNodes)
+			r.Get("/clusters/{name}/monitoring-metrics", s.listMonitoringMetrics)
 
 			for path, kind := range resourceKinds {
 				r.Get("/"+path, s.listResource(kind))
