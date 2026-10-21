@@ -1150,3 +1150,26 @@ details > summary {
     height: 12px;
     border-radius: var(--radius-sm);
 }
+
+/* Printing a page (TestRunViewPage's "Report (PDF)") keeps only its content. */
+@media print {
+    .sidebar,
+    .mobile-bar,
+    .nav-backdrop,
+    button,
+    .button,
+    details {
+        display: none !important;
+    }
+    .main {
+        margin-left: 0;
+        padding: 0;
+    }
+    .grid2 {
+        grid-template-columns: 1fr 1fr;
+    }
+    .panel,
+    .grid2 > * {
+        break-inside: avoid;
+    }
+}
