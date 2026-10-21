@@ -6,6 +6,7 @@ import { Badge, ConditionList } from "../components/Status";
 import { Alert, confirmAndRun, Empty, formatTimestamp, Page, Table } from "../components/ui";
 import { metricsAnchorFromRuns } from "../format";
 import { shellLinkForCluster } from "../shell/links";
+import { printReport } from "../theme";
 import { testCaseDeployments, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
 
@@ -90,20 +91,6 @@ export function TestRunsPage() {
 }
 
 const SIBLING_WINDOW_MS = 10000;
-
-/**
- * printReport hands the run page to the browser's print dialog ("Save as
- * PDF" there is the report). Light theme while printing: browsers drop
- * backgrounds, which would leave a dark theme's light text on white paper.
- */
-function printReport() {
-    const root = document.documentElement;
-    const theme = root.dataset.theme;
-    root.dataset.theme = "light";
-    window.addEventListener("afterprint", () => (root.dataset.theme = theme), { once: true });
-    // Give the canvas charts a moment to redraw in the light palette.
-    setTimeout(() => window.print(), 300);
-}
 
 export function TestRunViewPage() {
     const { name = "" } = useParams();

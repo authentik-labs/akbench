@@ -1151,11 +1151,13 @@ details > summary {
     border-radius: var(--radius-sm);
 }
 
-/* Printing a page (TestRunViewPage's "Report (PDF)") keeps only its content. */
+/* Printing a page (the run/test case "Report (PDF)") keeps only its content. */
 @media print {
     .sidebar,
     .mobile-bar,
     .nav-backdrop,
+    .section-nav,
+    #status,
     button,
     .button,
     details {

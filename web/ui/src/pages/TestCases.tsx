@@ -34,6 +34,7 @@ import {
     timeRangeSeconds,
 } from "../format";
 import { shellLinkForCluster } from "../shell/links";
+import { printReport } from "../theme";
 import {
     TestCase,
     TestCaseSpec,
@@ -772,6 +773,7 @@ export function TestCaseViewPage() {
                             {tc.spec.archived ? "Unarchive" : "Archive"}
                         </button>
                     )}
+                    {tc && <button onClick={printReport}>Report (PDF)</button>}
                 </>
             }
         >
