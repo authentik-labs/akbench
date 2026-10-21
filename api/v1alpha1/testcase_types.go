@@ -157,6 +157,17 @@ type TestCaseDeploymentStatus struct {
 	// +optional
 	RunnerCluster string `json:"runnerCluster,omitempty"`
 
+	// cluster, namespace and target are the AuthentikDeployment's
+	// clusterRef, namespace and targetName as last seen, kept once it is
+	// gone so its resource usage, traces, profiles and logs can still be
+	// found.
+	// +optional
+	Cluster string `json:"cluster,omitempty"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// +optional
+	Target string `json:"target,omitempty"`
+
 	// burnWorkloadRef names the owned Deployment driving this target when
 	// profile is Burn.
 	// +optional

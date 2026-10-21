@@ -80,7 +80,8 @@ type deploymentTarget struct {
 // legitimately differ from a deployment's own cluster, but the deployment's
 // server/worker/postgres pods (what this endpoint reports on) always live on
 // that deployment's own clusterRef/namespace regardless of where the runner
-// executes. A target that can't be resolved (deleted AuthentikDeployment, or
+// executes. A target that can't be resolved (deleted AuthentikDeployment
+// its TestCase never recorded, or
 // a WorkloadCluster that hasn't reconciled a PrometheusURL yet) is skipped
 // rather than failing the whole testid, the same "one bad entry shouldn't
 // blank the rest" reasoning listAlerts already uses.
@@ -91,20 +92,15 @@ func (s *Server) deploymentTargetsForTestID(ctx context.Context, testid string) 
 	}
 	var targets []deploymentTarget
 	for _, ref := range tc.Deployments() {
-		var topo benchv1alpha1.AuthentikDeployment
-		key := types.NamespacedName{Name: ref.Name, Namespace: s.cfg.Namespace}
-		if err := s.client.Get(ctx, key, &topo); err != nil {
+		cluster, namespace, targetName, ok := s.targetDeployment(ctx, &tc, ref.Name)
+		if !ok {
 			continue
 		}
-		targetName := topo.Spec.TargetName
-		if targetName == "" {
-			targetName = topo.Name
-		}
-		promURL := s.prometheusURLForCluster(ctx, topo.Spec.ClusterRef.Name)
-		if topo.Spec.ClusterRef.Name != "" && promURL == "" {
+		promURL := s.prometheusURLForCluster(ctx, cluster)
+		if cluster != "" && promURL == "" {
 			continue
 		}
-		targets = append(targets, deploymentTarget{PrometheusURL: promURL, Namespace: topo.Spec.Namespace, Target: targetName, Deployment: topo.Name})
+		targets = append(targets, deploymentTarget{PrometheusURL: promURL, Namespace: namespace, Target: targetName, Deployment: ref.Name})
 	}
 	return targets
 }

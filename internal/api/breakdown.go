@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/singleflight"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -47,6 +48,29 @@ type breakdownEntry[T any] struct {
 
 func newBreakdownCache[T any]() *breakdownCache[T] {
 	return &breakdownCache[T]{entries: map[string]breakdownEntry[T]{}}
+}
+
+// breakdownEnd is when tc's trailing breakdown window ends: now, or for an
+// archived TestCase a minute past when archiving stopped it (the same end
+// the UI's charts use), since nothing reaches its telemetry after that.
+func breakdownEnd(tc *benchv1alpha1.TestCase) time.Time {
+	if !tc.Spec.Archived {
+		return time.Now()
+	}
+	var stopped time.Time
+	for _, d := range tc.Status.Deployments {
+		if d.BurnStoppedAt != nil && d.BurnStoppedAt.After(stopped) {
+			stopped = d.BurnStoppedAt.Time
+		}
+	}
+	if stopped.IsZero() {
+		ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
+		if ready == nil || ready.Reason != benchv1alpha1.ReasonArchived {
+			return time.Now()
+		}
+		stopped = ready.LastTransitionTime.Time
+	}
+	return stopped.Add(time.Minute)
 }
 
 // serveBreakdown answers with cache's entry for key, computing it for the

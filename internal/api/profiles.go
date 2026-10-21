@@ -118,7 +118,7 @@ func (s *Server) profileBreakdown(w http.ResponseWriter, r *http.Request) {
 // queryProfileBreakdown reads one merged profile per target of tc over the
 // trailing span. complete is false when any query failed.
 func (s *Server) queryProfileBreakdown(ctx context.Context, tc *benchv1alpha1.TestCase, window, component string, span time.Duration) (resp ProfileBreakdown, complete bool) {
-	end := time.Now()
+	end := breakdownEnd(tc)
 	resp = ProfileBreakdown{TestID: tc.Name, Window: window, Component: component, GeneratedAt: end}
 	targets := s.grafanaTargetsForTestID(ctx, tc)
 	resp.Targets = make([]ProfileTarget, len(targets))

@@ -402,9 +402,18 @@ spec:
                         metrics can still be shown for exactly the time it burned.
                       format: date-time
                       type: string
+                    cluster:
+                      description: |-
+                        cluster, namespace and target are the AuthentikDeployment's
+                        clusterRef, namespace and targetName as last seen, kept once it is
+                        gone so its resource usage, traces, profiles and logs can still be
+                        found.
+                      type: string
                     name:
                       description: name is the AuthentikDeployment object name (one
                         of TestCase.Deployments()).
+                      type: string
+                    namespace:
                       type: string
                     ready:
                       description: |-
@@ -417,6 +426,8 @@ spec:
                         placed on ("" is the management cluster). Kept even once the
                         AuthentikDeployment itself is gone, so the TestCase can still find
                         and delete a Burn Deployment it left on a remote cluster.
+                      type: string
+                    target:
                       type: string
                   required:
                   - name

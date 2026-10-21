@@ -199,3 +199,35 @@ func TestListResourceMetricsComponentFiltersPods(t *testing.T) {
 	rec = do(t, s, http.MethodGet, "/api/v1/metrics/resources?testids=login-topo3&resource=memory&component=postgres&start=1700000000&end=1700003600", nil)
 	requireStatus(t, rec, http.StatusBadRequest)
 }
+
+// TestListResourceMetricsFallsBackToRecordedDeployment: an archived
+// TestCase whose AuthentikDeployment has since been deleted still finds its
+// pods' history from what its status recorded.
+func TestListResourceMetricsFallsBackToRecordedDeployment(t *testing.T) {
+	var gotQuery string
+	prom := fakePrometheusRange(t, func(query string) [][2]any {
+		gotQuery = query
+		return [][2]any{{1700000000, "1.5"}}
+	})
+	wc := &benchv1alpha1.WorkloadCluster{}
+	wc.Name = "wc1"
+	wc.Namespace = testNamespace
+	wc.Status.PrometheusURL = prom.URL
+
+	tc := sampleTestCase("login-archived", "topo-gone", benchv1alpha1.ProfileBurn)
+	tc.Spec.Archived = true
+	tc.Status.Deployments = []benchv1alpha1.TestCaseDeploymentStatus{{Name: "topo-gone", Cluster: "wc1", Namespace: "ak-gone", Target: "gone"}}
+
+	s, _ := newServer(t, Config{}, wc, tc)
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/resources?testids=login-archived&resource=cpu&start=1700000000&end=1700003600", nil)
+	requireStatus(t, rec, http.StatusOK)
+	body := decodeBody[struct {
+		Series []RangeSeries `json:"series"`
+	}](t, rec)
+	if len(body.Series) != 1 || body.Series[0].Target != "gone" {
+		t.Fatalf("series = %+v, want one for target gone", body.Series)
+	}
+	if !strings.Contains(gotQuery, `namespace="ak-gone"`) {
+		t.Errorf("query doesn't scope to the recorded namespace: %q", gotQuery)
+	}
+}

@@ -238,6 +238,26 @@ func recordedRunnerCluster(tc *benchv1alpha1.TestCase, deployment string) string
 	return ""
 }
 
+// targetDeployment is the cluster, namespace and target name of tc's named
+// target deployment: from the AuthentikDeployment, else from what tc's
+// status last recorded of it once it's gone. ok is false when neither has it.
+func (s *Server) targetDeployment(ctx context.Context, tc *benchv1alpha1.TestCase, name string) (cluster, namespace, target string, ok bool) {
+	var topo benchv1alpha1.AuthentikDeployment
+	if err := s.client.Get(ctx, types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}, &topo); err == nil {
+		target = topo.Spec.TargetName
+		if target == "" {
+			target = topo.Name
+		}
+		return topo.Spec.ClusterRef.Name, topo.Spec.Namespace, target, true
+	}
+	for _, d := range tc.Status.Deployments {
+		if d.Name == name && d.Namespace != "" {
+			return d.Cluster, d.Namespace, d.Target, true
+		}
+	}
+	return "", "", "", false
+}
+
 // proxyQuery forwards a PromQL query to the management cluster's own
 // Prometheus. Only the parameters below are passed through, and only the
 // two query endpoints are reachable, so this stays a query proxy rather

@@ -108,15 +108,12 @@ func (t grafanaTarget) datasourceURL(uid string) string {
 func (s *Server) grafanaTargetsForTestID(ctx context.Context, tc *benchv1alpha1.TestCase) []grafanaTarget {
 	var targets []grafanaTarget
 	for _, ref := range tc.Deployments() {
-		var topo benchv1alpha1.AuthentikDeployment
-		if err := s.client.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: s.cfg.Namespace}, &topo); err != nil {
+		cluster, namespace, targetName, ok := s.targetDeployment(ctx, tc, ref.Name)
+		if !ok {
 			targets = append(targets, grafanaTarget{Target: ref.Name, Deployment: ref.Name, Error: "deployment not found"})
 			continue
 		}
-		target := grafanaTarget{Target: topo.Spec.TargetName, Deployment: topo.Name, Namespace: topo.Spec.Namespace}
-		if target.Target == "" {
-			target.Target = topo.Name
-		}
+		target := grafanaTarget{Target: targetName, Deployment: ref.Name, Namespace: namespace}
 		// TargetName is a free-form spec field (unlike the object name
 		// itself, which the apiserver already constrains to a DNS subdomain)
 		// and is interpolated directly into a TraceQL search below - reject
@@ -129,9 +126,9 @@ func (s *Server) grafanaTargetsForTestID(ctx context.Context, tc *benchv1alpha1.
 			continue
 		}
 		var wc benchv1alpha1.WorkloadCluster
-		wcKey := types.NamespacedName{Name: topo.Spec.ClusterRef.Name, Namespace: s.cfg.Namespace}
+		wcKey := types.NamespacedName{Name: cluster, Namespace: s.cfg.Namespace}
 		switch {
-		case topo.Spec.ClusterRef.Name == "":
+		case cluster == "":
 			target.Error = "deployment runs on the management cluster, which has no Tempo, Pyroscope or Loki"
 		case s.client.Get(ctx, wcKey, &wc) != nil:
 			target.Error = "workload cluster not found"
@@ -171,7 +168,7 @@ func (s *Server) traceBreakdown(w http.ResponseWriter, r *http.Request) {
 // searchTraceBreakdown runs one Tempo search per target of tc over the
 // trailing span. complete is false when any search failed.
 func (s *Server) searchTraceBreakdown(ctx context.Context, tc *benchv1alpha1.TestCase, window string, span time.Duration) (resp TraceBreakdown, complete bool) {
-	end := time.Now()
+	end := breakdownEnd(tc)
 	resp = TraceBreakdown{TestID: tc.Name, Window: window, GeneratedAt: end}
 	targets := s.grafanaTargetsForTestID(ctx, tc)
 	resp.Targets = make([]TraceTarget, len(targets))

@@ -100,7 +100,7 @@ func (s *Server) logBreakdown(w http.ResponseWriter, r *http.Request) {
 // queryLogBreakdown runs the level and top-event queries per target of tc
 // over the trailing span. complete is false when any query failed.
 func (s *Server) queryLogBreakdown(ctx context.Context, tc *benchv1alpha1.TestCase, window string, span time.Duration) (resp LogBreakdown, complete bool) {
-	end := time.Now()
+	end := breakdownEnd(tc)
 	resp = LogBreakdown{TestID: tc.Name, Window: window, GeneratedAt: end}
 	targets := s.grafanaTargetsForTestID(ctx, tc)
 	resp.Targets = make([]LogTarget, len(targets))

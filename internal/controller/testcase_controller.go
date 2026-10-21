@@ -139,9 +139,9 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// local cluster), so stale Burn Deployments are cleaned up once per
 	// cluster after every target has been reconciled.
 	runnerClients := map[string]client.Client{}
-	previousRunners := map[string]string{}
+	previous := map[string]benchv1alpha1.TestCaseDeploymentStatus{}
 	for _, st := range tc.Status.Deployments {
-		previousRunners[st.Name] = st.RunnerCluster
+		previous[st.Name] = st
 	}
 
 	for _, ref := range refs {
@@ -152,8 +152,9 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if result.runnerClient == nil {
 			// The target couldn't be resolved this pass (its deployment is
 			// gone or not Ready, or its cluster is unreachable) - remember
-			// where its k6 workload last ran, so a later delete still finds it.
-			result.status.RunnerCluster = previousRunners[ref.Name]
+			// where it and its k6 workload last ran, so a later delete still
+			// finds the workload and its telemetry can still be shown.
+			keepRecordedPlacement(&result.status, previous[ref.Name])
 		}
 		statuses = append(statuses, result.status)
 		if result.runnerClient != nil {
@@ -179,7 +180,8 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// set: running it per target would delete every later target's Burn
 	// Deployment on a shared runner cluster, only for the next iteration to
 	// recreate it.
-	for _, cluster := range previousRunners {
+	for _, prev := range previous {
+		cluster := prev.RunnerCluster
 		if _, ok := runnerClients[cluster]; ok {
 			continue
 		}
@@ -226,6 +228,15 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	log.Info("reconciled TestCase", "profile", tc.Spec.Profile, "deployments", len(refs))
 	return ctrl.Result{}, nil
+}
+
+// keepRecordedPlacement carries prev's runner cluster over to st, and where
+// the deployment itself ran unless st resolved that afresh.
+func keepRecordedPlacement(st *benchv1alpha1.TestCaseDeploymentStatus, prev benchv1alpha1.TestCaseDeploymentStatus) {
+	st.RunnerCluster = prev.RunnerCluster
+	if st.Namespace == "" {
+		st.Cluster, st.Namespace, st.Target = prev.Cluster, prev.Namespace, prev.Target
+	}
 }
 
 // migrateDeploymentRef is a one-time migration of the deprecated singular
@@ -295,6 +306,7 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 		}
 		return result, nil
 	}
+	result.status.Cluster, result.status.Namespace, result.status.Target = topo.Spec.ClusterRef.Name, topo.Spec.Namespace, targetName
 
 	rc, remote, err := resolveRunnerClient(ctx, r.Tracker, r.Client, tc.Namespace, tc.Spec.RunnerClusterRef, topo.Spec.ClusterRef)
 	if err != nil {

@@ -111,6 +111,10 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(archived.BurningSince).NotTo(BeNil())
 			Expect(archived.BurnStoppedAt).NotTo(BeNil())
 			Expect(archived.BurnStoppedAt.Before(archived.BurningSince)).To(BeFalse())
+			// So does where the deployment ran, to find its telemetry once
+			// it's deleted.
+			Expect(archived.Namespace).To(Equal(topo.Spec.Namespace))
+			Expect(archived.Target).To(Equal("authentik-1"))
 
 			// A later reconcile keeps the original stop time.
 			stoppedAt := *archived.BurnStoppedAt
