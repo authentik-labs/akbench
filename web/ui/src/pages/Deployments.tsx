@@ -465,7 +465,7 @@ export function DeploymentSpecFields({
                     <label className="check">
                         <input
                             type="checkbox"
-                            checked={errorReporting.enabled ?? false}
+                            checked={errorReporting.enabled ?? true}
                             onChange={(e) =>
                                 patch({
                                     authentik: {
@@ -507,7 +507,7 @@ export function DeploymentSpecFields({
                 <div className="fields">
                     <Field label="Mode">
                         <select
-                            value={spec.placement?.mode ?? "Default"}
+                            value={spec.placement?.mode ?? "Dedicated"}
                             onChange={(e) =>
                                 patch({
                                     placement: {
