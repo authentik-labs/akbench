@@ -4,6 +4,7 @@ import { Alert, errorMessage, Field, Page } from "../components/ui";
 import {
     DEV_IMAGE,
     devImageTag,
+    fetchBranchHead,
     fetchLatestRelease,
     fetchPullRequest,
     k8sNameSegment,
@@ -21,6 +22,8 @@ import { Link, useNavigate } from "react-router";
 // Set on all three objects this flow creates, so one PR's comparison can be
 // found again with `kubectl get authentikdeployments,testcases -l ...`.
 const PULL_REQUEST_LABEL = "bench.goauthentik.io/pull-request";
+// The branch comparison's equivalent, with the branch as a name segment.
+const BRANCH_LABEL = "bench.goauthentik.io/branch";
 
 type Baseline = "base" | "release";
 
@@ -78,13 +81,20 @@ function ImageStatus({ state }: { state?: ImageState }) {
     }
 }
 
+/** BranchComparisonPage compares a branch's build (main by default) against a release. */
+export function BranchComparisonPage() {
+    return <PullRequestComparisonPage mode="branch" />;
+}
+
 /**
  * PullRequestComparisonPage sets up a side-by-side Burn test of an authentik
  * pull request's CI build against its base branch or a release: two
  * deployments sharing every setting but the image, and one TestCase driving
- * both with the same load.
+ * both with the same load. In branch mode the PR is replaced by a branch and
+ * the baseline is always a release.
  */
-export function PullRequestComparisonPage() {
+export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "branch" }) {
+    const isBranch = mode === "branch";
     const navigate = useNavigate();
     const templates = useResource(() => api.testCaseTemplates(), [], 0);
 
@@ -92,12 +102,15 @@ export function PullRequestComparisonPage() {
     const [pr, setPr] = useState<PullRequest>();
     const [lookupError, setLookupError] = useState<string>();
     const [lookingUp, setLookingUp] = useState(false);
+    const [branch, setBranch] = useState("main");
+    const [branchSha, setBranchSha] = useState<string>();
 
     // The tags are prefilled from the lookup but stay editable - a fork PR,
     // a rate-limited lookup or an image built from another commit all need
     // them typed in by hand.
-    const [prTag, setPrTag] = useState("");
-    const [baseline, setBaseline] = useState<Baseline>("base");
+    const [prTag, setPrTag] = useState(isBranch ? "gh-main" : "");
+    const [chosenBaseline, setBaseline] = useState<Baseline>("base");
+    const baseline: Baseline = isBranch ? "release" : chosenBaseline;
     const [baseTag, setBaseTag] = useState("gh-main");
     const [version, setVersion] = useState("");
 
@@ -138,6 +151,21 @@ export function PullRequestComparisonPage() {
 
     const prNumber = parsePullRequestNumber(prInput);
 
+    async function lookUpBranch() {
+        setLookingUp(true);
+        setLookupError(undefined);
+        try {
+            const sha = await fetchBranchHead(branch.trim());
+            setBranchSha(sha);
+            setPrTag(devImageTag(sha));
+        } catch (err) {
+            setBranchSha(undefined);
+            setLookupError(errorMessage(err));
+        } finally {
+            setLookingUp(false);
+        }
+    }
+
     async function lookUp() {
         if (prNumber === undefined) {
             setLookupError(
@@ -160,8 +188,13 @@ export function PullRequestComparisonPage() {
         }
     }
 
-    // The prefix follows the PR number until edited directly.
-    const effectivePrefix = prefixEdited ? prefix : prNumber !== undefined ? `pr-${prNumber}` : "";
+    // The prefix follows the PR number (or branch) until edited directly.
+    const defaultPrefix = isBranch
+        ? k8sNameSegment(branch)
+        : prNumber !== undefined
+          ? `pr-${prNumber}`
+          : "";
+    const effectivePrefix = prefixEdited ? prefix : defaultPrefix;
     const baselineSuffix =
         baseline === "base" ? k8sNameSegment(pr?.baseRef ?? "main") : k8sNameSegment(version);
     const prName = effectivePrefix;
@@ -169,9 +202,11 @@ export function PullRequestComparisonPage() {
         effectivePrefix && baselineSuffix ? `${effectivePrefix}-${baselineSuffix}` : "";
     // The PR title makes the test case recognisable in lists; capped so
     // derived names like k6-<testcase>-<deployment> stay within 63 chars.
-    const titleSlug = k8sNameSegment(pr?.title ?? "")
-        .slice(0, 20)
-        .replace(/-+$/, "");
+    const titleSlug = isBranch
+        ? baselineSuffix && `vs-${baselineSuffix}`
+        : k8sNameSegment(pr?.title ?? "")
+              .slice(0, 20)
+              .replace(/-+$/, "");
     const testCaseName = effectivePrefix
         ? [effectivePrefix, titleSlug, "burn"].filter(Boolean).join("-")
         : "";
@@ -179,13 +214,16 @@ export function PullRequestComparisonPage() {
     async function submit(event: FormEvent) {
         event.preventDefault();
         if (!prName || !baselineName) {
-            setError("Enter a pull request and a baseline first");
+            setError(`Enter a ${isBranch ? "branch" : "pull request"} and a baseline first`);
             return;
         }
         setSaving(true);
         setError(undefined);
-        const labels =
-            prNumber !== undefined ? { [PULL_REQUEST_LABEL]: String(prNumber) } : undefined;
+        const labels: Record<string, string> | undefined = isBranch
+            ? { [BRANCH_LABEL]: k8sNameSegment(branch) }
+            : prNumber !== undefined
+              ? { [PULL_REQUEST_LABEL]: String(prNumber) }
+              : undefined;
         const deploymentSpec = (
             name: string,
             image: string,
@@ -240,107 +278,168 @@ export function PullRequestComparisonPage() {
 
     return (
         <Page
-            title="Compare a pull request"
-            subtitle="Burn-test an authentik PR build against its base branch or a release, side by side."
+            title={isBranch ? "Compare a branch" : "Compare a pull request"}
+            subtitle={
+                isBranch
+                    ? "Burn-test an authentik branch build, e.g. main, against a stable release, side by side."
+                    : "Burn-test an authentik PR build against its base branch or a release, side by side."
+            }
         >
             <form onSubmit={submit}>
                 <Alert>{error}</Alert>
 
-                <fieldset>
-                    <legend>Pull request</legend>
-                    <div className="fields">
-                        <Field label="Pull request" help="Number or URL on goauthentik/authentik">
-                            <input
-                                required
-                                value={prInput}
-                                placeholder="https://github.com/goauthentik/authentik/pull/12345"
-                                onChange={(e) => setPrInput(e.target.value)}
-                                onBlur={() => {
-                                    if (prNumber !== undefined && prNumber !== pr?.number) {
-                                        void lookUp();
-                                    }
-                                }}
-                            />
-                        </Field>
-                        <Field
-                            label="PR image tag"
-                            help={
-                                <>
-                                    On {DEV_IMAGE}; defaults to the PR&apos;s head commit.{" "}
-                                    <ImageStatus state={prImage} />
-                                </>
-                            }
-                        >
-                            <input
-                                required
-                                value={prTag}
-                                placeholder="gh-<commit sha>"
-                                onChange={(e) => setPrTag(e.target.value)}
-                            />
-                        </Field>
-                    </div>
-                    <div className="row">
-                        <button
-                            type="button"
-                            disabled={lookingUp || prNumber === undefined}
-                            onClick={() => void lookUp()}
-                        >
-                            {lookingUp ? "Looking up…" : "Look up on GitHub"}
-                        </button>
-                        {pr && (
-                            <span className="muted">
-                                <a href={pr.url} target="_blank" rel="noreferrer">
-                                    #{pr.number}
-                                </a>{" "}
-                                {pr.title} ({pr.state}, <code>{pr.headRef}</code> into{" "}
-                                <code>{pr.baseRef}</code>)
-                            </span>
+                {isBranch ? (
+                    <fieldset>
+                        <legend>Branch</legend>
+                        <div className="fields">
+                            <Field label="Branch" help="On goauthentik/authentik">
+                                <input
+                                    required
+                                    value={branch}
+                                    placeholder="main"
+                                    onChange={(e) => {
+                                        setBranch(e.target.value);
+                                        setBranchSha(undefined);
+                                    }}
+                                />
+                            </Field>
+                            <Field
+                                label="Branch image tag"
+                                help={
+                                    <>
+                                        On {DEV_IMAGE}; pin it to the branch&apos;s head commit so a
+                                        restart doesn&apos;t pick up a newer build.{" "}
+                                        <ImageStatus state={prImage} />
+                                    </>
+                                }
+                            >
+                                <input
+                                    required
+                                    value={prTag}
+                                    placeholder="gh-<commit sha>"
+                                    onChange={(e) => setPrTag(e.target.value)}
+                                />
+                            </Field>
+                        </div>
+                        <div className="row">
+                            <button
+                                type="button"
+                                disabled={lookingUp || !branch.trim()}
+                                onClick={() => void lookUpBranch()}
+                            >
+                                {lookingUp ? "Looking up…" : "Pin to head commit"}
+                            </button>
+                            {branchSha && (
+                                <span className="muted">
+                                    <code>{branch}</code> is at{" "}
+                                    <code>{branchSha.slice(0, 12)}</code>
+                                </span>
+                            )}
+                        </div>
+                        <Alert>{lookupError}</Alert>
+                    </fieldset>
+                ) : (
+                    <fieldset>
+                        <legend>Pull request</legend>
+                        <div className="fields">
+                            <Field
+                                label="Pull request"
+                                help="Number or URL on goauthentik/authentik"
+                            >
+                                <input
+                                    required
+                                    value={prInput}
+                                    placeholder="https://github.com/goauthentik/authentik/pull/12345"
+                                    onChange={(e) => setPrInput(e.target.value)}
+                                    onBlur={() => {
+                                        if (prNumber !== undefined && prNumber !== pr?.number) {
+                                            void lookUp();
+                                        }
+                                    }}
+                                />
+                            </Field>
+                            <Field
+                                label="PR image tag"
+                                help={
+                                    <>
+                                        On {DEV_IMAGE}; defaults to the PR&apos;s head commit.{" "}
+                                        <ImageStatus state={prImage} />
+                                    </>
+                                }
+                            >
+                                <input
+                                    required
+                                    value={prTag}
+                                    placeholder="gh-<commit sha>"
+                                    onChange={(e) => setPrTag(e.target.value)}
+                                />
+                            </Field>
+                        </div>
+                        <div className="row">
+                            <button
+                                type="button"
+                                disabled={lookingUp || prNumber === undefined}
+                                onClick={() => void lookUp()}
+                            >
+                                {lookingUp ? "Looking up…" : "Look up on GitHub"}
+                            </button>
+                            {pr && (
+                                <span className="muted">
+                                    <a href={pr.url} target="_blank" rel="noreferrer">
+                                        #{pr.number}
+                                    </a>{" "}
+                                    {pr.title} ({pr.state}, <code>{pr.headRef}</code> into{" "}
+                                    <code>{pr.baseRef}</code>)
+                                </span>
+                            )}
+                        </div>
+                        <Alert>{lookupError}</Alert>
+                        {pr && !pr.sameRepo && (
+                            <Alert kind="info">
+                                This PR comes from a fork - authentik&apos;s CI doesn&apos;t publish
+                                images for those, so the PR image tag likely doesn&apos;t exist.
+                                Enter the tag of an image you built yourself.
+                            </Alert>
                         )}
-                    </div>
-                    <Alert>{lookupError}</Alert>
-                    {pr && !pr.sameRepo && (
-                        <Alert kind="info">
-                            This PR comes from a fork - authentik&apos;s CI doesn&apos;t publish
-                            images for those, so the PR image tag likely doesn&apos;t exist. Enter
-                            the tag of an image you built yourself.
-                        </Alert>
-                    )}
-                </fieldset>
+                    </fieldset>
+                )}
 
                 <fieldset>
                     <legend>Baseline</legend>
-                    <div className="choice-cards" role="radiogroup" aria-label="Baseline">
-                        <label className="choice-card">
-                            <input
-                                type="radio"
-                                name="baseline"
-                                checked={baseline === "base"}
-                                onChange={() => setBaseline("base")}
-                            />
-                            <span>
-                                <strong>Base branch{pr ? ` (${pr.baseRef})` : ""}</strong>
-                                <span className="muted">
-                                    The dev build of the commit the PR is based on, so only the
-                                    PR&apos;s own changes differ.
+                    {!isBranch && (
+                        <div className="choice-cards" role="radiogroup" aria-label="Baseline">
+                            <label className="choice-card">
+                                <input
+                                    type="radio"
+                                    name="baseline"
+                                    checked={baseline === "base"}
+                                    onChange={() => setBaseline("base")}
+                                />
+                                <span>
+                                    <strong>Base branch{pr ? ` (${pr.baseRef})` : ""}</strong>
+                                    <span className="muted">
+                                        The dev build of the commit the PR is based on, so only the
+                                        PR&apos;s own changes differ.
+                                    </span>
                                 </span>
-                            </span>
-                        </label>
-                        <label className="choice-card">
-                            <input
-                                type="radio"
-                                name="baseline"
-                                checked={baseline === "release"}
-                                onChange={() => setBaseline("release")}
-                            />
-                            <span>
-                                <strong>Tagged release</strong>
-                                <span className="muted">
-                                    A released version, e.g. to check a PR against what users run
-                                    today.
+                            </label>
+                            <label className="choice-card">
+                                <input
+                                    type="radio"
+                                    name="baseline"
+                                    checked={baseline === "release"}
+                                    onChange={() => setBaseline("release")}
+                                />
+                                <span>
+                                    <strong>Tagged release</strong>
+                                    <span className="muted">
+                                        A released version, e.g. to check a PR against what users
+                                        run today.
+                                    </span>
                                 </span>
-                            </span>
-                        </label>
-                    </div>
+                            </label>
+                        </div>
+                    )}
                     <div className="fields">
                         {baseline === "base" ? (
                             <Field
@@ -405,7 +504,7 @@ export function PullRequestComparisonPage() {
                             <input
                                 required
                                 value={effectivePrefix}
-                                placeholder="pr-12345"
+                                placeholder={isBranch ? "main" : "pr-12345"}
                                 onChange={(e) => {
                                     setPrefixEdited(true);
                                     setPrefix(e.target.value);

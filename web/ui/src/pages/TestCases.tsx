@@ -238,6 +238,9 @@ export function TestCasesPage() {
                     <Link className="button" to="/pull-requests/new">
                         Compare a PR
                     </Link>
+                    <Link className="button" to="/branches/new">
+                        Compare a branch
+                    </Link>
                     <Link className="button primary" to="/testcases/new">
                         New test case
                     </Link>

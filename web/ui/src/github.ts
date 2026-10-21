@@ -122,3 +122,11 @@ export async function fetchLatestRelease(): Promise<string> {
     const release = await github<{ tag_name: string }>("/releases/latest");
     return releaseVersion(release.tag_name);
 }
+
+/** fetchBranchHead returns the sha of a branch's newest commit. */
+export async function fetchBranchHead(branch: string): Promise<string> {
+    const res = await github<{ commit: { sha: string } }>(
+        `/branches/${encodeURIComponent(branch)}`,
+    );
+    return res.commit.sha;
+}

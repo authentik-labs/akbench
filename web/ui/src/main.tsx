@@ -181,6 +181,14 @@ const router = createBrowserRouter([
                 ),
             },
             {
+                path: "branches/new",
+                handle: t("Compare a branch"),
+                element: page(
+                    () => import("./pages/PullRequestComparison"),
+                    "BranchComparisonPage",
+                ),
+            },
+            {
                 path: "compare",
                 handle: t("Compare"),
                 element: page(() => import("./pages/Compare"), "ComparePage"),
