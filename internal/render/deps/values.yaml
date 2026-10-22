@@ -28,7 +28,7 @@ samlTestIdP:
 dex:
   image:
     repository: ghcr.io/dexidp/dex
-    tag: v2.46.0
+    tag: 2.46.1
 
 # Matches the authentik chart's default postgresql.image so the psql client
 # speaks the server's protocol version; Dependabot ignores majors for it.
