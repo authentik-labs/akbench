@@ -126,6 +126,8 @@ entries:
       client_type: confidential
       client_id: {{ .ID | quote }}
       client_secret: {{ .Secret | quote }}
+      # Required by the serializer even without a browser flow.
+      redirect_uris: []
       grant_types:
         - client_credentials
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
@@ -145,6 +147,8 @@ entries:
       client_type: confidential
       client_id: {{ .ExchangeID | quote }}
       client_secret: {{ .ExchangeSecret | quote }}
+      # Required by the serializer even without a browser flow.
+      redirect_uris: []
       grant_types:
         - "urn:ietf:params:oauth:grant-type:token-exchange"
       jwt_federation_providers:
