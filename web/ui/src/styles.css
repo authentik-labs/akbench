@@ -4,7 +4,9 @@
  * palette - our own --bg/--panel/etc. names below are kept (every other rule
  * in this file already uses them) but just alias the real --ak-global--*
  * tokens, so this app looks like part of authentik rather than a lookalike.
- * Only the token groups this file uses are imported: the package's
+ * Spacing, type sizes, radii, z-index and motion all come from the theme
+ * scale too - prefer a token over a raw px value. Only the token groups
+ * this file uses are imported: the package's
  * index.css also carries the raw palette and a PatternFly (--pf-*) bridge,
  * neither of which anything here reads. Dark mode: @goauthentik/theme keys
  * its dark values off html[data-theme="dark"], not a prefers-color-scheme
@@ -13,6 +15,9 @@
 @import "@goauthentik/theme/typography.css";
 @import "@goauthentik/theme/shape.css";
 @import "@goauthentik/theme/shadow.css";
+@import "@goauthentik/theme/spacing.css";
+@import "@goauthentik/theme/motion.css";
+@import "@goauthentik/theme/z-index.css";
 @import "@goauthentik/fonts/faces.css";
 
 :root {
@@ -39,14 +44,14 @@
     --warn-text: var(--ak-global--color--warning--deep);
     --info-text: var(--link);
     --code-bg: var(--ak-global--color--surface--raised);
-    --radius: 6px;
+    --radius: var(--ak-global--radius--sm);
     --radius-sm: var(--ak-global--radius--sm);
     --radius-pill: var(--ak-global--radius--pill);
     --shadow-sm: var(--ak-global--box-shadow--sm);
     --shadow-lg: var(--ak-global--box-shadow--lg);
     --terminal-bg: #0f1115;
     font-family: var(--ak-global--font-family--body);
-    line-height: 1.45;
+    line-height: var(--ak-global--line-height--md);
     color: var(--text);
     background: var(--bg);
 }
@@ -57,7 +62,7 @@
  * assume authentik's 16px root. */
 body {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--ak-global--font-size--sm);
 }
 a {
     color: var(--link);
@@ -70,11 +75,11 @@ code,
 pre,
 .mono {
     font-family: var(--ak-global--font-family--code);
-    font-size: 12.5px;
+    font-size: var(--ak-global--font-size--xs);
 }
 code {
     background: var(--code-bg);
-    padding: 1px 4px;
+    padding: 1px var(--ak-global--spacer--xs);
     border-radius: var(--radius-sm);
 }
 h1,
@@ -82,18 +87,18 @@ h2 {
     font-family: var(--ak-global--font-family--heading);
 }
 h1 {
-    font-size: 20px;
+    font-size: var(--ak-global--font-size--xl);
     margin: 0;
 }
 h2 {
-    font-size: 15px;
-    margin: 24px 0 8px;
+    font-size: var(--ak-global--font-size--md);
+    margin: var(--ak-global--spacer--lg) 0 var(--ak-global--spacer--sm);
 }
 h3 {
-    font-size: 13px;
-    margin: 0 0 8px;
+    font-size: var(--ak-global--font-size--xs);
+    margin: 0 0 var(--ak-global--spacer--sm);
     color: var(--muted);
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
 }
 
 /* -- layout */
@@ -103,7 +108,7 @@ h3 {
 .sidebar {
     background: var(--panel);
     border-right: 1px solid var(--border);
-    padding: 18px 12px;
+    padding: var(--ak-global--spacer--lg) var(--ak-global--spacer--md);
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -116,10 +121,10 @@ h3 {
 .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-weight: 700;
-    font-size: 15px;
-    padding: 4px 12px 20px;
+    gap: var(--ak-global--spacer--sm);
+    font-weight: var(--ak-global--font-weight--bold);
+    font-size: var(--ak-global--font-size--md);
+    padding: var(--ak-global--spacer--xs) var(--ak-global--spacer--md) var(--ak-global--spacer--lg);
     color: var(--text);
 }
 .brand img {
@@ -128,7 +133,7 @@ h3 {
 }
 .nav-link {
     display: block;
-    padding: 7px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     margin-bottom: 2px;
     border-radius: var(--radius);
     color: var(--text);
@@ -140,27 +145,27 @@ h3 {
 .nav-link.active {
     background: var(--bg);
     color: var(--text);
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
     box-shadow: inset 3px 0 0 var(--accent);
 }
 .nav-section-label {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--ak-global--font-size--xs);
+    font-weight: var(--ak-global--font-weight--bold);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--muted);
-    padding: 16px 12px 4px;
+    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md) var(--ak-global--spacer--xs);
 }
 .nav-section-label:first-child {
     padding-top: 0;
 }
 .build-badge {
     align-self: flex-start;
-    padding: 1px 8px;
+    padding: 1px var(--ak-global--spacer--sm);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
     color: var(--muted);
-    font: 11px var(--ak-global--font-family--code);
+    font: var(--ak-global--font-size--xs) var(--ak-global--font-family--code);
     white-space: nowrap;
     max-width: 100%;
     overflow: hidden;
@@ -174,17 +179,17 @@ a.build-badge:hover {
 /* Pinned to the bottom of the sidebar, below however much nav there is. */
 .sidebar-foot {
     margin-top: auto;
-    padding: 12px 8px 0;
+    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--sm) 0;
     border-top: 1px solid var(--border);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--ak-global--spacer--form-element);
 }
 .main {
     margin-left: 236px;
-    padding: 20px 28px 48px;
+    padding: var(--ak-global--spacer--lg) var(--ak-global--spacer--xl) var(--ak-global--spacer--2xl);
     min-width: 0;
 }
 .main.full {
@@ -202,24 +207,24 @@ a.build-badge:hover {
     .mobile-bar {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--ak-global--spacer--sm);
         position: sticky;
         top: 0;
-        z-index: 10;
+        z-index: var(--ak-global--z-index--sm);
         height: 48px;
-        padding: 0 12px;
+        padding: 0 var(--ak-global--spacer--md);
         background: var(--panel);
         border-bottom: 1px solid var(--border);
-        font-weight: 700;
+        font-weight: var(--ak-global--font-weight--bold);
     }
     .mobile-bar img {
         width: 22px;
         height: 22px;
     }
     .sidebar {
-        z-index: 30;
+        z-index: var(--ak-global--z-index--lg);
         transform: translateX(-100%);
-        transition: transform 0.2s ease;
+        transition: transform var(--ak-global--duration--normal) var(--ak-global--easing--standard);
     }
     .sidebar.open {
         transform: none;
@@ -228,12 +233,13 @@ a.build-badge:hover {
         display: block;
         position: fixed;
         inset: 0;
-        z-index: 20;
-        background: rgb(0 0 0 / 40%);
+        z-index: var(--ak-global--z-index--md);
+        background: var(--ak-global--color--scrim--light);
     }
     .main {
         margin-left: 0;
-        padding: 16px 16px 48px;
+        padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md)
+            var(--ak-global--spacer--2xl);
     }
     .main.full {
         height: calc(100dvh - 48px);
@@ -243,8 +249,8 @@ a.build-badge:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 16px;
+    gap: var(--ak-global--spacer--md);
+    margin-bottom: var(--ak-global--spacer--md);
     flex-wrap: wrap;
 }
 .page-head .sub {
@@ -263,40 +269,40 @@ a.build-badge:hover {
 }
 .row {
     display: flex;
-    gap: 8px;
+    gap: var(--ak-global--spacer--sm);
     align-items: center;
     flex-wrap: wrap;
 }
 .grid2 {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-    gap: 14px;
+    gap: var(--ak-global--spacer--md);
 }
 .stats {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: var(--ak-global--spacer--md);
+    margin-bottom: var(--ak-global--spacer--sm);
 }
 .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 14px;
+    padding: var(--ak-global--spacer--md);
 }
 .stat {
     text-align: center;
 }
 .stat .value {
-    font-size: 26px;
-    font-weight: 700;
+    font-size: var(--ak-global--font-size--2xl);
+    font-weight: var(--ak-global--font-weight--bold);
 }
 .stat .label {
     color: var(--muted);
 }
 .stat .hint {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
     margin-top: 2px;
 }
 .muted {
@@ -304,7 +310,7 @@ a.build-badge:hover {
 }
 .empty {
     color: var(--muted);
-    padding: 18px;
+    padding: var(--ak-global--spacer--lg);
     text-align: center;
     border: 1px dashed var(--border);
     border-radius: var(--radius);
@@ -326,17 +332,17 @@ a.build-badge:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: var(--ak-global--spacer--sm);
     color: var(--muted);
-    padding: 18px;
+    padding: var(--ak-global--spacer--lg);
 }
 .section-body.stale {
     opacity: 0.55;
-    transition: opacity 0.15s;
+    transition: opacity var(--ak-global--duration--normal) var(--ak-global--easing--standard);
 }
 table.table.skeleton td {
-    padding-top: 12px;
-    padding-bottom: 12px;
+    padding-top: var(--ak-global--spacer--md);
+    padding-bottom: var(--ak-global--spacer--md);
 }
 .skeleton-bar {
     display: block;
@@ -384,14 +390,14 @@ table.table {
 .table th,
 .table td {
     text-align: left;
-    padding: 8px 10px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--sm);
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
 }
 .table th {
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
@@ -410,12 +416,12 @@ button,
     border: 1px solid var(--border);
     background: var(--panel);
     color: var(--text);
-    padding: 5px 12px;
+    padding: var(--ak-global--spacer--xs) var(--ak-global--spacer--md);
     border-radius: var(--radius);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--ak-global--spacer--form-element);
 }
 button:hover:not(:disabled),
 .button:hover {
@@ -439,8 +445,8 @@ button:disabled {
     color: var(--err);
 }
 .small {
-    padding: 2px 8px;
-    font-size: 12.5px;
+    padding: 2px var(--ak-global--spacer--sm);
+    font-size: var(--ak-global--font-size--xs);
 }
 .linkish {
     border: none;
@@ -452,8 +458,8 @@ button:disabled {
 .fields {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px 16px;
-    margin-bottom: 8px;
+    gap: var(--ak-global--spacer--md) var(--ak-global--spacer--md);
+    margin-bottom: var(--ak-global--spacer--sm);
 }
 .fields > .wide {
     grid-column: 1 / -1;
@@ -461,26 +467,26 @@ button:disabled {
 .field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-weight: 600;
-    font-size: 13px;
+    gap: var(--ak-global--spacer--xs);
+    font-weight: var(--ak-global--font-weight--semi-bold);
+    font-size: var(--ak-global--font-size--xs);
 }
 .field .help {
-    font-weight: 400;
+    font-weight: var(--ak-global--font-weight--normal);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
 }
 label.check {
     display: flex;
-    gap: 8px;
+    gap: var(--ak-global--spacer--sm);
     align-items: center;
 }
 .pool {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--panel);
-    padding: 12px;
-    margin-bottom: 12px;
+    padding: var(--ak-global--spacer--md);
+    margin-bottom: var(--ak-global--spacer--md);
 }
 .pool > .fields {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -500,12 +506,12 @@ input,
 select,
 textarea {
     font: inherit;
-    padding: 6px 8px;
+    padding: var(--ak-global--spacer--form-element) var(--ak-global--spacer--sm);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
     color: var(--text);
-    font-weight: 400;
+    font-weight: var(--ak-global--font-weight--normal);
 }
 input:disabled,
 select:disabled {
@@ -513,18 +519,18 @@ select:disabled {
 }
 .form-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 20px;
+    gap: var(--ak-global--spacer--sm);
+    margin-top: var(--ak-global--spacer--lg);
 }
 fieldset {
     border: none;
     padding: 0;
-    margin: 0 0 8px;
+    margin: 0 0 var(--ak-global--spacer--sm);
 }
 legend {
-    font-weight: 700;
-    font-size: 15px;
-    margin: 18px 0 8px;
+    font-weight: var(--ak-global--font-weight--bold);
+    font-size: var(--ak-global--font-size--md);
+    margin: var(--ak-global--spacer--lg) 0 var(--ak-global--spacer--sm);
     padding: 0;
 }
 
@@ -533,9 +539,9 @@ legend {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    margin: 24px 0 10px;
+    margin: var(--ak-global--spacer--lg) 0 var(--ak-global--spacer--sm);
 }
 .section-head h2 {
     margin: 0 0 2px;
@@ -545,28 +551,28 @@ legend {
 .section {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    margin: 0 0 20px;
-    scroll-margin-top: 56px;
+    border-radius: var(--radius);
+    margin: 0 0 var(--ak-global--spacer--lg);
+    scroll-margin-top: var(--ak-global--spacer--2xl);
 }
 .section-bar {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    padding: 12px 16px;
+    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md);
     border-bottom: 1px solid var(--border);
-    border-radius: 8px 8px 0 0;
+    border-radius: var(--radius) var(--radius) 0 0;
     background: var(--code-bg);
     box-shadow: inset 4px 0 0 var(--accent);
 }
 .section-bar h2 {
     margin: 0 0 2px;
-    font-size: 16px;
+    font-size: var(--ak-global--font-size--md);
 }
 .section-body {
-    padding: 16px;
+    padding: var(--ak-global--spacer--md);
     min-width: 0;
 }
 .section-body > :last-child {
@@ -574,7 +580,7 @@ legend {
 }
 .section-body h3 {
     color: var(--text);
-    font-size: 13.5px;
+    font-size: var(--ak-global--font-size--sm);
 }
 .section-body > h3:first-child,
 .section-body > .sub-head:first-child h3 {
@@ -584,28 +590,28 @@ legend {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    margin-bottom: 10px;
+    margin-bottom: var(--ak-global--spacer--sm);
 }
 .sub-head h3 {
-    margin: 22px 0 2px;
+    margin: var(--ak-global--spacer--lg) 0 2px;
 }
 .section-nav {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: var(--ak-global--z-index--xs);
     display: flex;
-    gap: 4px;
+    gap: var(--ak-global--spacer--xs);
     flex-wrap: wrap;
-    padding: 8px 0;
-    margin-bottom: 8px;
+    padding: var(--ak-global--spacer--sm) 0;
+    margin-bottom: var(--ak-global--spacer--sm);
     background: var(--bg);
 }
 .section-nav button {
     border-radius: var(--radius-pill);
-    padding: 3px 12px;
-    font-size: 13px;
+    padding: 3px var(--ak-global--spacer--md);
+    font-size: var(--ak-global--font-size--xs);
     color: var(--muted);
 }
 .section-nav button:hover:not(:disabled) {
@@ -615,7 +621,7 @@ legend {
     display: flex;
     width: 180px;
     height: 10px;
-    border-radius: 5px;
+    border-radius: var(--radius);
     overflow: hidden;
     background: var(--code-bg);
     border: 1px solid var(--border);
@@ -627,16 +633,16 @@ legend {
 }
 .legend {
     display: flex;
-    gap: 14px;
+    gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    margin: 8px 0 0;
+    margin: var(--ak-global--spacer--sm) 0 0;
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .legend > span {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--ak-global--spacer--form-element);
 }
 .swatch {
     display: inline-block;
@@ -648,7 +654,7 @@ legend {
 .fn-file {
     display: block;
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: var(--ak-global--font-size--xs);
     max-width: 520px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -658,16 +664,16 @@ legend {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    margin-bottom: 12px;
+    margin-bottom: var(--ak-global--spacer--md);
     overflow: hidden;
 }
 .group-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--ak-global--spacer--sm);
     flex-wrap: wrap;
-    padding: 10px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-bottom: 1px solid var(--border);
     background: var(--code-bg);
 }
@@ -698,8 +704,9 @@ legend {
     width: 20px;
     height: 20px;
     flex: none;
-    border-radius: 4px;
-    font: 600 11px var(--ak-global--font-family--code);
+    border-radius: var(--radius);
+    font: var(--ak-global--font-weight--semi-bold) var(--ak-global--font-size--xs)
+        var(--ak-global--font-family--code);
 }
 .delta.better {
     color: var(--ok);
@@ -714,7 +721,7 @@ legend {
     display: inline-block;
     width: 120px;
     height: 8px;
-    border-radius: 4px;
+    border-radius: var(--radius);
     background: var(--code-bg);
     border: 1px solid var(--border);
     overflow: hidden;
@@ -742,7 +749,7 @@ legend {
 .seg button {
     border: none;
     background: transparent;
-    padding: 3px 10px;
+    padding: 3px var(--ak-global--spacer--sm);
     color: var(--muted);
 }
 .seg button.on {
@@ -753,44 +760,44 @@ legend {
 .chips {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--ak-global--spacer--sm);
     flex-wrap: wrap;
-    margin-bottom: 12px;
+    margin-bottom: var(--ak-global--spacer--md);
 }
 .chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
+    gap: var(--ak-global--spacer--form-element);
+    padding: 3px var(--ak-global--spacer--sm);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
     color: var(--text);
     font-family: var(--ak-global--font-family--code);
-    font-size: 12.5px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .chip.current {
     border-color: var(--text);
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
 }
 
 /* -- choice controls */
 .choice-cards {
     display: flex;
-    gap: 12px;
+    gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    margin-bottom: 14px;
+    margin-bottom: var(--ak-global--spacer--md);
 }
 .choice-card {
     flex: 1 1 260px;
     display: flex;
-    gap: 10px;
+    gap: var(--ak-global--spacer--sm);
     align-items: flex-start;
-    padding: 12px 14px;
+    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--panel);
     cursor: pointer;
-    font-weight: 400;
+    font-weight: var(--ak-global--font-weight--normal);
 }
 .choice-card:has(input:checked) {
     border-color: var(--accent);
@@ -815,10 +822,10 @@ legend {
 .checklist label {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
+    gap: var(--ak-global--spacer--sm);
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-bottom: 1px solid var(--border);
-    font-weight: 400;
+    font-weight: var(--ak-global--font-weight--normal);
     cursor: pointer;
 }
 .checklist label:last-child {
@@ -839,17 +846,17 @@ legend {
     white-space: nowrap;
     color: var(--muted);
     font-family: var(--ak-global--font-family--code);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .checklist > .muted {
-    padding: 8px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
 }
 
 /* -- feedback */
 .alert {
-    padding: 8px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-radius: var(--radius);
-    margin-bottom: 12px;
+    margin-bottom: var(--ak-global--spacer--md);
     border: 1px solid;
 }
 .alert.error {
@@ -867,22 +874,22 @@ legend {
 /* Bottom right: at the top it covered the page-head action buttons. */
 .toast-host {
     position: fixed;
-    z-index: 50;
-    bottom: 16px;
-    right: 16px;
+    z-index: var(--ak-global--z-index--xl);
+    bottom: var(--ak-global--spacer--md);
+    right: var(--ak-global--spacer--md);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--ak-global--spacer--sm);
     max-width: 360px;
 }
 .toast {
-    padding: 10px 14px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-radius: var(--radius);
     border: 1px solid var(--border);
     background: var(--panel);
     box-shadow: var(--shadow-lg);
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .toast.success {
     border-color: var(--ok);
@@ -896,7 +903,7 @@ legend {
 /* Confirm.tsx: a native <dialog>, opened with showModal(). */
 dialog.confirm {
     width: min(440px, calc(100vw - 32px));
-    padding: 20px;
+    padding: var(--ak-global--spacer--lg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--panel);
@@ -904,22 +911,22 @@ dialog.confirm {
     box-shadow: var(--shadow-lg);
 }
 dialog.confirm::backdrop {
-    background: rgb(0 0 0 / 40%);
+    background: var(--ak-global--color--scrim--light);
 }
 dialog.confirm h2 {
-    margin: 0 0 8px;
-    font-size: 16px;
+    margin: 0 0 var(--ak-global--spacer--sm);
+    font-size: var(--ak-global--font-size--md);
 }
 dialog.confirm p {
     margin: 0;
-    line-height: 1.5;
+    line-height: var(--ak-global--line-height--md);
 }
 dialog.confirm label.check {
-    margin-top: 14px;
+    margin-top: var(--ak-global--spacer--md);
 }
 .confirm-actions {
     justify-content: flex-end;
-    margin-top: 20px;
+    margin-top: var(--ak-global--spacer--lg);
 }
 .danger-solid {
     background: var(--err);
@@ -932,10 +939,10 @@ dialog.confirm label.check {
 }
 .badge {
     display: inline-block;
-    padding: 1px 8px;
+    padding: 1px var(--ak-global--spacer--sm);
     border-radius: var(--radius-pill);
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--ak-global--font-size--xs);
+    font-weight: var(--ak-global--font-weight--semi-bold);
     border: 1px solid currentColor;
     white-space: nowrap;
 }
@@ -960,15 +967,15 @@ dialog.confirm label.check {
 }
 .popover {
     position: absolute;
-    z-index: 20;
-    top: calc(100% + 4px);
+    z-index: var(--ak-global--z-index--md);
+    top: calc(100% + var(--ak-global--spacer--xs));
     left: 0;
     min-width: 340px;
     max-width: 520px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     box-shadow: var(--shadow-lg);
 }
 /* One shared grid for every row, so the type column is as wide as its
@@ -976,21 +983,21 @@ dialog.confirm label.check {
 .conditions {
     display: grid;
     grid-template-columns: auto max-content minmax(0, 1fr);
-    gap: 6px 12px;
+    gap: var(--ak-global--spacer--form-element) var(--ak-global--spacer--md);
     align-items: baseline;
 }
 .conditions .cond {
     display: contents;
 }
 .conditions .cond-type {
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
     white-space: nowrap;
 }
 
 /* -- activity log */
 .activity {
-    margin-top: 14px;
-    padding-top: 12px;
+    margin-top: var(--ak-global--spacer--md);
+    padding-top: var(--ak-global--spacer--md);
     border-top: 1px solid var(--border);
 }
 .activity:first-child {
@@ -1004,14 +1011,14 @@ dialog.confirm label.check {
     padding: 0;
     max-height: 320px;
     overflow-y: auto;
-    font-size: 13px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .log li {
     display: grid;
     grid-template-columns: max-content minmax(120px, max-content) minmax(0, 1fr);
-    gap: 12px;
-    padding: 5px 8px;
-    border-radius: 4px;
+    gap: var(--ak-global--spacer--md);
+    padding: var(--ak-global--spacer--xs) var(--ak-global--spacer--sm);
+    border-radius: var(--radius);
     align-items: baseline;
 }
 .log li:nth-child(odd) {
@@ -1020,11 +1027,11 @@ dialog.confirm label.check {
 .log time {
     color: var(--muted);
     font-family: var(--ak-global--font-family--code);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
     white-space: nowrap;
 }
 .log .reason {
-    font-weight: 600;
+    font-weight: var(--ak-global--font-weight--semi-bold);
     white-space: nowrap;
 }
 .log .count {
@@ -1038,7 +1045,7 @@ dialog.confirm label.check {
 /* -- code / yaml / editor */
 pre.yaml {
     background: var(--code-bg);
-    padding: 12px;
+    padding: var(--ak-global--spacer--md);
     border-radius: var(--radius);
     overflow: auto;
     max-height: 520px;
@@ -1046,8 +1053,8 @@ pre.yaml {
 }
 details > summary {
     cursor: pointer;
-    font-weight: 600;
-    margin: 18px 0 8px;
+    font-weight: var(--ak-global--font-weight--semi-bold);
+    margin: var(--ak-global--spacer--lg) 0 var(--ak-global--spacer--sm);
 }
 .editor {
     border: 1px solid var(--border);
@@ -1061,20 +1068,20 @@ details > summary {
     margin: 12vh auto;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--ak-global--spacer--md);
 }
 .login .or {
     text-align: center;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--ak-global--font-size--xs);
 }
 
 /* -- shell */
 .shell-bar {
     display: flex;
-    gap: 10px;
+    gap: var(--ak-global--spacer--sm);
     align-items: center;
-    padding: 8px 12px;
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-bottom: 1px solid var(--border);
     background: var(--panel);
     flex-wrap: wrap;
@@ -1082,20 +1089,20 @@ details > summary {
 .shell-bar .status {
     margin-left: auto;
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .terminal-host {
     flex: 1;
     min-height: 0;
     background: var(--terminal-bg);
-    padding: 6px 0 0 8px;
+    padding: var(--ak-global--spacer--form-element) 0 0 var(--ak-global--spacer--sm);
 }
 .terminal-host canvas {
     display: block;
 }
 .shell-tabs {
     display: flex;
-    gap: 4px;
+    gap: var(--ak-global--spacer--xs);
 }
 .shell-tabs button.active {
     border-color: var(--accent);
@@ -1120,15 +1127,15 @@ details > summary {
 .placement {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 8px;
-    padding: 12px;
+    gap: var(--ak-global--spacer--sm);
+    padding: var(--ak-global--spacer--md);
 }
 .placement-node {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 8px;
+    padding: var(--ak-global--spacer--sm);
     overflow-wrap: anywhere;
-    font-size: 12.5px;
+    font-size: var(--ak-global--font-size--xs);
 }
 .placement-node.shared {
     border-color: var(--warn);
@@ -1136,8 +1143,8 @@ details > summary {
 .placement-pods {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+    gap: var(--ak-global--spacer--xs);
+    margin-top: var(--ak-global--spacer--form-element);
 }
 .placement-pod {
     display: inline-block;
