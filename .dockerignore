@@ -19,6 +19,9 @@
 # Re-include the pinned chart/image versions embedded via go:embed (see internal/render/deps.go)
 !internal/render/deps/*.yaml
 
+# Re-include the dependency blueprint template embedded via go:embed (see internal/controller/testdeps.go)
+!internal/controller/blueprints/*.tmpl
+
 # Re-include the web UI's sources for Dockerfile.apiserver's frontend stage
 # (but never a local node_modules or build output)
 !web/ui/**
