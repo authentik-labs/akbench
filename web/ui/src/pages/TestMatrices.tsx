@@ -1,9 +1,10 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
+import { MatrixGrid } from "../components/Matrix";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
-import { Badge, ConditionList, StatusBadge } from "../components/Status";
-import { burningFor, Delta, TARGET_METRICS } from "../components/Targets";
+import { ConditionList, StatusBadge } from "../components/Status";
+import { burningFor, TARGET_METRICS } from "../components/Targets";
 import { toast } from "../components/Toast";
 import {
     Alert,
@@ -21,11 +22,8 @@ import {
     archivedBurnWindow,
     earliestBurnStart,
     formatDuration,
-    formatMetricValue,
     newestFirst,
     parseTimeRange,
-    relativeDelta,
-    shortTag,
     SINCE_START,
     timeRangeSeconds,
 } from "../format";
@@ -199,12 +197,6 @@ export function TestMatrixViewPage() {
     );
     const metrics = (comparison.data?.metrics ?? []).filter((x) => TARGET_METRICS.includes(x.key));
     const metric = metrics.find((x) => x.key === metricKey);
-    const valueOf = (testid: string, target: string) =>
-        comparison.data?.results.find((r) => r.testid === testid && r.target === target)?.values[
-            metricKey
-        ];
-
-    const baseline = m ? baselineOf(m) : undefined;
     const since = rowTestCases.map((tc) => burningFor(tc)).find((d) => d !== undefined);
     const burnedFor =
         burnStart !== undefined && burnEnd !== undefined
@@ -307,81 +299,12 @@ export function TestMatrixViewPage() {
                 ) : rows.length === 0 ? (
                     <Empty>No test cases yet - the matrix is still being set up.</Empty>
                 ) : (
-                    <div className="table-scroll">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Template</th>
-                                    {m.spec.variants.map((v) => (
-                                        <th key={v.name}>
-                                            {v.name}
-                                            {v.name === baseline && (
-                                                <span className="muted"> (baseline)</span>
-                                            )}
-                                            <div className="muted mono" title={v.tag}>
-                                                {shortTag(v.tag)}
-                                            </div>
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map((row) => {
-                                    const baselineCell = row.cells?.find(
-                                        (c) => c.variant === baseline,
-                                    );
-                                    const baselineValue =
-                                        baselineCell &&
-                                        valueOf(row.testCase, baselineCell.deployment);
-                                    return (
-                                        <tr key={row.template}>
-                                            <td>
-                                                <Link to={`/testcases/${row.testCase}`}>
-                                                    {row.template}
-                                                </Link>{" "}
-                                                <Badge value={row.phase} />
-                                            </td>
-                                            {(row.cells ?? []).map((cell) => {
-                                                const value = valueOf(
-                                                    row.testCase,
-                                                    cell.deployment,
-                                                );
-                                                return (
-                                                    <td key={cell.variant}>
-                                                        <div>
-                                                            <strong>
-                                                                {formatMetricValue(
-                                                                    value,
-                                                                    metric?.unit ?? "",
-                                                                )}
-                                                            </strong>{" "}
-                                                            {metric &&
-                                                                cell.variant !== baseline && (
-                                                                    <Delta
-                                                                        value={relativeDelta(
-                                                                            value,
-                                                                            baselineValue,
-                                                                        )}
-                                                                        better={metric.better}
-                                                                    />
-                                                                )}
-                                                        </div>
-                                                        <Link
-                                                            className="muted"
-                                                            to={`/deployments/${cell.deployment}`}
-                                                        >
-                                                            {cell.deployment}
-                                                        </Link>{" "}
-                                                        <Badge value={cell.phase} />
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                    <MatrixGrid
+                        matrix={m}
+                        results={comparison.data?.results ?? []}
+                        metric={metric}
+                        metricKey={metricKey}
+                    />
                 )}
             </Section>
 
@@ -421,12 +344,5 @@ export function TestMatrixViewPage() {
                 <ObjectYaml object={m} />
             </Section>
         </Page>
-    );
-}
-
-/** baselineOf mirrors TestMatrix.BaselineVariant (api/v1alpha1/testmatrix_types.go). */
-export function baselineOf(m: TestMatrix): string | undefined {
-    return (
-        m.spec.variants.find((v) => v.name === m.spec.baseline)?.name ?? m.spec.variants[0]?.name
     );
 }

@@ -1,10 +1,11 @@
 import { api } from "../api";
+import { MatrixGrid } from "../components/Matrix";
 import { NodePlacement } from "../components/Placement";
 import { Badge } from "../components/Status";
 import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
-import { RangePoint, testRunDeployment } from "../types";
+import { RangePoint, TestMatrix, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
 
 import { Link } from "react-router";
@@ -20,6 +21,8 @@ const DAY_MS = 86400 * 1000;
 // (render.ObservabilityNamespace). An alert there means the numbers on this
 // page may be wrong, so it's raised as a banner rather than just counted.
 const OBSERVABILITY_NAMESPACE = "bench-system";
+// TestCase label naming the TestMatrix that created it (LabelTestMatrix).
+const MATRIX_LABEL = "bench.goauthentik.io/testmatrix";
 
 export function DashboardPage() {
     const deployments = useResource(() => api.deployments(), [], 15000);
@@ -27,6 +30,7 @@ export function DashboardPage() {
     const runs = useResource(() => api.testRuns(), [], 10000);
     const clusters = useResource(() => api.clusters(), [], 30000);
     const alerts = useResource(() => api.alerts(), [], 30000);
+    const matrices = useResource(() => api.testMatrices(), [], 15000);
 
     const burnTests = (testCases.data ?? [])
         .filter((tc) => tc.spec.profile === "Burn" && !tc.spec.archived)
@@ -48,6 +52,14 @@ export function DashboardPage() {
         [burnIDs.join(",")],
         60000,
     );
+
+    // A matrix's test cases are shown as its grid instead of one group each.
+    const burnMatrices = (matrices.data ?? [])
+        .filter((m) => (m.status?.rows ?? []).some((r) => burnIDs.includes(r.testCase)))
+        .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
+    const matrixBurnTests = (m: TestMatrix) =>
+        burnTests.filter((tc) => tc.metadata.labels?.[MATRIX_LABEL] === m.metadata.name);
+    const trendMetric = live.data?.metrics.find((x) => x.key === TREND_METRIC);
 
     const groups = burnTests.map((tc) => {
         const sparklines = new Map<string, RangePoint[]>();
@@ -160,7 +172,8 @@ export function DashboardPage() {
                     <h2>Burn tests</h2>
                     <div className="muted">
                         Each test drives one or more targets with the same load. Live values cover
-                        the last minute; the trend shows p95 over 6 hours.
+                        the last minute; the trend shows p95 over 6 hours. A test matrix shows p95
+                        per template and variant, against its baseline.
                     </div>
                 </div>
                 {notReadyTargets > 0 && <Badge value="Not ready" />}
@@ -173,39 +186,74 @@ export function DashboardPage() {
                     stop it - <Link to="/testcases/new">create one</Link>.
                 </Empty>
             ) : (
-                groups.map(({ tc, rows, sparklines }) => {
-                    const since = burningFor(tc);
-                    const degraded = rows.filter((r) => r.ready === false).length;
-                    return (
-                        <div className="group" key={tc.metadata.name}>
-                            <div className="group-head">
-                                <span>
-                                    <Link to={`/testcases/${tc.metadata.name}`} className="mono">
-                                        <strong>{tc.metadata.name}</strong>
-                                    </Link>{" "}
-                                    <span className="muted">
-                                        · {rows.length} {rows.length === 1 ? "target" : "targets"} ·{" "}
-                                        {tc.spec.vus} VUs each
-                                        {since && ` · burning for ${since}`}
+                groups
+                    .filter(({ tc }) => !burnMatrices.some((m) => matrixBurnTests(m).includes(tc)))
+                    .map(({ tc, rows, sparklines }) => {
+                        const since = burningFor(tc);
+                        const degraded = rows.filter((r) => r.ready === false).length;
+                        return (
+                            <div className="group" key={tc.metadata.name}>
+                                <div className="group-head">
+                                    <span>
+                                        <Link
+                                            to={`/testcases/${tc.metadata.name}`}
+                                            className="mono"
+                                        >
+                                            <strong>{tc.metadata.name}</strong>
+                                        </Link>{" "}
+                                        <span className="muted">
+                                            · {rows.length}{" "}
+                                            {rows.length === 1 ? "target" : "targets"} ·{" "}
+                                            {tc.spec.vus} VUs each
+                                            {since && ` · burning for ${since}`}
+                                        </span>
                                     </span>
-                                </span>
-                                {degraded > 0 ? (
-                                    <Badge value="Not ready" />
-                                ) : (
-                                    <Badge value={tc.status?.phase ?? "Pending"} />
-                                )}
+                                    {degraded > 0 ? (
+                                        <Badge value="Not ready" />
+                                    ) : (
+                                        <Badge value={tc.status?.phase ?? "Pending"} />
+                                    )}
+                                </div>
+                                <TargetTable
+                                    rows={rows}
+                                    metrics={live.data?.metrics ?? []}
+                                    metricKeys={BURN_SUMMARY_METRICS}
+                                    loading={live.loading && !live.data}
+                                    sparklines={sparklines}
+                                />
                             </div>
-                            <TargetTable
-                                rows={rows}
-                                metrics={live.data?.metrics ?? []}
-                                metricKeys={BURN_SUMMARY_METRICS}
-                                loading={live.loading && !live.data}
-                                sparklines={sparklines}
-                            />
-                        </div>
-                    );
-                })
+                        );
+                    })
             )}
+
+            {burnMatrices.map((m) => {
+                const since = matrixBurnTests(m)
+                    .map((tc) => burningFor(tc))
+                    .find((d) => d !== undefined);
+                return (
+                    <div className="group" key={m.metadata.name}>
+                        <div className="group-head">
+                            <span>
+                                <Link to={`/testmatrices/${m.metadata.name}`} className="mono">
+                                    <strong>{m.metadata.name}</strong>
+                                </Link>{" "}
+                                <span className="muted">
+                                    · {m.spec.variants.map((v) => v.name).join(" vs ")} ·{" "}
+                                    {m.spec.testCase.vus} VUs each
+                                    {since && ` · burning for ${since}`}
+                                </span>
+                            </span>
+                            <Badge value={m.status?.phase ?? "Pending"} />
+                        </div>
+                        <MatrixGrid
+                            matrix={m}
+                            results={live.data?.results ?? []}
+                            metric={trendMetric}
+                            metricKey={TREND_METRIC}
+                        />
+                    </div>
+                );
+            })}
 
             {notReady.length > 0 && (
                 <>
