@@ -91,7 +91,9 @@ export function BranchComparisonPage() {
  * pull request's CI build against its base branch or a release: two
  * deployments sharing every setting but the image, and one TestCase driving
  * both with the same load. In branch mode the PR is replaced by a branch and
- * the baseline is always a release.
+ * the baseline is always a release. Picking several templates sets up a
+ * matrix: one such pair of deployments plus a TestCase per template, so the
+ * templates' provisioning and load don't interfere with each other.
  */
 export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "branch" }) {
     const isBranch = mode === "branch";
@@ -122,7 +124,11 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
     const patch = (changes: Partial<AuthentikDeploymentSpec>) =>
         setSpec((current) => ({ ...current, ...changes }));
 
-    const [template, setTemplate] = useState("login");
+    const [selectedTemplates, setSelectedTemplates] = useState(["login"]);
+    const toggleTemplate = (name: string) =>
+        setSelectedTemplates((current) =>
+            current.includes(name) ? current.filter((t) => t !== name) : [...current, name],
+        );
     const [vus, setVus] = useState(8);
     const [flow, setFlow] = useState("default-authentication-flow");
     const [burnDuration, setBurnDuration] = useState("8760h");
@@ -197,8 +203,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
     const effectivePrefix = prefixEdited ? prefix : defaultPrefix;
     const baselineSuffix =
         baseline === "base" ? k8sNameSegment(pr?.baseRef ?? "main") : k8sNameSegment(version);
-    const prName = effectivePrefix;
-    const baselineName =
+    const baseBaselineName =
         effectivePrefix && baselineSuffix ? `${effectivePrefix}-${baselineSuffix}` : "";
     // The PR title makes the test case recognisable in lists; capped so
     // derived names like k6-<testcase>-<deployment> stay within 63 chars.
@@ -207,14 +212,32 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
         : k8sNameSegment(pr?.title ?? "")
               .slice(0, 20)
               .replace(/-+$/, "");
-    const testCaseName = effectivePrefix
-        ? [effectivePrefix, titleSlug, "burn"].filter(Boolean).join("-")
-        : "";
+    // A single template keeps the plain names; a matrix suffixes each
+    // deployment with its template and drops the title slug from the test
+    // case, keeping k6-<testcase>-<deployment> within 63 chars.
+    const isMatrix = selectedTemplates.length > 1;
+    const matrix = selectedTemplates.map((template) => {
+        const suffix = (name: string) => (name && isMatrix ? `${name}-${template}` : name);
+        return {
+            template,
+            prName: suffix(effectivePrefix),
+            baselineName: suffix(baseBaselineName),
+            testCaseName: effectivePrefix
+                ? [effectivePrefix, isMatrix ? template : titleSlug, "burn"]
+                      .filter(Boolean)
+                      .join("-")
+                : "",
+        };
+    });
 
     async function submit(event: FormEvent) {
         event.preventDefault();
-        if (!prName || !baselineName) {
+        if (!effectivePrefix || !baseBaselineName) {
             setError(`Enter a ${isBranch ? "branch" : "pull request"} and a baseline first`);
+            return;
+        }
+        if (matrix.length === 0) {
+            setError("Pick at least one template");
             return;
         }
         setSaving(true);
@@ -235,37 +258,46 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
         });
         const created: string[] = [];
         try {
-            const deployments = [
-                { name: prName, spec: deploymentSpec(prName, DEV_IMAGE, prTag) },
-                baseline === "base"
-                    ? { name: baselineName, spec: deploymentSpec(baselineName, DEV_IMAGE, baseTag) }
-                    : {
-                          name: baselineName,
-                          spec: deploymentSpec(baselineName, RELEASE_IMAGE, version),
-                      },
-            ];
-            for (const d of deployments) {
-                await api.createDeployment({ metadata: { name: d.name, labels }, spec: d.spec });
-                created.push(`deployment ${d.name}`);
-                if (extraValuesYAML.trim()) {
-                    await api.setExtraValues(d.name, extraValuesYAML);
+            for (const { template, prName, baselineName, testCaseName } of matrix) {
+                const deployments = [
+                    { name: prName, spec: deploymentSpec(prName, DEV_IMAGE, prTag) },
+                    baseline === "base"
+                        ? {
+                              name: baselineName,
+                              spec: deploymentSpec(baselineName, DEV_IMAGE, baseTag),
+                          }
+                        : {
+                              name: baselineName,
+                              spec: deploymentSpec(baselineName, RELEASE_IMAGE, version),
+                          },
+                ];
+                for (const d of deployments) {
+                    await api.createDeployment({
+                        metadata: { name: d.name, labels },
+                        spec: d.spec,
+                    });
+                    created.push(`deployment ${d.name}`);
+                    if (extraValuesYAML.trim()) {
+                        await api.setExtraValues(d.name, extraValuesYAML);
+                    }
                 }
+                await api.createTestCase({
+                    metadata: { name: testCaseName, labels },
+                    spec: {
+                        deploymentRefs: deployments.map((d) => ({ name: d.name })),
+                        baselineRef: { name: baselineName },
+                        template,
+                        profile: "Burn",
+                        vus,
+                        flow,
+                        burnDuration,
+                        traceSampleRate,
+                    },
+                });
+                created.push(`test case ${testCaseName}`);
             }
-            await api.createTestCase({
-                metadata: { name: testCaseName, labels },
-                spec: {
-                    deploymentRefs: deployments.map((d) => ({ name: d.name })),
-                    baselineRef: { name: baselineName },
-                    template,
-                    profile: "Burn",
-                    vus,
-                    flow,
-                    burnDuration,
-                    traceSampleRate,
-                },
-            });
-            toast.success(`Created ${prName}, ${baselineName} and ${testCaseName}`);
-            navigate(`/testcases/${testCaseName}`);
+            toast.success(`Created ${created.map((c) => c.split(" ").pop()).join(", ")}`);
+            navigate(isMatrix ? "/testcases" : `/testcases/${matrix[0].testCaseName}`);
         } catch (err) {
             setError(
                 created.length > 0
@@ -532,22 +564,33 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     <legend>Burn test</legend>
                     <p className="muted">
                         Keeps both deployments under the same steady load until stopped, each tagged
-                        with its own k6 target.
+                        with its own k6 target. Pick several templates for a matrix: each gets its
+                        own pair of deployments and test case.
                     </p>
                     <div className="fields">
-                        <Field
-                            label="Template"
-                            help={<Link to="/testcasetemplates">Manage test case templates</Link>}
-                        >
-                            <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+                        <div className="field wide">
+                            <span id="templates-label">Templates</span>
+                            <div
+                                className="checklist"
+                                role="group"
+                                aria-labelledby="templates-label"
+                            >
                                 {(templates.data ?? []).map((t) => (
-                                    <option key={t.metadata.name} value={t.metadata.name}>
-                                        {t.metadata.name}
-                                        {t.spec.description ? ` - ${t.spec.description}` : ""}
-                                    </option>
+                                    <label key={t.metadata.name}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedTemplates.includes(t.metadata.name)}
+                                            onChange={() => toggleTemplate(t.metadata.name)}
+                                        />
+                                        <span className="mono">{t.metadata.name}</span>
+                                        {t.spec.description && (
+                                            <span className="meta">{t.spec.description}</span>
+                                        )}
+                                    </label>
                                 ))}
-                            </select>
-                        </Field>
+                            </div>
+                            <Link to="/testcasetemplates">Manage test case templates</Link>
+                        </div>
                         <Field label="Virtual users" help="Per deployment">
                             <input
                                 type="number"
@@ -583,23 +626,28 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                 <fieldset>
                     <legend>Creates</legend>
                     <ul className="muted">
-                        <li>
-                            Deployment <code>{prName || "…"}</code> running{" "}
-                            <code>
-                                {DEV_IMAGE}:{prTag || "…"}
-                            </code>
-                        </li>
-                        <li>
-                            Deployment <code>{baselineName || "…"}</code> running{" "}
-                            <code>
-                                {baseline === "base"
-                                    ? `${DEV_IMAGE}:${baseTag || "…"}`
-                                    : `${RELEASE_IMAGE}:${version || "…"}`}
-                            </code>
-                        </li>
-                        <li>
-                            Burn test case <code>{testCaseName || "…"}</code> driving both
-                        </li>
+                        {matrix.map(({ template, prName, baselineName, testCaseName }) => (
+                            <li key={template}>
+                                Burn test case <code>{testCaseName || "…"}</code> (
+                                <code>{template}</code>) driving
+                                <ul>
+                                    <li>
+                                        Deployment <code>{prName || "…"}</code> running{" "}
+                                        <code>
+                                            {DEV_IMAGE}:{prTag || "…"}
+                                        </code>
+                                    </li>
+                                    <li>
+                                        Deployment <code>{baselineName || "…"}</code> running{" "}
+                                        <code>
+                                            {baseline === "base"
+                                                ? `${DEV_IMAGE}:${baseTag || "…"}`
+                                                : `${RELEASE_IMAGE}:${version || "…"}`}
+                                        </code>
+                                    </li>
+                                </ul>
+                            </li>
+                        ))}
                     </ul>
                 </fieldset>
 
