@@ -2,8 +2,11 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
+	"strconv"
 	"strings"
+	"text/template"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -17,198 +20,39 @@ import (
 	"github.com/authentik-labs/akbench/internal/render"
 )
 
-// Blueprint fragments below were verified directly against authentik's own
-// source (blueprints/testing/oidc-conformance.yaml,
-// authentik/providers/{oauth2,saml}/models.py,
-// authentik/sources/{oauth,saml}/models.py and their API serializers) rather
-// than assumed. Every object's identifiers key on name/slug and every secret
-// is given as a literal attr, so re-applying the same blueprint every
-// reconcile is an idempotent update rather than drift.
-//
-// Provider authorization_flow/invalidation_flow and source
-// authentication/enrollment/pre-authentication flows reference authentik's
-// own built-in default flows by slug, seeded by its always-applied
-// blueprints/default/*.yaml.
-const (
-	flowImplicitConsent    = "!Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]"
-	flowInvalidation       = "!Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]"
-	flowSourceAuth         = "!Find [authentik_flows.flow, [slug, default-source-authentication]]"
-	flowSourceEnrollment   = "!Find [authentik_flows.flow, [slug, default-source-enrollment]]"
-	flowSourcePreAuth      = "!Find [authentik_flows.flow, [slug, default-source-pre-authentication]]"
-	selfSignedKeypair      = "!Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]"
-	dependencyBlueprintKey = "blueprint.yaml"
+const dependencyBlueprintKey = "blueprint.yaml"
+
+//go:embed blueprints/dependencies.yaml.tmpl
+var dependencyBlueprintTemplate string
+
+// quote makes every templated value a double-quoted YAML scalar: Go's escape
+// sequences (\n, \", \xNN, \uNNNN, \UNNNNNNNN) are all valid YAML ones too.
+var dependencyBlueprintTmpl = template.Must(template.New("dependencies").Funcs(template.FuncMap{"quote": strconv.Quote}).Parse(dependencyBlueprintTemplate))
+
+// dependencyBlueprint is the data blueprints/dependencies.yaml.tmpl renders:
+// one section per dependency in use, nil ones are left out.
+type dependencyBlueprint struct {
+	OIDCClient *oidcClientBlueprint
+	SAMLClient *samlClientBlueprint
+	OIDCSource *oidcSourceBlueprint
+	SAMLSource *samlSourceBlueprint
+	OAuthToken *oauthTokenBlueprint
+}
+
+type (
+	oidcClientBlueprint struct{ ID, Secret, RedirectURI string }
+	samlClientBlueprint struct{ ID, ACSURL, Audience string }
+	oidcSourceBlueprint struct{ Slug, Secret, IssuerURL string }
+	samlSourceBlueprint struct{ Slug, SSOURL string }
+	oauthTokenBlueprint struct{ ID, Secret, ExchangeID, ExchangeSecret string }
 )
 
-// blueprintDocument wraps entry fragments (each a YAML list of entries,
-// indented under "entries:") into one blueprint.
-func blueprintDocument(fragments ...string) []byte {
-	return []byte("version: 1\nentries:\n" + strings.Join(fragments, ""))
-}
-
-// oauthProviderEntries registers the OAuth2Provider + Application
-// oidc-test-client logs in through. scope-openid/-email/-profile/
-// -offline_access match what oidc-test-client itself requests by default
-// (its own OIDC_SCOPES default) - caught live that oidc-conformance.yaml's
-// own "scope-profile-oidc-standard" is NOT one of the four ScopeMappings
-// blueprints/system/providers-oauth2.yaml actually seeds (that one only ever
-// creates "scope-profile"): the blueprint job failed with "Invalid pk None -
-// object does not exist" until this was changed to match the real
-// system-seeded managed name.
-func oauthProviderEntries(id, clientID, clientSecret, redirectURI string) string {
-	return fmt.Sprintf(`  - model: authentik_providers_oauth2.oauth2provider
-    id: %[1]s
-    identifiers:
-      name: %[1]s
-    attrs:
-      authorization_flow: %[5]s
-      invalidation_flow: %[6]s
-      client_type: confidential
-      client_id: %[2]s
-      client_secret: %[3]s
-      redirect_uris:
-        - matching_mode: strict
-          url: %[4]s
-          redirect_uri_type: authorization
-      grant_types:
-        - authorization_code
-      property_mappings:
-        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
-        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
-        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
-        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-offline_access]]
-      signing_key: %[7]s
-  - model: authentik_core.application
-    identifiers:
-      slug: %[1]s
-    attrs:
-      provider: !KeyOf %[1]s
-      name: %[1]s
-`, id, clientID, clientSecret, redirectURI, flowImplicitConsent, flowInvalidation, selfSignedKeypair)
-}
-
-// oauthTokenEntries registers the two OAuth2Provider + Application pairs the
-// oauth-token dependency drives at the token endpoint, with no relying party
-// in front: id issues client_credentials tokens (to the provider's generated
-// service account), exchangeID exchanges those for its own (RFC 8693), which
-// it accepts because it lists id in jwt_federation_providers.
-func oauthTokenEntries(id, secret, exchangeID, exchangeSecret string) string {
-	return fmt.Sprintf(`  - model: authentik_providers_oauth2.oauth2provider
-    id: %[1]s
-    identifiers:
-      name: %[1]s
-    attrs:
-      authorization_flow: %[5]s
-      invalidation_flow: %[6]s
-      client_type: confidential
-      client_id: %[1]s
-      client_secret: %[2]s
-      grant_types:
-        - client_credentials
-      signing_key: %[7]s
-  - model: authentik_core.application
-    identifiers:
-      slug: %[1]s
-    attrs:
-      provider: !KeyOf %[1]s
-      name: %[1]s
-  - model: authentik_providers_oauth2.oauth2provider
-    id: %[3]s
-    identifiers:
-      name: %[3]s
-    attrs:
-      authorization_flow: %[5]s
-      invalidation_flow: %[6]s
-      client_type: confidential
-      client_id: %[3]s
-      client_secret: %[4]s
-      grant_types:
-        - "urn:ietf:params:oauth:grant-type:token-exchange"
-      jwt_federation_providers:
-        - !KeyOf %[1]s
-      signing_key: %[7]s
-  - model: authentik_core.application
-    identifiers:
-      slug: %[3]s
-    attrs:
-      provider: !KeyOf %[3]s
-      name: %[3]s
-`, id, secret, exchangeID, exchangeSecret, flowImplicitConsent, flowInvalidation, selfSignedKeypair)
-}
-
-// samlProviderEntries registers the SAMLProvider + Application saml-test-sp
-// logs in through. The SP's entity ID doubles as the audience, which
-// crewjam/saml checks; assertions are signed with authentik's self-signed
-// keypair, whose certificate the SP reads from the provider metadata.
-// sp_binding is post: saml-test-sp's ACS only takes HTTP-POST.
-// sign_assertion is set explicitly even though it's the model default: the
-// serializer rejects a signing_kp without sign_assertion or sign_response
-// in the submitted attrs (seen on authentik 2026.8).
-func samlProviderEntries(id, acsURL, audience string) string {
-	return fmt.Sprintf(`  - model: authentik_providers_saml.samlprovider
-    id: %[1]s
-    identifiers:
-      name: %[1]s
-    attrs:
-      authorization_flow: %[4]s
-      invalidation_flow: %[5]s
-      acs_url: %[2]s
-      audience: %[3]s
-      sp_binding: post
-      signing_kp: %[6]s
-      sign_assertion: true
-      property_mappings:
-        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/uid]]
-        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/username]]
-        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/email]]
-        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/name]]
-  - model: authentik_core.application
-    identifiers:
-      slug: %[1]s
-    attrs:
-      provider: !KeyOf %[1]s
-      name: %[1]s
-`, id, acsURL, audience, flowImplicitConsent, flowInvalidation, selfSignedKeypair)
-}
-
-// oidcSourceEntries registers the OAuth source federating to dex. The
-// endpoints are given explicitly rather than via oidc_well_known_url: the
-// source serializer fetches a well-known (and JWKS) URL during validation,
-// which would fail the import whenever dex isn't up yet - and dex is only
-// started once this blueprint has been applied.
-func oidcSourceEntries(slug, clientID, clientSecret, issuerURL string) string {
-	return fmt.Sprintf(`  - model: authentik_sources_oauth.oauthsource
-    identifiers:
-      slug: %[1]s
-    attrs:
-      name: %[1]s
-      provider_type: openidconnect
-      consumer_key: %[2]s
-      consumer_secret: %[3]s
-      authorization_url: %[4]s/auth
-      access_token_url: %[4]s/token
-      profile_url: %[4]s/userinfo
-      authentication_flow: %[5]s
-      enrollment_flow: %[6]s
-`, slug, clientID, clientSecret, issuerURL, flowSourceAuth, flowSourceEnrollment)
-}
-
-// samlSourceEntries registers the SAML source federating to saml-test-idp.
-// No verification_kp: saml-test-idp generates a fresh signing keypair on
-// every start, and authentik only verifies signatures when one is set.
-// name_id_policy stays authentik's default (persistent), which saml-test-idp
-// answers with the plain username.
-func samlSourceEntries(slug, ssoURL string) string {
-	return fmt.Sprintf(`  - model: authentik_sources_saml.samlsource
-    identifiers:
-      slug: %[1]s
-    attrs:
-      name: %[1]s
-      sso_url: %[2]s
-      binding_type: REDIRECT
-      pre_authentication_flow: %[3]s
-      authentication_flow: %[4]s
-      enrollment_flow: %[5]s
-`, slug, ssoURL, flowSourcePreAuth, flowSourceAuth, flowSourceEnrollment)
+func (b dependencyBlueprint) render() (string, error) {
+	var out strings.Builder
+	if err := dependencyBlueprintTmpl.Execute(&out, b); err != nil {
+		return "", fmt.Errorf("render dependency blueprint: %w", err)
+	}
+	return out.String(), nil
 }
 
 // dependencyIDs are the authentik-side names (provider/application name and
@@ -297,7 +141,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 	}
 	ids := idsFor(tc, deploymentName)
 	authentikURL := fmt.Sprintf("http://%s:%d", host, port)
-	var fragments []string
+	var blueprint dependencyBlueprint
 	var objs []client.Object
 
 	if spec.HasDependency(benchv1alpha1.DependencyOIDCClient) {
@@ -308,7 +152,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth client secret: %w", err)
 		}
 		redirectURI := render.OIDCTestClientRootURL(tc, deploymentName, tc.Namespace) + "/auth/callback"
-		fragments = append(fragments, oauthProviderEntries(ids.oidcClient, ids.oidcClient, secret, redirectURI))
+		blueprint.OIDCClient = &oidcClientBlueprint{ids.oidcClient, secret, redirectURI}
 		issuerURL := fmt.Sprintf("%s/application/o/%s/", authentikURL, ids.oidcClient)
 		objs = append(objs,
 			render.OIDCTestClientDeployment(tc, deploymentName, tc.Namespace, issuerURL, ids.oidcClient, secret),
@@ -318,7 +162,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 	if spec.HasDependency(benchv1alpha1.DependencySAMLClient) {
 		spURL := render.ServiceURL(render.SAMLTestSPName(tc, deploymentName), tc.Namespace, render.SAMLTestSPPort)
 		entityID := spURL + "/saml/metadata"
-		fragments = append(fragments, samlProviderEntries(ids.samlClient, spURL+"/saml/acs", entityID))
+		blueprint.SAMLClient = &samlClientBlueprint{ids.samlClient, spURL + "/saml/acs", entityID}
 		metadataURL := fmt.Sprintf("%s/application/saml/%s/metadata/", authentikURL, ids.samlClient)
 		objs = append(objs,
 			render.SAMLTestSPDeployment(tc, deploymentName, tc.Namespace, metadataURL, entityID),
@@ -333,7 +177,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 			return render.DependencyEndpoints{}, fmt.Errorf("ensure dex client secret: %w", err)
 		}
 		issuerURL := render.DexIssuerURL(tc, deploymentName, tc.Namespace)
-		fragments = append(fragments, oidcSourceEntries(ids.oidcSource, ids.oidcSource, secret, issuerURL))
+		blueprint.OIDCSource = &oidcSourceBlueprint{ids.oidcSource, secret, issuerURL}
 		redirectURI := fmt.Sprintf("%s/source/oauth/callback/%s/", authentikURL, ids.oidcSource)
 		config := render.DexConfig(issuerURL, ids.oidcSource, secret, redirectURI)
 		objs = append(objs,
@@ -344,7 +188,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 
 	if spec.HasDependency(benchv1alpha1.DependencySAMLIdP) {
 		idpURL := render.ServiceURL(render.SAMLTestIdPName(tc, deploymentName), tc.Namespace, render.SAMLTestIdPPort)
-		fragments = append(fragments, samlSourceEntries(ids.samlSource, idpURL+"/sso"))
+		blueprint.SAMLSource = &samlSourceBlueprint{ids.samlSource, idpURL + "/sso"}
 		metadataURL := fmt.Sprintf("%s/source/saml/%s/metadata/", authentikURL, ids.samlSource)
 		objs = append(objs,
 			render.SAMLTestIdPDeployment(tc, deploymentName, tc.Namespace, metadataURL),
@@ -363,10 +207,14 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 		if err != nil {
 			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth exchange client secret: %w", err)
 		}
-		fragments = append(fragments, oauthTokenEntries(ids.oauthToken, secret, ids.oauthExchange, exchangeSecret))
+		blueprint.OAuthToken = &oauthTokenBlueprint{ids.oauthToken, secret, ids.oauthExchange, exchangeSecret}
 	}
 
-	if err := r.ensureDependencyBlueprint(ctx, tc, deploymentName, topo, string(blueprintDocument(fragments...))); err != nil {
+	content, err := blueprint.render()
+	if err != nil {
+		return render.DependencyEndpoints{}, err
+	}
+	if err := r.ensureDependencyBlueprint(ctx, tc, deploymentName, topo, content); err != nil {
 		return render.DependencyEndpoints{}, err
 	}
 	for _, obj := range objs {

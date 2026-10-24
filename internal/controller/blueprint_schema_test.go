@@ -42,14 +42,8 @@ func TestBlueprintsMatchUpstreamSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	blueprints := map[string][]byte{
-		"dependencies": blueprintDocument(
-			oauthProviderEntries("oauth-test-c-d", "oauth-test-c-d", "secret", "http://client/auth/callback"),
-			samlProviderEntries("saml-test-c-d", "http://sp/saml/acs", "http://sp/saml/metadata"),
-			oidcSourceEntries("oidc-idp-c-d", "oidc-idp-c-d", "secret", "http://dex/dex"),
-			samlSourceEntries("saml-idp-c-d", "http://idp/sso"),
-			oauthTokenEntries("oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2"),
-		),
-		"fixtures": fx.Blueprint,
+		"dependencies": renderBlueprint(t, allDependencies),
+		"fixtures":     fx.Blueprint,
 	}
 
 	validators := map[string]*jsonschema.Resolved{}
