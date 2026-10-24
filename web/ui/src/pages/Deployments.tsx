@@ -370,7 +370,9 @@ export function DeploymentSpecFields({
     showImage?: boolean;
 }) {
     const authentik = spec.authentik ?? {};
-    const errorReporting = authentik.errorReporting ?? {};
+    const errorReporting = authentik.errorReporting ?? {
+        enabled: true,
+    };
 
     return (
         <>
@@ -466,7 +468,7 @@ export function DeploymentSpecFields({
                     <label className="check">
                         <input
                             type="checkbox"
-                            checked={errorReporting.enabled ?? true}
+                            checked={errorReporting.enabled ?? false}
                             onChange={(e) =>
                                 patch({
                                     authentik: {
