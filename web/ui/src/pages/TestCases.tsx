@@ -1,5 +1,4 @@
 import { api } from "../api";
-import { ActivityLog } from "../components/ActivityLog";
 import { CodeEditor } from "../components/CodeEditor";
 import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
@@ -657,8 +656,8 @@ export function TestCaseViewPage() {
         15000,
     );
     const rows = tc ? buildTargetRows(tc, summary.data?.results ?? [], deployments.data ?? []) : [];
-    // Until the test case and every deployment it drives are Ready, show what
-    // each is waiting on above everything else.
+    // Until the test case and every deployment it drives are Ready, the
+    // status section (what each is waiting on) moves above everything else.
     const targetDeployments = rows.flatMap((r) => (r.deployment ? [r.deployment] : []));
     const rollingOut =
         !!tc &&
@@ -734,6 +733,22 @@ export function TestCaseViewPage() {
         );
     }
 
+    const statusSection = (
+        <Section
+            id="status"
+            title="Status"
+            description="Conditions, each target's rollout, recent events and the full object."
+        >
+            {tc && (
+                <>
+                    <ConditionList conditions={tc.status?.conditions} />
+                    <Rollout deployments={targetDeployments} testCase={tc} />
+                </>
+            )}
+            <ObjectYaml object={tc} />
+        </Section>
+    );
+
     return (
         <Page
             title={name}
@@ -787,26 +802,10 @@ export function TestCaseViewPage() {
             }
         >
             <Alert>{testCase.error ?? actionError ?? summary.error}</Alert>
-            {rollingOut && (
-                <div className="panel" style={{ marginBottom: 14 }}>
-                    <h3>
-                        Rollout{" "}
-                        <StatusBadge
-                            kind="testcase"
-                            name={name}
-                            namespace={tc.metadata.namespace}
-                            phase={tc.status?.phase}
-                            conditions={tc.status?.conditions}
-                        />
-                    </h3>
-                    <ConditionList conditions={tc.status?.conditions} />
-                    <ActivityLog path="testcases" name={name} limit={10} />
-                    {targetDeployments.map((d) => (
-                        <Rollout key={d.metadata.name} deployment={d} showConditions />
-                    ))}
-                </div>
-            )}
-            <SectionNav sections={SECTIONS} />
+            <SectionNav
+                sections={rollingOut ? [SECTIONS.at(-1)!, ...SECTIONS.slice(0, -1)] : SECTIONS}
+            />
+            {rollingOut && statusSection}
 
             <Section
                 id="targets"
@@ -946,19 +945,7 @@ export function TestCaseViewPage() {
                 />
             </Section>
 
-            <Section
-                id="status"
-                title="Status"
-                description="Conditions, recent events and the full object."
-            >
-                {tc && (
-                    <>
-                        <ConditionList conditions={tc.status?.conditions} />
-                        <ActivityLog path="testcases" name={name} />
-                    </>
-                )}
-                <ObjectYaml object={tc} />
-            </Section>
+            {!rollingOut && statusSection}
         </Page>
     );
 }

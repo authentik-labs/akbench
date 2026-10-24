@@ -918,7 +918,7 @@ export function DeploymentViewPage() {
                         </div>
                         <ConditionList conditions={d.status?.conditions} />
                         <ActivityLog path="deployments" name={name} />
-                        <Rollout deployment={d} />
+                        <Rollout deployments={[d]} />
                     </div>
 
                     <h2>On the cluster</h2>

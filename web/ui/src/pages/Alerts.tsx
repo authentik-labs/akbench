@@ -67,6 +67,20 @@ function alertColumns(cluster: string) {
                 <>
                     <strong>{a.labels.alertname}</strong>
                     {a.annotations.summary && <div className="muted">{a.annotations.summary}</div>}
+                    <details>
+                        <summary className="muted" style={{ margin: "4px 0", fontWeight: 400 }}>
+                            Labels
+                        </summary>
+                        <div className="mono" style={{ fontSize: 12 }}>
+                            {Object.entries(a.labels)
+                                .sort(([x], [y]) => x.localeCompare(y))
+                                .map(([k, v]) => (
+                                    <div key={k}>
+                                        {k}=<strong>{v}</strong>
+                                    </div>
+                                ))}
+                        </div>
+                    </details>
                 </>
             ),
         },
