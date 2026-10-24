@@ -13,8 +13,8 @@ const ShellWorkspace = lazy(async () => ({
 }));
 
 // Grouped by what you're doing with it: running load tests, then reading
-// their results, then the things they run against - deployments, templates
-// and the infrastructure under them, set up once and rarely touched. One-off
+// their results, then the setup behind them - templates and the
+// infrastructure tests run on, set up once and rarely touched. One-off
 // actions (comparing a PR or branch) are buttons on the pages they belong to,
 // not destinations of their own.
 type NavSection = { label?: string; items: { to: string; label: string; end?: boolean }[] };
@@ -24,6 +24,7 @@ const navSections: NavSection[] = [
     {
         label: "Testing",
         items: [
+            { to: "/deployments", label: "Deployments" },
             { to: "/testcases", label: "Test cases" },
             { to: "/testmatrices", label: "Test matrices" },
             { to: "/testruns", label: "Test runs" },
@@ -40,7 +41,6 @@ const navSections: NavSection[] = [
     {
         label: "Setup",
         items: [
-            { to: "/deployments", label: "Deployments" },
             { to: "/testcasetemplates", label: "Templates" },
             { to: "/clusters", label: "Clusters" },
             { to: "/infrastructure", label: "Providers" },

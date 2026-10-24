@@ -154,7 +154,7 @@ h3 {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--muted);
-    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md) var(--ak-global--spacer--xs);
+    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--xs) var(--ak-global--spacer--sm);
 }
 .nav-section-label:first-child {
     padding-top: 0;
@@ -561,7 +561,7 @@ legend {
     justify-content: space-between;
     gap: var(--ak-global--spacer--md);
     flex-wrap: wrap;
-    padding: var(--ak-global--spacer--md) var(--ak-global--spacer--md);
+    padding: var(--ak-global--spacer--sm) var(--ak-global--spacer--md);
     border-bottom: 1px solid var(--border);
     border-radius: var(--radius) var(--radius) 0 0;
     background: var(--code-bg);
