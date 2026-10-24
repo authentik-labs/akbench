@@ -77,7 +77,7 @@ What each component does.
   `make fixtures` (the original script) still replaces them on demand.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds seven built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds nine built-in ones at startup (`login`; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through
@@ -85,6 +85,9 @@ What each component does.
   `oidc-source` and `saml-source`, federated logins through an authentik
   OAuth source (dex) and SAML source (saml-test-idp), where every VU is the
   IdP's one test user, enrolled once in k6's `setup()`;
+  `oauth-client-credentials` and `oauth-token-exchange`, which only hit the
+  OAuth2 token endpoint (a `client_credentials` grant, and an RFC 8693
+  exchange of that token for another provider's);
   `mixed-usage`, a weighted mix of logins, logins + API browsing, failed
   logins and flow page loads, drawn from a PRNG seeded per TestCase via
   `spec.seed` - defaulting to a hash of the TestCase name - so every run
@@ -101,7 +104,9 @@ What each component does.
   ([BeryJu/saml-test-sp](https://github.com/BeryJu/saml-test-sp) + SAML
   provider), `oidc-idp` ([dex](https://dexidp.io) + OAuth source) and
   `saml-idp` ([BeryJu/saml-test-idp](https://github.com/BeryJu/saml-test-idp)
-  + SAML source). Their addresses, source slugs and IdP test credentials
+  + SAML source) and `oauth-token` (two OAuth2 providers, the second trusting
+  the first's tokens for token exchange; no service, client secrets reach k6
+  from a Secret). Their addresses, source slugs and IdP test credentials
   reach k6 as env vars (`render.DependencyEndpoints`).
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source

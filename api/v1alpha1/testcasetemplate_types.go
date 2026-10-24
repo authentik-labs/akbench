@@ -31,7 +31,8 @@ type TestCaseTemplateSpec struct {
 	// AuthentikDeployment itself, plus the authentik objects each needs:
 	// oidc-client (oidc-test-client + OAuth2 provider), saml-client
 	// (saml-test-sp + SAML provider), oidc-idp (dex + OAuth source) and
-	// saml-idp (saml-test-idp + SAML source) - see
+	// saml-idp (saml-test-idp + SAML source) and oauth-token (two OAuth2
+	// providers driven directly at the token endpoint, no service) - see
 	// internal/controller/testdeps.go and internal/render/testdeps.go. Scoped to the TestCase, not the
 	// AuthentikDeployment it targets, so "what is being tested" stays fully
 	// decoupled from "what it's being tested against" the same way the k6
@@ -44,7 +45,7 @@ type TestCaseTemplateSpec struct {
 
 // TestCaseDependency names one extra service a TestCaseTemplate needs
 // provisioned next to its target AuthentikDeployment.
-// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp
+// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token
 type TestCaseDependency string
 
 const (
@@ -60,6 +61,10 @@ const (
 	// DependencySAMLIdP is an upstream SAML IdP authentik federates logins
 	// to (a SAML source).
 	DependencySAMLIdP TestCaseDependency = "saml-idp"
+	// DependencyOAuthToken is a pair of confidential OAuth2 clients k6
+	// drives at authentik's token endpoint: one issuing client_credentials
+	// tokens, one exchanging those for its own (RFC 8693 token exchange).
+	DependencyOAuthToken TestCaseDependency = "oauth-token"
 )
 
 // HasDependency reports whether this template lists dep.

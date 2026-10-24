@@ -282,3 +282,24 @@ export function expectRedirect(flow: FlowRef, result: FlowResult): string {
     }
     return result.to;
 }
+
+// tokenURL is authentik's OAuth2 token endpoint, shared by every provider.
+export const tokenURL = `${authentikBase}/application/o/token/`;
+
+export interface TokenResponse {
+    access_token: string;
+    expires_in: number;
+    issued_token_type?: string;
+}
+
+// requestToken POSTs a grant to the token endpoint (form-encoded, client
+// authentication in the body) and fails the iteration unless a token comes
+// back.
+export function requestToken(trace: Trace, grant: string, form: Record<string, string>): TokenResponse {
+    const res = http.post(tokenURL, form, params(trace, { tags: { ...trace.tags, grant: grant } }));
+    check(res, { [`${grant} issued a token`]: (r) => r.status === 200 });
+    if (res.status !== 200) {
+        fail(`${grant}: token endpoint returned ${res.status}: ${res.body}`);
+    }
+    return res.json() as unknown as TokenResponse;
+}

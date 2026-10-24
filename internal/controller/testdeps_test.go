@@ -49,7 +49,7 @@ func TestOAuthProviderBlueprintIsValidYAML(t *testing.T) {
 	}
 }
 
-// TestDependencyBlueprintCombinesAllEntries checks the four fragments
+// TestDependencyBlueprintCombinesAllEntries checks the fragments
 // concatenate into one well-formed blueprint with every model in it.
 func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 	got := blueprintDocument(
@@ -57,6 +57,7 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		samlProviderEntries("saml-test-c-d", "http://sp/saml/acs", "http://sp/saml/metadata"),
 		oidcSourceEntries("oidc-idp-c-d", "oidc-idp-c-d", "secret", "http://dex/dex"),
 		samlSourceEntries("saml-idp-c-d", "http://idp/sso"),
+		oauthTokenEntries("oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2"),
 	)
 	var parsed struct {
 		Entries []struct {
@@ -75,6 +76,8 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"authentik_providers_saml.samlprovider", "authentik_core.application",
 		"authentik_sources_oauth.oauthsource",
 		"authentik_sources_saml.samlsource",
+		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
+		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
 	}
 	if strings.Join(models, ",") != strings.Join(want, ",") {
 		t.Errorf("models = %v, want %v", models, want)
@@ -88,6 +91,9 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"profile_url: http://dex/dex/userinfo",
 		"sso_url: http://idp/sso",
 		"[slug, default-source-pre-authentication]",
+		"- client_credentials",
+		`- "urn:ietf:params:oauth:grant-type:token-exchange"`,
+		"jwt_federation_providers:\n        - !KeyOf oauth-cc-c-d",
 	} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("blueprint missing %q\n%s", want, got)
@@ -108,6 +114,13 @@ func TestDependencyEndpoints(t *testing.T) {
 	}
 	if got.OIDCSourceSlug != "oidc-idp-c-d" {
 		t.Errorf("OIDCSourceSlug = %q", got.OIDCSourceSlug)
+	}
+	got = dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{Dependencies: []benchv1alpha1.TestCaseDependency{
+		benchv1alpha1.DependencyOAuthToken,
+	}})
+	if got.OAuthClientID != "oauth-cc-c-d" || got.OAuthExchangeClientID != "oauth-te-c-d" ||
+		got.OAuthSecretName != got.OAuthClientID || got.OAuthExchangeSecretName != got.OAuthExchangeClientID {
+		t.Errorf("oauth token clients = %+v", got)
 	}
 	if empty := dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{}); empty.EnvVars() != nil {
 		t.Errorf("no dependencies should render no env vars, got %v", empty.EnvVars())

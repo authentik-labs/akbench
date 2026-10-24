@@ -63,7 +63,8 @@ spec:
                   AuthentikDeployment itself, plus the authentik objects each needs:
                   oidc-client (oidc-test-client + OAuth2 provider), saml-client
                   (saml-test-sp + SAML provider), oidc-idp (dex + OAuth source) and
-                  saml-idp (saml-test-idp + SAML source) - see
+                  saml-idp (saml-test-idp + SAML source) and oauth-token (two OAuth2
+                  providers driven directly at the token endpoint, no service) - see
                   internal/controller/testdeps.go and internal/render/testdeps.go. Scoped to the TestCase, not the
                   AuthentikDeployment it targets, so "what is being tested" stays fully
                   decoupled from "what it's being tested against" the same way the k6
@@ -78,6 +79,7 @@ spec:
                   - saml-client
                   - oidc-idp
                   - saml-idp
+                  - oauth-token
                   type: string
                 type: array
                 x-kubernetes-list-type: set

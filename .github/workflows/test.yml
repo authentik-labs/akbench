@@ -29,3 +29,8 @@ jobs:
         run: |
           go mod tidy
           make test
+
+      - name: Validate blueprints against the upstream schema
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/blueprint-schema.json" https://goauthentik.io/blueprints/schema.json
+          BLUEPRINT_SCHEMA="$RUNNER_TEMP/blueprint-schema.json" go test -count=1 -run TestBlueprintsMatchUpstreamSchema ./internal/controller/

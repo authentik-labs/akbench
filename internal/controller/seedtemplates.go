@@ -49,6 +49,23 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "oauth-client-credentials", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description:  "Requests client_credentials tokens straight from authentik's OAuth2 token endpoint, no flow or relying party involved.",
+				Script:       mustEmbeddedScript("oauth-token.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
+			Name: "oauth-token-exchange", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Exchanges a client_credentials access token for another provider's access token (RFC 8693 token exchange) " +
+					"at authentik's OAuth2 token endpoint. Each VU reuses its subject token until it expires.",
+				Script:       mustEmbeddedScript("oauth-token-exchange.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
 			Name: "saml", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description:  "Drives an SP-initiated SAML login (HTTP-POST response binding) through a saml-test-sp service provider, reusing the same flow-executor walk as login.",

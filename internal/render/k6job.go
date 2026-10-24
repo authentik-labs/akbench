@@ -125,7 +125,18 @@ type DependencyEndpoints struct {
 	// SAMLSourceSlug: authentik's SAML source federating to saml-test-idp
 	// (saml-idp); a login starts at /source/saml/<slug>/.
 	SAMLSourceSlug string
+	// OAuthClientID/OAuthExchangeClientID: the client_credentials and
+	// token-exchange OAuth2 clients (oauth-token). Their secrets are the
+	// OAuthClientSecretKey of the OAuth(Exchange)SecretName Secrets on the
+	// runner cluster.
+	OAuthClientID           string
+	OAuthSecretName         string
+	OAuthExchangeClientID   string
+	OAuthExchangeSecretName string
 }
+
+// OAuthClientSecretKey is the oauth-token client secrets' Secret key.
+const OAuthClientSecretKey = "client-secret"
 
 // EnvVars renders the env vars for the dependencies in use.
 func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
@@ -154,6 +165,19 @@ func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
 			corev1.EnvVar{Name: "SAML_IDP_SOURCE_SLUG", Value: d.SAMLSourceSlug},
 			corev1.EnvVar{Name: "SAML_IDP_USERNAME", Value: SAMLTestIdPUsername},
 			corev1.EnvVar{Name: "SAML_IDP_PASSWORD", Value: SAMLTestIdPPassword},
+		)
+	}
+	if d.OAuthClientID != "" {
+		secretRef := func(name string) *corev1.EnvVarSource {
+			return &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				Name: name, Key: OAuthClientSecretKey,
+			}}
+		}
+		vars = append(vars,
+			corev1.EnvVar{Name: "OAUTH_CLIENT_ID", Value: d.OAuthClientID},
+			corev1.EnvVar{Name: "OAUTH_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthSecretName)},
+			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_ID", Value: d.OAuthExchangeClientID},
+			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthExchangeSecretName)},
 		)
 	}
 	return vars

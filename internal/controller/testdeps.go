@@ -86,6 +86,55 @@ func oauthProviderEntries(id, clientID, clientSecret, redirectURI string) string
 `, id, clientID, clientSecret, redirectURI, flowImplicitConsent, flowInvalidation, selfSignedKeypair)
 }
 
+// oauthTokenEntries registers the two OAuth2Provider + Application pairs the
+// oauth-token dependency drives at the token endpoint, with no relying party
+// in front: id issues client_credentials tokens (to the provider's generated
+// service account), exchangeID exchanges those for its own (RFC 8693), which
+// it accepts because it lists id in jwt_federation_providers.
+func oauthTokenEntries(id, secret, exchangeID, exchangeSecret string) string {
+	return fmt.Sprintf(`  - model: authentik_providers_oauth2.oauth2provider
+    id: %[1]s
+    identifiers:
+      name: %[1]s
+    attrs:
+      authorization_flow: %[5]s
+      invalidation_flow: %[6]s
+      client_type: confidential
+      client_id: %[1]s
+      client_secret: %[2]s
+      grant_types:
+        - client_credentials
+      signing_key: %[7]s
+  - model: authentik_core.application
+    identifiers:
+      slug: %[1]s
+    attrs:
+      provider: !KeyOf %[1]s
+      name: %[1]s
+  - model: authentik_providers_oauth2.oauth2provider
+    id: %[3]s
+    identifiers:
+      name: %[3]s
+    attrs:
+      authorization_flow: %[5]s
+      invalidation_flow: %[6]s
+      client_type: confidential
+      client_id: %[3]s
+      client_secret: %[4]s
+      grant_types:
+        - "urn:ietf:params:oauth:grant-type:token-exchange"
+      jwt_federation_providers:
+        - !KeyOf %[1]s
+      signing_key: %[7]s
+  - model: authentik_core.application
+    identifiers:
+      slug: %[3]s
+    attrs:
+      provider: !KeyOf %[3]s
+      name: %[3]s
+`, id, secret, exchangeID, exchangeSecret, flowImplicitConsent, flowInvalidation, selfSignedKeypair)
+}
+
 // samlProviderEntries registers the SAMLProvider + Application saml-test-sp
 // logs in through. The SP's entity ID doubles as the audience, which
 // crewjam/saml checks; assertions are signed with authentik's self-signed
@@ -166,6 +215,7 @@ func samlSourceEntries(slug, ssoURL string) string {
 // slug, source slug, OAuth client ID) for one TestCase/deployment pair.
 type dependencyIDs struct {
 	oidcClient, samlClient, oidcSource, samlSource string
+	oauthToken, oauthExchange                      string
 }
 
 func idsFor(tc *benchv1alpha1.TestCase, deploymentName string) dependencyIDs {
@@ -175,6 +225,9 @@ func idsFor(tc *benchv1alpha1.TestCase, deploymentName string) dependencyIDs {
 		samlClient: "saml-test-" + suffix,
 		oidcSource: "oidc-idp-" + suffix,
 		samlSource: "saml-idp-" + suffix,
+
+		oauthToken:    "oauth-cc-" + suffix,
+		oauthExchange: "oauth-te-" + suffix,
 	}
 }
 
@@ -199,6 +252,12 @@ func dependencyEndpoints(tc *benchv1alpha1.TestCase, deploymentName string, spec
 	}
 	if spec.HasDependency(benchv1alpha1.DependencySAMLIdP) {
 		out.SAMLSourceSlug = ids.samlSource
+	}
+	if spec.HasDependency(benchv1alpha1.DependencyOAuthToken) {
+		out.OAuthClientID = ids.oauthToken
+		out.OAuthSecretName = ids.oauthToken
+		out.OAuthExchangeClientID = ids.oauthExchange
+		out.OAuthExchangeSecretName = ids.oauthExchange
 	}
 	return out
 }
@@ -290,6 +349,21 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 		objs = append(objs,
 			render.SAMLTestIdPDeployment(tc, deploymentName, tc.Namespace, metadataURL),
 			render.SAMLTestIdPService(tc, deploymentName, tc.Namespace))
+	}
+
+	if spec.HasDependency(benchv1alpha1.DependencyOAuthToken) {
+		// On rc, next to the k6 workload that reads them; named after the client.
+		secret, err := ensureRandomSecret(ctx, rc,
+			types.NamespacedName{Name: ids.oauthToken, Namespace: tc.Namespace}, render.OAuthClientSecretKey, 32)
+		if err != nil {
+			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth token client secret: %w", err)
+		}
+		exchangeSecret, err := ensureRandomSecret(ctx, rc,
+			types.NamespacedName{Name: ids.oauthExchange, Namespace: tc.Namespace}, render.OAuthClientSecretKey, 32)
+		if err != nil {
+			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth exchange client secret: %w", err)
+		}
+		fragments = append(fragments, oauthTokenEntries(ids.oauthToken, secret, ids.oauthExchange, exchangeSecret))
 	}
 
 	if err := r.ensureDependencyBlueprint(ctx, tc, deploymentName, topo, string(blueprintDocument(fragments...))); err != nil {
