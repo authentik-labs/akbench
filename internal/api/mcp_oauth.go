@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+
+	"github.com/coreos/go-oidc/v3/oidc"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
@@ -75,12 +78,24 @@ func requestOrigin(r *http.Request) string {
 	return u.String()
 }
 
+// mcpOAuthScopes are the web UI's scopes plus offline_access, so the
+// provider issues the MCP client a refresh token. The client refreshes at
+// the provider directly; the refreshed access token has the same audience,
+// so it's accepted like the first.
+func (s *Server) mcpOAuthScopes() []string {
+	scopes := s.cfg.OIDCConfig.scopes()
+	if slices.Contains(scopes, oidc.ScopeOfflineAccess) {
+		return scopes
+	}
+	return append(slices.Clone(scopes), oidc.ScopeOfflineAccess)
+}
+
 // mcpOAuthChallenge points an unauthenticated MCP client at the metadata.
 func (s *Server) mcpOAuthChallenge(r *http.Request) string {
 	resource, _ := url.Parse(s.mcpResource(r))
 	metadataURL := resource.Scheme + "://" + resource.Host + s.mcpOAuthMetadataPath()
 	return fmt.Sprintf(`Bearer realm=%q, resource_metadata=%q, scope=%q`,
-		mcpResourceName, metadataURL, strings.Join(s.cfg.OIDCConfig.scopes(), " "))
+		mcpResourceName, metadataURL, strings.Join(s.mcpOAuthScopes(), " "))
 }
 
 // mcpOAuthMetadata serves RFC 9728 protected resource metadata naming the
@@ -89,7 +104,7 @@ func (s *Server) mcpOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	auth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
 		Resource:               s.mcpResource(r),
 		AuthorizationServers:   []string{s.cfg.OIDCConfig.Issuer},
-		ScopesSupported:        s.cfg.OIDCConfig.scopes(),
+		ScopesSupported:        s.mcpOAuthScopes(),
 		BearerMethodsSupported: []string{"header"},
 		ResourceName:           mcpResourceName,
 	}).ServeHTTP(w, r)

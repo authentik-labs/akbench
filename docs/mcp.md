@@ -37,6 +37,11 @@ In authentik, add it as a strict redirect URI, or as the regex
 metadata's `resource` is the URL the request came in on (honoring
 `X-Forwarded-Proto`/`-Host`) unless `--mcp-resource-url` sets it.
 
+The challenge and metadata add `offline_access` to the web UI's scopes, so
+the client gets a refresh token and renews its access token at the provider
+without signing in again. In authentik, add the `offline_access` scope
+mapping to the provider's selected scopes, or it won't issue one.
+
 With `--mcp-idp-issuer` (and `--mcp-resource-url`) set, it uses MCP
 Enterprise-Managed Authorization (SEP-990, ID-JAG) instead and accepts
 nothing else. akbench is its own authorization server, with the origin of

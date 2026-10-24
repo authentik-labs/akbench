@@ -29,7 +29,7 @@ func TestMCPOAuthChallengesWithResourceMetadata(t *testing.T) {
 	requireStatus(t, rec, http.StatusUnauthorized)
 	challenge := rec.Header().Get("WWW-Authenticate")
 	if !strings.Contains(challenge, `resource_metadata="http://bench.example/.well-known/oauth-protected-resource/api/v1/mcp"`) ||
-		!strings.Contains(challenge, `scope="openid profile email"`) {
+		!strings.Contains(challenge, `scope="openid profile email offline_access"`) {
 		t.Fatalf("challenge = %q", challenge)
 	}
 
@@ -74,7 +74,7 @@ func TestMCPOAuthServesMetadata(t *testing.T) {
 			requireStatus(t, rec, http.StatusOK)
 			meta := decodeBody[oauthex.ProtectedResourceMetadata](t, rec)
 			if meta.Resource != tc.wantResource || !slices.Equal(meta.AuthorizationServers, []string{testOIDCIssuer}) ||
-				!slices.Contains(meta.ScopesSupported, "openid") {
+				!slices.Contains(meta.ScopesSupported, "openid") || !slices.Contains(meta.ScopesSupported, "offline_access") {
 				t.Fatalf("metadata = %+v", meta)
 			}
 		})
