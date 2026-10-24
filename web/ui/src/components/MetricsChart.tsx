@@ -314,16 +314,21 @@ export function MetricsGrid({
     targets,
     endSeconds,
     rangeSeconds,
+    height,
+    wide,
 }: {
     testids: string[];
     /** Only chart these k6 targets (default: every target of the tests). */
     targets?: string[];
     endSeconds?: number;
     rangeSeconds?: number;
+    height?: number;
+    /** Fewer, wider charts per row. */
+    wide?: boolean;
 }) {
     const metrics = useAvailableMetrics(testids);
     return (
-        <div className="grid2">
+        <div className={wide ? "grid2 wide" : "grid2"}>
             {metrics.map((m) => (
                 <MetricsChart
                     key={m.key}
@@ -332,6 +337,7 @@ export function MetricsGrid({
                     targets={targets}
                     endSeconds={endSeconds}
                     rangeSeconds={rangeSeconds}
+                    height={height}
                 />
             ))}
         </div>
@@ -429,10 +435,13 @@ export function ResourceCharts({
     testids,
     endSeconds,
     rangeSeconds,
+    wide,
 }: {
     testids: string[];
     endSeconds?: number;
     rangeSeconds?: number;
+    /** Fewer, wider charts per row. */
+    wide?: boolean;
 }) {
     const charts = [
         { resource: "cpu", component: "server" },
@@ -441,7 +450,7 @@ export function ResourceCharts({
         { resource: "memory", component: "worker" },
     ] as const;
     return (
-        <div className="grid2">
+        <div className={wide ? "grid2 wide" : "grid2"}>
             {charts.map(({ resource, component }) => (
                 <ResourceChart
                     key={`${resource}-${component}`}
