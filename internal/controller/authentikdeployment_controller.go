@@ -15,8 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -225,49 +227,88 @@ func (r *AuthentikDeploymentReconciler) helmReleaseReadiness(ctx context.Context
 	return metav1.ConditionFalse, cond.Message, nil
 }
 
-// applyHelmRelease applies hr - with the worker scaled to zero while a
-// Dedicated-placement upgrade rolls out (see render.WorkerUpgrade) - and
-// returns its readiness, which stays False until the worker is back up.
-func (r *AuthentikDeploymentReconciler) applyHelmRelease(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment, hr *helmv2.HelmRelease) (metav1.ConditionStatus, string, error) {
-	step, err := r.workerUpgradeStep(ctx, topo, hr)
+// applyHelmRelease applies hr - with the worker drained on the old release
+// first, then held at zero while a Dedicated-placement upgrade rolls out (see
+// render.WorkerUpgrade) - and returns its readiness, which stays False until
+// the worker is back up, plus whether to poll for the drained worker pods to
+// go away (their deletion on the workload cluster isn't watched).
+func (r *AuthentikDeploymentReconciler) applyHelmRelease(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment, hr *helmv2.HelmRelease) (metav1.ConditionStatus, string, bool, error) {
+	step, existing, err := r.workerUpgradeStep(ctx, topo, hr)
 	if err != nil {
-		return metav1.ConditionFalse, "", err
+		return metav1.ConditionFalse, "", false, err
 	}
-	if step == render.WorkerUpgradeHold {
+	switch step {
+	case render.WorkerUpgradeDrain:
+		hr.Spec = *existing.Spec.DeepCopy()
+		fallthrough
+	case render.WorkerUpgradeHold:
 		if hr.Spec.Values, err = render.WithWorkerReplicas(hr.Spec.Values, 0); err != nil {
-			return metav1.ConditionFalse, "", err
+			return metav1.ConditionFalse, "", false, err
 		}
 	}
 	if err := applyOwned(ctx, r.Client, r.Scheme, topo, hr); err != nil {
-		return metav1.ConditionFalse, "", fmt.Errorf("apply HelmRelease: %w", err)
+		return metav1.ConditionFalse, "", false, fmt.Errorf("apply HelmRelease: %w", err)
 	}
 	ready, message, err := r.helmReleaseReadiness(ctx, hr)
 	switch step {
+	case render.WorkerUpgradeDrain:
+		return metav1.ConditionFalse, "scaling the worker down before upgrading", true, err
 	case render.WorkerUpgradeHold:
-		return metav1.ConditionFalse, "upgrading with the worker scaled down until the new server pods are running: " + message, err
+		return metav1.ConditionFalse, "upgrading with the worker scaled down until the new server pods are running: " + message, false, err
 	case render.WorkerUpgradeRelease:
-		return metav1.ConditionFalse, "scaling the worker back up after the upgrade", err
+		return metav1.ConditionFalse, "scaling the worker back up after the upgrade", false, err
 	}
-	return ready, message, err
+	return ready, message, false, err
 }
 
-// workerUpgradeStep compares hr against the live HelmRelease to decide
-// whether an upgrade needs the worker scaled down first (see
+// workerUpgradeStep compares hr against the live HelmRelease (returned too)
+// to decide whether an upgrade needs the worker scaled down first (see
 // render.WorkerUpgrade).
-func (r *AuthentikDeploymentReconciler) workerUpgradeStep(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment, hr *helmv2.HelmRelease) (render.WorkerUpgradeStep, error) {
+func (r *AuthentikDeploymentReconciler) workerUpgradeStep(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment, hr *helmv2.HelmRelease) (render.WorkerUpgradeStep, *helmv2.HelmRelease, error) {
 	if topo.Spec.Placement.Mode != benchv1alpha1.PlacementDedicated {
-		return render.WorkerUpgradeNone, nil
+		return render.WorkerUpgradeNone, nil, nil
 	}
 	var existing helmv2.HelmRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: hr.Name, Namespace: hr.Namespace}, &existing); err != nil {
 		if apierrors.IsNotFound(err) {
-			return render.WorkerUpgradeNone, nil
+			return render.WorkerUpgradeNone, nil, nil
 		}
-		return render.WorkerUpgradeNone, fmt.Errorf("get HelmRelease: %w", err)
+		return render.WorkerUpgradeNone, nil, fmt.Errorf("get HelmRelease: %w", err)
 	}
 	ready := existing.Status.ObservedGeneration == existing.Generation &&
 		meta.IsStatusConditionTrue(existing.Status.Conditions, "Ready")
-	return render.WorkerUpgrade(topo, &existing, hr, ready)
+	workerPods, err := r.countWorkerPods(ctx, topo)
+	if err != nil {
+		return render.WorkerUpgradeNone, nil, fmt.Errorf("list worker pods: %w", err)
+	}
+	step, err := render.WorkerUpgrade(topo, &existing, hr, ready, workerPods)
+	return step, &existing, err
+}
+
+// countWorkerPods counts topo's worker pods, terminating ones included -
+// they still block the node for Dedicated's anti-affinity. Listed through a
+// clientset rather than rc so this doesn't start a cluster-wide Pod
+// informer. ponytail: a deployment without a clusterRef reports none, so its
+// upgrade only waits for the drain to be applied, not for the pods to go.
+func (r *AuthentikDeploymentReconciler) countWorkerPods(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment) (int, error) {
+	if r.Tracker == nil || topo.Spec.ClusterRef.Name == "" {
+		return 0, nil
+	}
+	cfg, err := r.Tracker.GetRESTConfig(ctx, client.ObjectKey{Namespace: topo.Namespace, Name: topo.Spec.ClusterRef.Name})
+	if err != nil {
+		return 0, err
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return 0, err
+	}
+	pods, err := cs.CoreV1().Pods(topo.Spec.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(render.WorkerPodLabels(topo)).String(),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(pods.Items), nil
 }
 
 // recordChartVersion stores the chart version helm-controller last installed
@@ -498,7 +539,7 @@ func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	r.recordChartVersion(ctx, &topo)
 	hr := render.HelmRelease(&topo, kubeConfigSecretName, values)
-	helmReleaseReady, helmReleaseMessage, err := r.applyHelmRelease(ctx, &topo, hr)
+	helmReleaseReady, helmReleaseMessage, requeueForWorker, err := r.applyHelmRelease(ctx, &topo, hr)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -534,7 +575,7 @@ func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 	log.Info("reconciled AuthentikDeployment", "ready", ready)
-	if requeueForBlueprint {
+	if requeueForBlueprint || requeueForWorker {
 		return ctrl.Result{RequeueAfter: soonest(10*time.Second, storageRecheck)}, nil
 	}
 	return ctrl.Result{RequeueAfter: storageRecheck}, nil

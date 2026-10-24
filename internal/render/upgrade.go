@@ -18,6 +18,9 @@ type WorkerUpgradeStep int
 const (
 	// WorkerUpgradeNone: no upgrade in flight, apply desired as is.
 	WorkerUpgradeNone WorkerUpgradeStep = iota
+	// WorkerUpgradeDrain: re-apply the live release with only the worker
+	// scaled to zero, holding desired back until the worker pods are gone.
+	WorkerUpgradeDrain
 	// WorkerUpgradeHold: apply desired with the worker scaled to zero.
 	WorkerUpgradeHold
 	// WorkerUpgradeRelease: the upgrade finished with the worker at zero;
@@ -33,13 +36,17 @@ const (
 // scales back up.
 //
 // An upgrade is any change to what existing (the live HelmRelease) installs
-// other than worker.replicas itself. It holds the worker at zero until
+// other than worker.replicas itself. It first drains the worker on the old
+// release (workerPods counts the worker pods still around, terminating ones
+// included): scaling it down in the same helm upgrade that rolls the server
+// races the surge server pod, which then stays Pending. It then holds the
+// worker at zero until
 // helm-controller reports the upgraded release Ready (existingReady, which
 // helm-controller only sets once the rollout finished). spec.worker.replicas
 // is at least 1, so a live worker.replicas of zero is the marker of a hold in
 // progress - no extra state needed. Nothing is held on first install
 // (existing nil), where there's no old pod in the way.
-func WorkerUpgrade(t *benchv1alpha1.AuthentikDeployment, existing, desired *helmv2.HelmRelease, existingReady bool) (WorkerUpgradeStep, error) {
+func WorkerUpgrade(t *benchv1alpha1.AuthentikDeployment, existing, desired *helmv2.HelmRelease, existingReady bool, workerPods int) (WorkerUpgradeStep, error) {
 	if t.Spec.Placement.Mode != benchv1alpha1.PlacementDedicated || existing == nil {
 		return WorkerUpgradeNone, nil
 	}
@@ -53,6 +60,9 @@ func WorkerUpgrade(t *benchv1alpha1.AuthentikDeployment, existing, desired *helm
 	}
 	switch {
 	case chartVersionChanged(t, existing, desired) || !reflect.DeepEqual(existingValues, desiredValues):
+		if existingWorkers != 0 || workerPods > 0 {
+			return WorkerUpgradeDrain, nil
+		}
 		return WorkerUpgradeHold, nil
 	case existingWorkers != 0 || desiredWorkers == 0:
 		return WorkerUpgradeNone, nil
@@ -93,6 +103,11 @@ func splitWorkerReplicas(values *apiextensionsv1.JSON) (map[string]any, float64,
 		delete(worker, valuesKeyReplicas)
 	}
 	return m, replicas, nil
+}
+
+// WorkerPodLabels selects t's authentik worker pods.
+func WorkerPodLabels(t *benchv1alpha1.AuthentikDeployment) map[string]string {
+	return map[string]string{labelAppInstance: HelmReleaseName(t), "app.kubernetes.io/component": "worker"}
 }
 
 // WithWorkerReplicas returns values with worker.replicas set to replicas.
