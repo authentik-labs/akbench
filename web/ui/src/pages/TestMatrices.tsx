@@ -142,8 +142,8 @@ const SECTIONS = [
  * TestMatrixViewPage lays a matrix out like a test case's page: a grid with
  * a row per template (its TestCase) and a column per variant (that row's
  * deployment running it), each cell's value of one metric against the
- * baseline variant's; then every template's timeline and the resources of
- * every deployment, over one shared time range.
+ * baseline variant's; then one chart per metric and resource across every
+ * test case and deployment, over one shared time range.
  */
 export function TestMatrixViewPage() {
     const { name = "" } = useParams();
@@ -388,28 +388,15 @@ export function TestMatrixViewPage() {
             <Section
                 id="timeline"
                 title="Timeline"
-                description="Every metric per template, one line per variant's deployment."
+                description="Every metric across all templates, one line per test case and deployment."
             >
-                {rows.length === 0 ? (
-                    <Empty>No test cases yet.</Empty>
-                ) : (
-                    rows.map((row) => (
-                        <div key={row.template}>
-                            <div className="sub-head">
-                                <h3>
-                                    <Link to={`/testcases/${row.testCase}`}>{row.template}</Link>
-                                </h3>
-                            </div>
-                            <MetricsGrid
-                                testids={[row.testCase]}
-                                endSeconds={burnEnd}
-                                rangeSeconds={range}
-                                height={320}
-                                wide
-                            />
-                        </div>
-                    ))
-                )}
+                <MetricsGrid
+                    testids={testids}
+                    endSeconds={burnEnd}
+                    rangeSeconds={range}
+                    height={360}
+                    wide
+                />
             </Section>
 
             <Section
