@@ -12,39 +12,38 @@ const ShellWorkspace = lazy(async () => ({
     default: (await import("./shell/ShellWorkspace")).ShellWorkspace,
 }));
 
-// Grouped by what you're doing with it: overview first, then setting up
-// and running load tests, then reading their results. Infrastructure -
-// clusters and the machines under them, set up once and rarely touched -
-// sits apart at the bottom of the sidebar, with the shell.
+// Grouped by what you're doing with it: running load tests, then reading
+// their results, then the things they run against - deployments, templates
+// and the infrastructure under them, set up once and rarely touched. One-off
+// actions (comparing a PR or branch) are buttons on the pages they belong to,
+// not destinations of their own.
 type NavSection = { label?: string; items: { to: string; label: string; end?: boolean }[] };
 
 const navSections: NavSection[] = [
     { items: [{ to: "/", label: "Dashboard", end: true }] },
     {
-        label: "Load tests",
+        label: "Testing",
         items: [
             { to: "/testcases", label: "Test cases" },
             { to: "/testmatrices", label: "Test matrices" },
-            { to: "/pull-requests/new", label: "Compare a PR" },
-            { to: "/branches/new", label: "Compare a branch" },
-            { to: "/deployments", label: "Deployments" },
-            { to: "/testcasetemplates", label: "Test case templates" },
+            { to: "/testruns", label: "Test runs" },
         ],
     },
     {
-        label: "Results",
+        label: "Analysis",
         items: [
-            { to: "/testruns", label: "Test runs" },
             { to: "/compare", label: "Compare" },
             { to: "/alerts", label: "Alerts" },
             { to: "/grafana", label: "Grafana" },
         ],
     },
     {
-        label: "Infrastructure",
+        label: "Setup",
         items: [
-            { to: "/infrastructure", label: "Providers" },
+            { to: "/deployments", label: "Deployments" },
+            { to: "/testcasetemplates", label: "Templates" },
             { to: "/clusters", label: "Clusters" },
+            { to: "/infrastructure", label: "Providers" },
             { to: "/shell", label: "Shell" },
         ],
     },
