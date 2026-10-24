@@ -22,6 +22,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the authentik-bench itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- testmatrix_admin_role.yaml
+- testmatrix_editor_role.yaml
+- testmatrix_viewer_role.yaml
 - workloadcluster_admin_role.yaml
 - workloadcluster_editor_role.yaml
 - workloadcluster_viewer_role.yaml

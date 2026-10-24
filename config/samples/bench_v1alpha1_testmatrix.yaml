@@ -1,0 +1,34 @@
+apiVersion: bench.goauthentik.io/v1alpha1
+kind: TestMatrix
+metadata:
+  labels:
+    app.kubernetes.io/name: authentik-bench
+    app.kubernetes.io/managed-by: kustomize
+  name: main-vs-release
+spec:
+  # Creates main-vs-release-{main,release}-{login,oauth-oidc} deployments and
+  # main-vs-release-{login,oauth-oidc} test cases.
+  variants:
+    - name: main
+      image: ghcr.io/goauthentik/dev-server
+      tag: gh-main
+    - name: release
+      image: ghcr.io/goauthentik/server
+      tag: "2026.6.0"
+  baseline: release
+  templates:
+    - login
+    - oauth-oidc
+  deployment:
+    clusterRef:
+      name: workloadcluster-sample
+    namespace: ignored
+    server:
+      replicas: 2
+    worker:
+      replicas: 1
+    postgres:
+      mode: Embedded
+  testCase:
+    profile: Burn
+    vus: 8

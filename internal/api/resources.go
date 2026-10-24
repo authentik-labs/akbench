@@ -29,6 +29,7 @@ var resourceKinds = map[string]resourceKind{
 	"deployments":       {kind: "AuthentikDeployment", listKind: "AuthentikDeploymentList"},
 	"testcases":         {kind: "TestCase", listKind: "TestCaseList"},
 	"testcasetemplates": {kind: "TestCaseTemplate", listKind: "TestCaseTemplateList"},
+	"testmatrices":      {kind: "TestMatrix", listKind: "TestMatrixList"},
 	"testruns":          {kind: "TestRun", listKind: "TestRunList"},
 	"workloadclusters":  {kind: "WorkloadCluster", listKind: "WorkloadClusterList"},
 }

@@ -245,6 +245,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if err := (&controller.TestMatrixReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("testmatrix-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "testmatrix")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Seeded with a plain, uncached client (the manager's own GetClient()

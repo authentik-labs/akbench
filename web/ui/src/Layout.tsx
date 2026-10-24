@@ -24,6 +24,7 @@ const navSections: NavSection[] = [
         label: "Load tests",
         items: [
             { to: "/testcases", label: "Test cases" },
+            { to: "/testmatrices", label: "Test matrices" },
             { to: "/pull-requests/new", label: "Compare a PR" },
             { to: "/branches/new", label: "Compare a branch" },
             { to: "/deployments", label: "Deployments" },

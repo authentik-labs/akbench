@@ -5,4 +5,5 @@ resources:
 - bench_v1alpha1_testcasetemplate.yaml
 - bench_v1alpha1_testrun.yaml
 - bench_v1alpha1_workloadcluster.yaml
+- bench_v1alpha1_testmatrix.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

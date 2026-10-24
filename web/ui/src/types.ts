@@ -194,6 +194,44 @@ export interface TestCase {
     };
 }
 
+export interface TestMatrixVariant {
+    name: string;
+    // Overrides deployment.authentik.image for this variant.
+    image?: string;
+    tag: string;
+}
+
+export interface TestMatrixSpec {
+    variants: TestMatrixVariant[];
+    // Defaults to the first variant.
+    baseline?: string;
+    templates: string[];
+    // Shared by every deployment; namespace and authentik.tag are set per cell.
+    deployment: AuthentikDeploymentSpec;
+    extraValues?: string;
+    // Shared by every test case; deploymentRefs, baselineRef and template are
+    // set per row.
+    testCase: TestCaseSpec;
+}
+
+export interface TestMatrixRow {
+    template: string;
+    testCase: string;
+    phase?: string;
+    cells?: { variant: string; deployment: string; phase?: string }[];
+}
+
+/** TestMatrix crosses authentik builds (variants) with test case templates. */
+export interface TestMatrix {
+    metadata: ObjectMeta;
+    spec: TestMatrixSpec;
+    status?: {
+        conditions?: Condition[];
+        phase?: string;
+        rows?: TestMatrixRow[];
+    };
+}
+
 /**
  * testCaseDeployments mirrors TestCase.Deployments() (api/v1alpha1/testcase_types.go):
  * prefers spec.deploymentRefs, falls back to the deprecated singular

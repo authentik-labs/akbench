@@ -3,7 +3,14 @@
 What each component does.
 
 - **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TestCase`,
-  `TestCaseTemplate`, `TestRun`, `WorkloadCluster`.
+  `TestCaseTemplate`, `TestMatrix`, `TestRun`, `WorkloadCluster`.
+- **`TestMatrixReconciler`**: crosses authentik builds (`spec.variants`) with
+  test case templates (`spec.templates`): one `TestCase` per template, each
+  driving its own `AuthentikDeployment` per variant
+  (`<matrix>-<variant>-<template>`), so templates never share a deployment.
+  It owns them all, so deleting the matrix deletes them, and rolls their
+  phases up into `status.rows` for the UI's matrix grid. The "Compare a PR"
+  and "Compare a branch" pages create one.
 - **`WorkloadClusterReconciler`**: renders a full Cluster API cluster stack
   (`Cluster`/`LXCCluster`/`KubeadmControlPlane`/`MachineDeployment` plus their
   `LXCMachineTemplate`s and a worker `KubeadmConfigTemplate`) against the

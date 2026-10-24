@@ -23,6 +23,8 @@ import {
     ObjectEvent,
     Rollout,
     TestCaseTemplateSpec,
+    TestMatrix,
+    TestMatrixSpec,
     TestRun,
     LogBreakdown,
     ProfileBreakdown,
@@ -112,6 +114,7 @@ export type ResourcePath =
     | "deployments"
     | "testcases"
     | "testcasetemplates"
+    | "testmatrices"
     | "testruns"
     | "workloadclusters";
 
@@ -234,6 +237,17 @@ export const api = {
     // always an array, even for today's common single-deployment case.
     runTestCase: (name: string) =>
         request<TestRun[]>(`/api/v1/testcases/${seg(name)}/runs`, json("POST", {})),
+
+    // -- Test matrices
+    testMatrices: () =>
+        request<List<TestMatrix>>("/api/v1/testmatrices").then((r) => r.items ?? []),
+    testMatrix: (name: string) => request<TestMatrix>(`/api/v1/testmatrices/${seg(name)}`),
+    createTestMatrix: (obj: ObjectInput<TestMatrixSpec>) =>
+        request<TestMatrix>("/api/v1/testmatrices", json("POST", obj)),
+    updateTestMatrix: (name: string, obj: { spec: TestMatrixSpec }) =>
+        request<TestMatrix>(`/api/v1/testmatrices/${seg(name)}`, json("PUT", obj)),
+    deleteTestMatrix: (name: string) =>
+        request<void>(`/api/v1/testmatrices/${seg(name)}`, { method: "DELETE" }),
 
     // -- Test case templates
     testCaseTemplates: () =>

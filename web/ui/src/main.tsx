@@ -173,6 +173,16 @@ const router = createBrowserRouter([
                 element: page(testRuns, "TestRunViewPage"),
             },
             {
+                path: "testmatrices",
+                handle: t("Test matrices"),
+                element: page(() => import("./pages/TestMatrices"), "TestMatricesPage"),
+            },
+            {
+                path: "testmatrices/:name",
+                handle: t((p) => `Test matrix ${p.name}`),
+                element: page(() => import("./pages/TestMatrices"), "TestMatrixViewPage"),
+            },
+            {
                 path: "pull-requests/new",
                 handle: t("Compare a PR"),
                 element: page(

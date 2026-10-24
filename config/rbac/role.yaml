@@ -75,6 +75,7 @@ rules:
   - authentikdeployments
   - testcases
   - testcasetemplates
+  - testmatrices
   - testruns
   - workloadclusters
   verbs:
@@ -91,6 +92,7 @@ rules:
   - authentikdeployments/finalizers
   - testcases/finalizers
   - testcasetemplates/finalizers
+  - testmatrices/finalizers
   - testruns/finalizers
   - workloadclusters/finalizers
   verbs:
@@ -101,6 +103,7 @@ rules:
   - authentikdeployments/status
   - testcases/status
   - testcasetemplates/status
+  - testmatrices/status
   - testruns/status
   - workloadclusters/status
   verbs:

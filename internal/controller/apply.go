@@ -20,6 +20,7 @@ import (
 	controlplanev1 "sigs.k8s.io/cluster-api/api/controlplane/kubeadm/v1beta2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
+	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 	"github.com/authentik-labs/akbench/internal/render"
 )
 
@@ -240,6 +241,12 @@ func specEqual(existing, desired client.Object) bool {
 	case *unstructured.Unstructured:
 		e, ok := existing.(*unstructured.Unstructured)
 		return ok && apiequality.Semantic.DeepEqual(e.Object["spec"], d.Object["spec"])
+	case *benchv1alpha1.AuthentikDeployment:
+		e, ok := existing.(*benchv1alpha1.AuthentikDeployment)
+		return ok && apiequality.Semantic.DeepEqual(e.Spec, d.Spec)
+	case *benchv1alpha1.TestCase:
+		e, ok := existing.(*benchv1alpha1.TestCase)
+		return ok && apiequality.Semantic.DeepEqual(e.Spec, d.Spec)
 	case *corev1.PersistentVolumeClaim:
 		// Treated as always equal (never updated) rather than compared:
 		// most of a PVC's spec is immutable after creation (storage can
@@ -301,6 +308,18 @@ func copySpec(existing, desired client.Object) error {
 			return fmt.Errorf("copySpec: existing is %T, want *unstructured.Unstructured", existing)
 		}
 		e.Object["spec"] = d.Object["spec"]
+	case *benchv1alpha1.AuthentikDeployment:
+		e, ok := existing.(*benchv1alpha1.AuthentikDeployment)
+		if !ok {
+			return fmt.Errorf("copySpec: existing is %T, want *benchv1alpha1.AuthentikDeployment", existing)
+		}
+		e.Spec = d.Spec
+	case *benchv1alpha1.TestCase:
+		e, ok := existing.(*benchv1alpha1.TestCase)
+		if !ok {
+			return fmt.Errorf("copySpec: existing is %T, want *benchv1alpha1.TestCase", existing)
+		}
+		e.Spec = d.Spec
 	default:
 		return fmt.Errorf("copySpec: unsupported type %T", desired)
 	}
