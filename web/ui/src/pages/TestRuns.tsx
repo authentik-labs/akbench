@@ -4,7 +4,7 @@ import { MetricsGrid } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { Badge, ConditionList } from "../components/Status";
 import { Alert, confirmAndRun, Empty, formatTimestamp, Page, Table } from "../components/ui";
-import { metricsAnchorFromRuns } from "../format";
+import { metricsAnchorFromRuns, newestFirst } from "../format";
 import { shellLinkForCluster } from "../shell/links";
 import { printReport } from "../theme";
 import { testCaseDeployments, testRunDeployment } from "../types";
@@ -16,11 +16,7 @@ import { Link, useParams } from "react-router";
 
 export function TestRunsPage() {
     const runs = useResource(() => api.testRuns(), [], 5000, "TestRun");
-    const sorted =
-        runs.data &&
-        [...runs.data].sort((a, b) =>
-            (b.metadata.creationTimestamp ?? "").localeCompare(a.metadata.creationTimestamp ?? ""),
-        );
+    const sorted = runs.data && newestFirst(runs.data);
     return (
         <Page title="Test runs" subtitle="One-shot runs of Quick test cases.">
             <Alert>{runs.error}</Alert>

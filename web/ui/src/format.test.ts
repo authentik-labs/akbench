@@ -6,6 +6,7 @@ import {
     formatDuration,
     formatMetricValue,
     metricsAnchorFromRuns,
+    newestFirst,
     onlyTargets,
     parseTimeRange,
     readableTextOn,
@@ -309,5 +310,21 @@ describe("archivedBurnWindow", () => {
                 status: { deployments: [{ burningSince: "2026-10-14T10:00:00Z" }] },
             }),
         ).toBeUndefined();
+    });
+});
+
+describe("newestFirst", () => {
+    it("sorts by creationTimestamp, newest first, without mutating", () => {
+        const items = [
+            { metadata: { creationTimestamp: "2026-01-01T00:00:00Z" } },
+            { metadata: {} },
+            { metadata: { creationTimestamp: "2026-03-01T00:00:00Z" } },
+        ];
+        expect(newestFirst(items).map((i) => i.metadata.creationTimestamp)).toEqual([
+            "2026-03-01T00:00:00Z",
+            "2026-01-01T00:00:00Z",
+            undefined,
+        ]);
+        expect(items[0].metadata.creationTimestamp).toBe("2026-01-01T00:00:00Z");
     });
 });

@@ -4,8 +4,16 @@ import { ObjectYaml } from "../components/ObjectYaml";
 import { Badge, StatusBadge } from "../components/Status";
 import { Delta, TARGET_METRICS } from "../components/Targets";
 import { toast } from "../components/Toast";
-import { Alert, confirmAndRun, errorMessage, Page, Segmented, Table } from "../components/ui";
-import { formatMetricValue, relativeDelta, shortTag } from "../format";
+import {
+    Alert,
+    confirmAndRun,
+    errorMessage,
+    Page,
+    Section,
+    Segmented,
+    Table,
+} from "../components/ui";
+import { formatMetricValue, newestFirst, relativeDelta, shortTag } from "../format";
 import { TestMatrix } from "../types";
 import { useResource } from "../useResource";
 
@@ -30,6 +38,50 @@ function deleteMatrix(name: string, then: () => void) {
 
 export function TestMatricesPage() {
     const matrices = useResource(() => api.testMatrices(), [], 5000, "TestMatrix");
+    const table = (rows: TestMatrix[] | undefined, empty: string) => (
+        <Table
+            rows={rows}
+            rowKey={(m) => m.metadata.name}
+            empty={empty}
+            columns={[
+                {
+                    label: "Name",
+                    render: (m) => (
+                        <Link to={`/testmatrices/${m.metadata.name}`}>{m.metadata.name}</Link>
+                    ),
+                },
+                {
+                    label: "Variants",
+                    render: (m) => m.spec.variants.map((v) => v.name).join(" vs "),
+                },
+                { label: "Templates", render: (m) => m.spec.templates.join(", ") },
+                {
+                    label: "Status",
+                    render: (m) => (
+                        <StatusBadge
+                            kind="testmatrix"
+                            name={m.metadata.name}
+                            namespace={m.metadata.namespace}
+                            phase={m.status?.phase}
+                            conditions={m.status?.conditions}
+                        />
+                    ),
+                },
+                {
+                    label: "",
+                    className: "actions",
+                    render: (m) => (
+                        <button
+                            className="small danger"
+                            onClick={() => void deleteMatrix(m.metadata.name, matrices.reload)}
+                        >
+                            Delete
+                        </button>
+                    ),
+                },
+            ]}
+        />
+    );
     return (
         <Page
             title="Test matrices"
@@ -46,48 +98,19 @@ export function TestMatricesPage() {
             }
         >
             <Alert>{matrices.error}</Alert>
-            <Table
-                rows={matrices.data}
-                rowKey={(m) => m.metadata.name}
-                empty="No test matrices yet."
-                columns={[
-                    {
-                        label: "Name",
-                        render: (m) => (
-                            <Link to={`/testmatrices/${m.metadata.name}`}>{m.metadata.name}</Link>
-                        ),
-                    },
-                    {
-                        label: "Variants",
-                        render: (m) => m.spec.variants.map((v) => v.name).join(" vs "),
-                    },
-                    { label: "Templates", render: (m) => m.spec.templates.join(", ") },
-                    {
-                        label: "Status",
-                        render: (m) => (
-                            <StatusBadge
-                                kind="testmatrix"
-                                name={m.metadata.name}
-                                namespace={m.metadata.namespace}
-                                phase={m.status?.phase}
-                                conditions={m.status?.conditions}
-                            />
-                        ),
-                    },
-                    {
-                        label: "",
-                        className: "actions",
-                        render: (m) => (
-                            <button
-                                className="small danger"
-                                onClick={() => void deleteMatrix(m.metadata.name, matrices.reload)}
-                            >
-                                Delete
-                            </button>
-                        ),
-                    },
-                ]}
-            />
+            <Section id="active" title="Active">
+                {table(
+                    matrices.data?.filter((m) => !m.spec.testCase.archived),
+                    "No active test matrices.",
+                )}
+            </Section>
+            <Section id="archived" title="Archived">
+                {table(
+                    matrices.data &&
+                        newestFirst(matrices.data.filter((m) => m.spec.testCase.archived)),
+                    "No archived test matrices.",
+                )}
+            </Section>
         </Page>
     );
 }

@@ -337,3 +337,12 @@ export function archivedBurnWindow(tc: {
         end: Math.max(...stops),
     };
 }
+
+/** newestFirst sorts objects by creationTimestamp, most recent first, without mutating the input. */
+export function newestFirst<T extends { metadata: { creationTimestamp?: string } }>(
+    items: T[],
+): T[] {
+    return [...items].sort((a, b) =>
+        (b.metadata.creationTimestamp ?? "").localeCompare(a.metadata.creationTimestamp ?? ""),
+    );
+}

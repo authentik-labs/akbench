@@ -32,6 +32,7 @@ import {
     shortTag,
     SINCE_START,
     timeRangeSeconds,
+    newestFirst,
 } from "../format";
 import { shellLinkForCluster } from "../shell/links";
 import { printReport } from "../theme";
@@ -257,7 +258,7 @@ export function TestCasesPage() {
             </Section>
             <Section id="archived" title="Archived">
                 {table(
-                    testCases.data?.filter((tc) => tc.spec.archived),
+                    testCases.data && newestFirst(testCases.data.filter((tc) => tc.spec.archived)),
                     "No archived test cases.",
                 )}
             </Section>
