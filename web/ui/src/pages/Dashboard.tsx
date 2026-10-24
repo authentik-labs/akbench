@@ -64,7 +64,7 @@ export function DashboardPage() {
     });
     const targets = groups.flatMap((g) => g.rows);
     const notReadyTargets = targets.filter((r) => r.ready === false).length;
-    const sustained = targets.reduce((sum, r) => sum + (r.values.iterations ?? 0), 0);
+    const total = (key: string) => targets.reduce((sum, r) => sum + (r.values[key] ?? 0), 0);
     const worst = (key: string) =>
         targets
             .filter((r) => r.values[key] !== undefined)
@@ -72,7 +72,7 @@ export function DashboardPage() {
                 (w, r) => (!w || r.values[key] > w.values[key] ? r : w),
                 undefined,
             );
-    const slowest = worst("iteration_duration_p95");
+    const slowest = worst("http_req_duration_p99");
     const mostFailing = worst("http_req_failed");
     const firing = (alerts.data?.items ?? []).filter((a) => a.state === "active");
     const monitoringAlerts = firing.filter((a) => a.labels.namespace === OBSERVABILITY_NAMESPACE);
@@ -115,13 +115,17 @@ export function DashboardPage() {
             ))}
             <div className="stats">
                 <Stat
-                    value={live.data ? formatMetricValue(sustained, "tx/s") : "-"}
-                    label="Logins/s under burn"
+                    value={live.data ? formatMetricValue(total("http_reqs"), "req/s") : "-"}
+                    label="Requests/s under burn"
                     hint={`${burnTests.length} burn tests · ${targets.length} targets`}
                 />
                 <Stat
-                    value={formatMetricValue(slowest?.values.iteration_duration_p95, "s")}
-                    label="Slowest login p95"
+                    value={live.data ? formatMetricValue(total("iterations"), "tx/s") : "-"}
+                    label="Transactions/s under burn"
+                />
+                <Stat
+                    value={formatMetricValue(slowest?.values.http_req_duration_p99, "s")}
+                    label="Slowest request p99"
                     hint={slowest?.deploymentName}
                 />
                 <Stat
