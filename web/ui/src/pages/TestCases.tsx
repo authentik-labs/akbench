@@ -5,6 +5,7 @@ import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
+import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
 import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
 import { toast } from "../components/Toast";
@@ -656,6 +657,14 @@ export function TestCaseViewPage() {
         15000,
     );
     const rows = tc ? buildTargetRows(tc, summary.data?.results ?? [], deployments.data ?? []) : [];
+    // Until the test case and every deployment it drives are Ready, show what
+    // each is waiting on above everything else.
+    const targetDeployments = rows.flatMap((r) => (r.deployment ? [r.deployment] : []));
+    const rollingOut =
+        !!tc &&
+        !tc.spec.archived &&
+        (tc.status?.phase !== "Ready" ||
+            targetDeployments.some((d) => d.status?.phase !== "Ready"));
     // pendingBaseline shows a picked baseline (a deployment name) right away,
     // until the reloaded TestCase carries it.
     const [pendingBaseline, setPendingBaseline] = useState<string>();
@@ -778,6 +787,25 @@ export function TestCaseViewPage() {
             }
         >
             <Alert>{testCase.error ?? actionError ?? summary.error}</Alert>
+            {rollingOut && (
+                <div className="panel" style={{ marginBottom: 14 }}>
+                    <h3>
+                        Rollout{" "}
+                        <StatusBadge
+                            kind="testcase"
+                            name={name}
+                            namespace={tc.metadata.namespace}
+                            phase={tc.status?.phase}
+                            conditions={tc.status?.conditions}
+                        />
+                    </h3>
+                    <ConditionList conditions={tc.status?.conditions} />
+                    <ActivityLog path="testcases" name={name} limit={10} />
+                    {targetDeployments.map((d) => (
+                        <Rollout key={d.metadata.name} deployment={d} showConditions />
+                    ))}
+                </div>
+            )}
             <SectionNav sections={SECTIONS} />
 
             <Section

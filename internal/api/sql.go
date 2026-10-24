@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/client-go/util/exec"
@@ -158,26 +159,11 @@ func (s *Server) runSQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contexts, raw, err := s.loadShellContexts(r.Context())
-	if err != nil {
-		writeError(w, r, http.StatusServiceUnavailable, err.Error())
+	raw, kubeContext, ok := s.deploymentKubeContext(w, r, &topo)
+	if !ok {
 		return
 	}
-	clusterName := topo.Spec.ClusterRef.Name
-	if clusterName == "" {
-		clusterName = ManagementClusterName
-	}
-	for _, c := range contexts {
-		if c.Cluster == clusterName {
-			req.Context = c.Name
-			break
-		}
-	}
-	if req.Context == "" {
-		writeError(w, r, http.StatusConflict, fmt.Sprintf("no kubeconfig context for cluster %q (is the WorkloadCluster Ready?)", clusterName))
-		return
-	}
-	req.Kubeconfig = raw
+	req.Kubeconfig, req.Context = raw, kubeContext
 	req.Command = append([]string{"sh", "-c", sqlPsqlScript, "psql"}, formatArgs...)
 	req.Stdin = strings.NewReader(body.Query)
 
@@ -194,6 +180,44 @@ func (s *Server) runSQL(w http.ResponseWriter, r *http.Request) {
 		Stderr:   string(res.Stderr),
 		ExitCode: res.ExitCode,
 	})
+}
+
+// deploymentKubeContext finds the merged-kubeconfig context for the cluster
+// a deployment runs on, writing the error response itself when there is none.
+func (s *Server) deploymentKubeContext(w http.ResponseWriter, r *http.Request, topo *benchv1alpha1.AuthentikDeployment) ([]byte, string, bool) {
+	contexts, raw, err := s.loadShellContexts(r.Context())
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, err.Error())
+		return nil, "", false
+	}
+	clusterName := topo.Spec.ClusterRef.Name
+	if clusterName == "" {
+		clusterName = ManagementClusterName
+	}
+	for _, c := range contexts {
+		if c.Cluster == clusterName {
+			return raw, c.Name, true
+		}
+	}
+	writeError(w, r, http.StatusConflict, fmt.Sprintf("no kubeconfig context for cluster %q (is the WorkloadCluster Ready?)", clusterName))
+	return nil, "", false
+}
+
+// clientsetFor builds a clientset for one context of a merged kubeconfig.
+func clientsetFor(raw []byte, kubeContext string) (*kubernetes.Clientset, *rest.Config, error) {
+	kubeconfig, err := clientcmd.Load(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse kubeconfig: %w", err)
+	}
+	restCfg, err := clientcmd.NewNonInteractiveClientConfig(*kubeconfig, kubeContext, &clientcmd.ConfigOverrides{}, nil).ClientConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("build client for context %q: %w", kubeContext, err)
+	}
+	cs, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cs, restCfg, nil
 }
 
 // sqlExecTarget locates the Postgres container for each mode the operator
@@ -220,15 +244,7 @@ func sqlExecTarget(t *benchv1alpha1.AuthentikDeployment) (podExecRequest, error)
 // execInPod is the real podExecFunc: kubectl exec, websocket first with an
 // SPDY fallback for API servers that predate it.
 func execInPod(ctx context.Context, req podExecRequest) (podExecResult, error) {
-	kubeconfig, err := clientcmd.Load(req.Kubeconfig)
-	if err != nil {
-		return podExecResult{}, fmt.Errorf("parse kubeconfig: %w", err)
-	}
-	restCfg, err := clientcmd.NewNonInteractiveClientConfig(*kubeconfig, req.Context, &clientcmd.ConfigOverrides{}, nil).ClientConfig()
-	if err != nil {
-		return podExecResult{}, fmt.Errorf("build client for context %q: %w", req.Context, err)
-	}
-	cs, err := kubernetes.NewForConfig(restCfg)
+	cs, restCfg, err := clientsetFor(req.Kubeconfig, req.Context)
 	if err != nil {
 		return podExecResult{}, err
 	}

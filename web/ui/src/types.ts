@@ -47,6 +47,26 @@ export interface ObjectEvent {
     source?: string;
 }
 
+// Rollout is what is happening on the cluster a deployment runs on - its
+// namespace's pods and events (internal/api/rollout.go).
+export interface RolloutPod {
+    name: string;
+    phase: string;
+    ready: string;
+    restarts: number;
+    node?: string;
+    created?: string;
+    reason?: string;
+    message?: string;
+}
+
+export interface Rollout {
+    cluster: string;
+    namespace: string;
+    pods: RolloutPod[];
+    events: (ObjectEvent & { object: string })[];
+}
+
 export interface ObjectMeta {
     name: string;
     namespace?: string;

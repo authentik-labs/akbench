@@ -6,7 +6,7 @@ import { api, ResourcePath } from "../api";
 import { ObjectEvent } from "../types";
 import { useResource } from "../useResource";
 
-function formatLogTime(value: string | undefined): string {
+export function formatLogTime(value: string | undefined): string {
     if (!value) {
         return "-";
     }

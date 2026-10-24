@@ -21,6 +21,7 @@ import {
     TestCaseSpec,
     TestCaseTemplate,
     ObjectEvent,
+    Rollout,
     TestCaseTemplateSpec,
     TestRun,
     LogBreakdown,
@@ -370,6 +371,10 @@ export const api = {
         request<List<ObjectEvent>>(`/api/v1/${path}/${seg(name)}/events`).then(
             (r) => r.items ?? [],
         ),
+
+    // -- A deployment's pods and namespace events, live from its cluster
+    // (internal/api/rollout.go).
+    rollout: (name: string) => request<Rollout>(`/api/v1/deployments/${seg(name)}/rollout`),
 
     // -- Images (internal/api/images.go): whether a goauthentik image tag has
     // been published on ghcr.io - repository without the registry host.

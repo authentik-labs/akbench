@@ -4,6 +4,7 @@ import { CodeEditor } from "../components/CodeEditor";
 import { MetricsGrid, PostgresCharts, WorkerCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { NodePlacement } from "../components/Placement";
+import { Rollout } from "../components/Rollout";
 import { ConditionList, StatusBadge } from "../components/Status";
 import { toast } from "../components/Toast";
 import {
@@ -917,6 +918,7 @@ export function DeploymentViewPage() {
                         </div>
                         <ConditionList conditions={d.status?.conditions} />
                         <ActivityLog path="deployments" name={name} />
+                        <Rollout deployment={d} />
                     </div>
 
                     <h2>On the cluster</h2>

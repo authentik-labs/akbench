@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -102,6 +103,9 @@ type Server struct {
 	// podExec runs a command in a workload cluster pod (sql.go); a field so
 	// tests can fake it.
 	podExec podExecFunc
+	// clusterClient builds a clientset for a context of the merged
+	// kubeconfig (rollout.go); a field so tests can fake it.
+	clusterClient func(kubeconfig []byte, kubeContext string) (kubernetes.Interface, error)
 	// imageRegistry overrides the ghcr.io endpoint checkImage (images.go) queries, in tests.
 	imageRegistry string
 	// mcpAuth is the MCP authorization server (mcp_auth.go), set with cfg.MCPAuth.
@@ -129,6 +133,10 @@ func New(c client.WithWatch, cfg Config) *Server {
 		events:            newEventHub(),
 		eventsTickets:     newEventsState(),
 		podExec:           execInPod,
+		clusterClient: func(raw []byte, kubeContext string) (kubernetes.Interface, error) {
+			cs, _, err := clientsetFor(raw, kubeContext)
+			return cs, err
+		},
 	}
 	if cfg.MCPAuth != nil {
 		s.mcpAuth = newMCPAuth(cfg.MCPAuth)
@@ -221,6 +229,7 @@ func (s *Server) Router() http.Handler {
 			r.Put("/deployments/{name}/extra-values", s.putExtraValues)
 			r.Get("/deployments/{name}/helm-values", s.getHelmValues)
 			r.Post("/deployments/{name}/sql", s.runSQL)
+			r.Get("/deployments/{name}/rollout", s.getRollout)
 			r.Post("/deployments/{name}/reset", s.resetDeployment)
 			r.Get("/deployments/{name}/postgres-metrics", s.listPostgresMetrics)
 			r.Get("/deployments/{name}/worker-metrics", s.listWorkerMetrics)
