@@ -11,9 +11,12 @@ delete or run anything.
 Each workload cluster also runs the official
 [mcp-grafana](https://github.com/grafana/mcp-grafana) server next to its
 Grafana (`grafana-mcp` in `bench-system`, NodePort 30913, `--disable-write`).
-`list_grafana_tools` and `call_grafana_tool` proxy to it, taking the
-cluster's name: use them for raw LogQL/TraceQL, dashboards, alert rules and
-annotations. `call_grafana_tool` refuses any tool not annotated read-only.
+Its read-only tools are re-exported as `grafana_<tool>` (e.g.
+`grafana_query_loki_logs`) with an extra required `cluster` argument: use
+them for raw LogQL/TraceQL, dashboards, alert rules and annotations. The
+tool set is discovered from the first cluster that answers, retried at most
+once a minute until one does, so they only appear once a cluster's
+mcp-grafana is up. Tools not annotated read-only are never re-exported.
 mcp-grafana signs into Grafana as its admin and requires that same password
 as a bearer token (both from the grafana chart's Secret), which
 `cmd/apiserver` already holds for its Grafana proxy.

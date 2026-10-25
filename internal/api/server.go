@@ -95,6 +95,10 @@ type Server struct {
 	// would pick up anyway.
 	grafanaAdminMu    sync.Mutex
 	grafanaAdminCache map[string]string
+	// grafanaTools* track re-exporting mcp-grafana's tools (grafana_mcp.go).
+	grafanaToolsMu    sync.Mutex
+	grafanaToolsAdded bool
+	grafanaToolsTried time.Time
 	traces            *breakdownCache[TraceBreakdown]
 	profiles          *breakdownCache[ProfileBreakdown]
 	logs              *breakdownCache[LogBreakdown]

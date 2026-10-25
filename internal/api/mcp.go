@@ -24,8 +24,8 @@ import (
 // shows: test cases and runs, the compare table, metric/resource time
 // series, trace, profile and log breakdowns, and alerts.
 //
-// It is read-only by construction: every tool but the Grafana MCP proxy
-// (grafana_mcp.go, read-only in its own way) answers by dispatching a GET
+// It is read-only by construction: every tool but the re-exported Grafana MCP
+// tools (grafana_mcp.go, read-only in their own way) answers by dispatching a GET
 // to mcpReadRouter, which only registers read handlers, so no tool can
 // reach a create/update/delete, the SQL console, a reset, a test run or the
 // shell. Each tool reuses its REST endpoint's validation (testid/window
@@ -39,7 +39,7 @@ const mcpInstructions = `Read-only access to authentik-bench load-test analytics
 
 Concepts: an AuthentikDeployment is one authentik install under test (its "target" in metrics). A TestCase is a k6 load test against one or more deployments; its object name is the k6 "testid" every metric is labeled with. Quick TestCases execute as individual TestRuns (one per target); Burn TestCases run continuously, so their only history is in Prometheus.
 
-Typical flow: list_test_cases (or list_test_runs) to find testids and when they ran, then compare_tests for a summary table, get_metric_series / get_resource_usage for time series over a run's window (use the TestRun's status start/completion times as start/end), get_trace_breakdown / get_profile_breakdown to explain where time goes, and get_log_breakdown for what authentik logs warnings and errors about. For anything else in a workload cluster's Grafana (raw LogQL/TraceQL, dashboards, alert rules), use list_grafana_tools and call_grafana_tool. Durations are in seconds, ratios are 0-1.`
+Typical flow: list_test_cases (or list_test_runs) to find testids and when they ran, then compare_tests for a summary table, get_metric_series / get_resource_usage for time series over a run's window (use the TestRun's status start/completion times as start/end), get_trace_breakdown / get_profile_breakdown to explain where time goes, and get_log_breakdown for what authentik logs warnings and errors about. For anything else in a workload cluster's Grafana (raw LogQL/TraceQL, dashboards, alert rules), use the grafana_* tools, which take the cluster to query. Durations are in seconds, ratios are 0-1.`
 
 // paramTestIDs/paramStart/paramEnd are the query parameters the metrics
 // endpoints share; paramTestID is the breakdown endpoints' single testid.
@@ -61,7 +61,10 @@ const mcpMaxResultBytes = 256 << 10
 func (s *Server) mcpHandler() http.Handler {
 	read := s.mcpReadRouter()
 	server := s.newMCPServer(read)
-	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
+	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		s.ensureGrafanaTools(r.Context(), server)
+		return server
+	},
 		// Stateless: every tool call is independent, so no session needs to
 		// survive between requests (or pin a client to one replica).
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
@@ -392,7 +395,6 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 			}
 			return mcpJSON(ctx, read, "/metrics/query", params)
 		})
-	s.addGrafanaMCPTools(server, tool)
 
 	return server
 }
