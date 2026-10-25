@@ -8,6 +8,16 @@ log breakdowns, firing alerts, and raw PromQL. Every tool goes through the
 same GET handlers (and input validation) the UI uses; none can create, change,
 delete or run anything.
 
+Each workload cluster also runs the official
+[mcp-grafana](https://github.com/grafana/mcp-grafana) server next to its
+Grafana (`grafana-mcp` in `bench-system`, NodePort 30913, `--disable-write`).
+`list_grafana_tools` and `call_grafana_tool` proxy to it, taking the
+cluster's name: use them for raw LogQL/TraceQL, dashboards, alert rules and
+annotations. `call_grafana_tool` refuses any tool not annotated read-only.
+mcp-grafana signs into Grafana as its admin and requires that same password
+as a bearer token (both from the grafana chart's Secret), which
+`cmd/apiserver` already holds for its Grafana proxy.
+
 By default it requires the same bearer token (static or OIDC) as the rest of
 the API, e.g. for Claude Code:
 

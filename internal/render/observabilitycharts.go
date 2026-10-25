@@ -31,7 +31,8 @@ const (
 	AlloyHelmReleaseName     = "alloy"
 )
 
-// GrafanaCommunityHelmRepository serves the grafana, tempo and loki charts.
+// GrafanaCommunityHelmRepository serves the grafana, tempo, loki and
+// grafana-mcp charts.
 func GrafanaCommunityHelmRepository(namespace string) *sourcev1.HelmRepository {
 	return helmRepository(GrafanaCommunityHelmRepositoryName, namespace, pinnedChart("grafana").Repository)
 }

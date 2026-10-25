@@ -210,3 +210,36 @@ func TestObservabilityServiceContracts(t *testing.T) {
 		t.Error("observability Service names/ports changed - authentik's defaults point at them")
 	}
 }
+
+func TestGrafanaMCPHelmRelease(t *testing.T) {
+	wc := observabilityCluster()
+	hr, err := GrafanaMCPHelmRelease(wc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hr.Spec.Chart.Spec.SourceRef.Name != GrafanaCommunityHelmRepositoryName || hr.Spec.KubeConfig.SecretRef.Name != "c1-kubeconfig" {
+		t.Errorf("chart %+v kubeconfig %+v", hr.Spec.Chart.Spec, hr.Spec.KubeConfig)
+	}
+	// Its credentials come from the grafana release's Secret.
+	if len(hr.Spec.DependsOn) != 2 || hr.Spec.DependsOn[1].Name != "grafana-c1" {
+		t.Errorf("dependsOn %+v", hr.Spec.DependsOn)
+	}
+	v := valuesOf(t, hr)
+	svc := v["service"].(map[string]any)
+	if svc["type"] != "NodePort" || svc["nodePort"] != float64(GrafanaMCPNodePort) {
+		t.Errorf("service = %v", svc)
+	}
+	if v["disableWrite"] != true {
+		t.Error("write tools enabled")
+	}
+	raw := string(hr.Spec.Values.Raw)
+	for _, want := range []string{
+		`"--transport=streamable-http"`,
+		`"serverAuth":{"tokenSecret":{"key":"admin-password","name":"grafana"}}`,
+		`"GRAFANA_PASSWORD":{"secretKeyRef":{"key":"admin-password","name":"grafana"}}`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("values missing %s", want)
+		}
+	}
+}

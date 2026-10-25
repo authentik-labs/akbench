@@ -32,7 +32,9 @@ What each component does.
   kube-prometheus-stack (Prometheus with the remote-write receiver k6 pushes
   to, node-exporter, kube-state-metrics), Grafana (anonymous-admin, reachable
   through `cmd/apiserver`'s own reverse proxy - see below), Pyroscope,
-  Tempo, and Loki with an Alloy DaemonSet shipping every pod's logs to it.
+  Tempo, Loki with an Alloy DaemonSet shipping every pod's logs to it, and
+  the official Grafana MCP server (re-exposed through `cmd/apiserver`'s MCP
+  server, see [mcp.md](mcp.md)).
 - **`clusterRef`/`runnerClusterRef`**: `AuthentikDeploymentReconciler`,
   `TestCaseReconciler`, and `TestRunReconciler` all resolve these to a live
   client via `internal/multicluster.Tracker` (wrapping Cluster API's

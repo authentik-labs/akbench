@@ -13,15 +13,6 @@ import (
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
 
-// bearerTransport adds the API token to every request the MCP client sends.
-type bearerTransport struct{ token string }
-
-func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	r = r.Clone(r.Context())
-	r.Header.Set("Authorization", "Bearer "+b.token)
-	return http.DefaultTransport.RoundTrip(r)
-}
-
 // connectMCP serves s over HTTP and returns an MCP client session for it.
 func connectMCP(t *testing.T, s *Server) *mcp.ClientSession {
 	t.Helper()

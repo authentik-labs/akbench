@@ -225,3 +225,14 @@ func (r *WorkloadClusterReconciler) ensureGrafana(ctx context.Context, wc *bench
 	wc.Status.GrafanaURL = fmt.Sprintf("http://%s:%d", nodeIP, render.GrafanaNodePort)
 	return nil
 }
+
+// ensureGrafanaMCP installs mcp-grafana next to Grafana
+// (render.GrafanaMCPHelmRelease). cmd/apiserver reaches it on
+// render.GrafanaMCPNodePort at the node IP ensureGrafana recorded.
+func (r *WorkloadClusterReconciler) ensureGrafanaMCP(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) error {
+	hr, err := render.GrafanaMCPHelmRelease(wc)
+	if err != nil {
+		return err
+	}
+	return r.applyObservabilityChart(ctx, wc, render.GrafanaCommunityHelmRepository(wc.Namespace), hr, render.GrafanaMCPHelmReleaseName)
+}

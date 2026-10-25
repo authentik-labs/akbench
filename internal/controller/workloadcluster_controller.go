@@ -253,6 +253,8 @@ func (r *WorkloadClusterReconciler) applyClusterObjects(ctx context.Context, wc 
 //     so Alloy tails every pod's logs into Loki.
 //   - Grafana (ensureGrafana): pre-wired with datasources for Prometheus,
 //     Pyroscope, Tempo and Loki, so it's useful the moment it comes up.
+//   - Grafana MCP (ensureGrafanaMCP): the official mcp-grafana server,
+//     re-exposed through cmd/apiserver's own MCP server.
 func (r *WorkloadClusterReconciler) ensureAddons(ctx context.Context, wc *benchv1alpha1.WorkloadCluster) {
 	log := logf.FromContext(ctx)
 	type addon struct {
@@ -279,6 +281,7 @@ func (r *WorkloadClusterReconciler) ensureAddons(ctx context.Context, wc *benchv
 		helmAddon("Loki", r.ensureLoki, render.LokiHelmReleaseName),
 		helmAddon("Alloy", r.ensureAlloy, render.AlloyHelmReleaseName),
 		helmAddon("Grafana", r.ensureGrafana, render.GrafanaHelmReleaseName),
+		helmAddon("Grafana MCP", r.ensureGrafanaMCP, render.GrafanaMCPHelmReleaseName),
 		helmAddon("descheduler", r.ensureDescheduler, render.DeschedulerHelmReleaseName),
 	}
 	// csi-incus is Incus-specific (and a no-op without spec.incus).

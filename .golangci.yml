@@ -55,6 +55,8 @@ linters:
         - "^fullnameOverride$"
         - "^persistence$"
         - "^serviceMonitor$"
+        - "^metrics$"
+        - "^port$"
         - "^size$"
         - "^resources$"
         - "^storage$"
