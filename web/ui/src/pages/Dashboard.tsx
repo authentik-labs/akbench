@@ -53,8 +53,10 @@ export function DashboardPage() {
         60000,
     );
 
-    // A matrix's test cases are shown as its grid instead of one group each.
+    // A matrix's test cases are shown as its grid instead of one group each;
+    // a one-template matrix's single test case keeps its own, fuller group.
     const burnMatrices = (matrices.data ?? [])
+        .filter((m) => m.spec.templates.length > 1)
         .filter((m) => (m.status?.rows ?? []).some((r) => burnIDs.includes(r.testCase)))
         .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
     const matrixBurnTests = (m: TestMatrix) =>
