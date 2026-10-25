@@ -105,4 +105,23 @@ var _ = Describe("TestMatrix Controller", func() {
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-main-login", Namespace: "default"}, &benchv1alpha1.AuthentikDeployment{})).To(Succeed())
 	})
+
+	It("archives its TestCases without recreating deleted deployments", func() {
+		reconcileOnce()
+		adKey := types.NamespacedName{Name: name + "-pr-login", Namespace: "default"}
+		forceDelete(ctx, &benchv1alpha1.AuthentikDeployment{Name: adKey.Name, Namespace: "default"})
+		var m benchv1alpha1.TestMatrix
+		Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+		m.Spec.TestCase.Archived = true
+		Expect(k8sClient.Update(ctx, &m)).To(Succeed())
+		reconcileOnce()
+
+		err := k8sClient.Get(ctx, adKey, &benchv1alpha1.AuthentikDeployment{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue())
+		var tc benchv1alpha1.TestCase
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-login", Namespace: "default"}, &tc)).To(Succeed())
+		Expect(tc.Spec.Archived).To(BeTrue())
+		Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+		Expect(m.Status.Phase).To(Equal(benchv1alpha1.PhaseArchived))
+	})
 })

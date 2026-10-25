@@ -44,7 +44,9 @@ func (r *TestMatrixReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	desired, err := render.TestMatrix(&m)
-	if err == nil {
+	if err == nil && m.Spec.TestCase.Archived {
+		err = r.archive(ctx, desired.TestCases)
+	} else if err == nil {
 		err = r.apply(ctx, &m, desired)
 	}
 	if err != nil {
@@ -117,6 +119,31 @@ func (r *TestMatrixReconciler) apply(ctx context.Context, m *benchv1alpha1.TestM
 	return nil
 }
 
+// archive marks the matrix's existing TestCases archived, so they stop
+// their k6 load, and otherwise leaves its children alone: nothing is
+// recreated, updated or pruned, so deployments can be deleted to free their
+// clusters while the TestCases keep their results.
+func (r *TestMatrixReconciler) archive(ctx context.Context, desired []*benchv1alpha1.TestCase) error {
+	for _, d := range desired {
+		var tc benchv1alpha1.TestCase
+		if err := r.Get(ctx, client.ObjectKeyFromObject(d), &tc); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		if tc.Spec.Archived {
+			continue
+		}
+		patch := client.MergeFrom(tc.DeepCopy())
+		tc.Spec.Archived = true
+		if err := r.Patch(ctx, &tc, patch); err != nil {
+			return fmt.Errorf("archive TestCase %s: %w", tc.Name, err)
+		}
+	}
+	return nil
+}
+
 // updateStatus fills status.rows from the children's own phases and rolls
 // them up into the matrix's Ready condition.
 func (r *TestMatrixReconciler) updateStatus(ctx context.Context, m *benchv1alpha1.TestMatrix) error {
@@ -163,15 +190,15 @@ func (r *TestMatrixReconciler) updateStatus(ctx context.Context, m *benchv1alpha
 	}
 
 	switch {
+	case m.Spec.TestCase.Archived:
+		setCondition(r.Recorder, m, &m.Status.Conditions, m.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonArchived, "test cases are archived")
 	case len(failed) > 0:
 		setCondition(r.Recorder, m, &m.Status.Conditions, m.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonReconcileError, "failed: "+strings.Join(failed, ", "))
 	case len(notReady) > 0:
 		setCondition(r.Recorder, m, &m.Status.Conditions, m.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonDependencyNotReady, "waiting for: "+strings.Join(notReady, ", "))
-	case m.Spec.TestCase.Archived:
-		setCondition(r.Recorder, m, &m.Status.Conditions, m.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-			benchv1alpha1.ReasonArchived, "test cases are archived")
 	default:
 		setCondition(r.Recorder, m, &m.Status.Conditions, m.Generation, benchv1alpha1.ConditionReady, metav1.ConditionTrue,
 			benchv1alpha1.ReasonReady, "every test case and deployment is ready")
