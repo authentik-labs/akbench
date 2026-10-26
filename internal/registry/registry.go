@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -116,7 +117,17 @@ func (c *Checker) TagExists(ctx context.Context, image, tag string) (bool, error
 }
 
 func (c *Checker) headManifest(ctx context.Context, manifestURL, token string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, manifestURL, nil)
+	res, err := c.request(ctx, http.MethodHead, manifestURL, token)
+	if err != nil {
+		return nil, err
+	}
+	_ = res.Body.Close()
+	return res, nil
+}
+
+// request sends a registry request; the caller closes the body.
+func (c *Checker) request(ctx context.Context, method, target, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -126,10 +137,72 @@ func (c *Checker) headManifest(ctx context.Context, manifestURL, token string) (
 	}
 	res, err := c.client().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("registry manifest request failed: %w", err)
+		return nil, fmt.Errorf("registry request failed: %w", err)
 	}
-	_ = res.Body.Close()
 	return res, nil
+}
+
+// Label reads a label from the image config of image:tag (its first
+// platform's, for a multi-arch index) - e.g. org.opencontainers.image.version,
+// to tell which build a floating tag like "latest" points at. Empty if the
+// image has no such label.
+func (c *Checker) Label(ctx context.Context, image, tag, label string) (string, error) {
+	if !TagPattern.MatchString(tag) {
+		return "", fmt.Errorf("invalid image tag %q", tag)
+	}
+	host, repository, err := ParseImage(image)
+	if err != nil {
+		return "", err
+	}
+	base := fmt.Sprintf("%s/v2/%s", c.endpoint(host), repository)
+	token := ""
+	get := func(path string, out any) error {
+		res, err := c.request(ctx, http.MethodGet, base+path, token)
+		if err == nil && res.StatusCode == http.StatusUnauthorized && token == "" {
+			_ = res.Body.Close()
+			if token, err = c.token(ctx, res.Header.Get("WWW-Authenticate"), repository); err != nil {
+				return err
+			}
+			res, err = c.request(ctx, http.MethodGet, base+path, token)
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = res.Body.Close() }()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("registry request for %s:%s failed: %s", image, tag, res.Status)
+		}
+		return json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(out)
+	}
+
+	type manifest struct {
+		Manifests []struct {
+			Digest string `json:"digest"`
+		} `json:"manifests"`
+		Config struct {
+			Digest string `json:"digest"`
+		} `json:"config"`
+	}
+	var m manifest
+	if err := get("/manifests/"+tag, &m); err != nil {
+		return "", err
+	}
+	if len(m.Manifests) > 0 {
+		digest := m.Manifests[0].Digest
+		m = manifest{}
+		if err := get("/manifests/"+digest, &m); err != nil {
+			return "", err
+		}
+	}
+	var cfg struct {
+		Config struct {
+			Labels map[string]string `json:"Labels"`
+		} `json:"config"`
+	}
+	if err := get("/blobs/"+m.Config.Digest, &cfg); err != nil {
+		return "", err
+	}
+	return cfg.Config.Labels[label], nil
 }
 
 // token answers a Bearer challenge (RFC 6750, as the distribution token

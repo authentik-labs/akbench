@@ -130,7 +130,7 @@ func TestParseProviderList(t *testing.T) {
 
 func renderDocs(t *testing.T, cfg *Config, st *State) map[string]*unstructured.Unstructured {
 	t.Helper()
-	out, err := RenderStack(cfg, st)
+	out, err := RenderStack(cfg, st, cfg.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +263,7 @@ func TestParseInventory(t *testing.T) {
 type fakeCluster struct {
 	calls    []string
 	enabled  string
+	pin      string
 	statuses []map[string]string
 	stack    []byte
 }
@@ -273,6 +274,8 @@ func (f *fakeCluster) run(_ context.Context, stdin []byte, name string, args ...
 	switch {
 	case strings.Contains(call, "get configmap "+ProvidersConfigMap):
 		return []byte(f.enabled), nil
+	case strings.Contains(call, "get configmap "+VersionConfigMap):
+		return []byte(f.pin), nil
 	case stdin != nil && bytes.Contains(stdin, []byte(StatusConfigMap)):
 		var cm struct {
 			Data map[string]string `json:"data"`
@@ -391,5 +394,45 @@ func TestServeStartsProviderLoopBeforeBootstrapFinishes(t *testing.T) {
 	case <-installed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("enabled provider not installed while the bootstrap was still failing")
+	}
+}
+
+func TestEffectiveVersion(t *testing.T) {
+	for _, tc := range []struct {
+		pin  map[string]string
+		want string
+	}{
+		{nil, "1.0.0"},
+		{map[string]string{VersionKeyTarget: "1.1.0", VersionKeyBase: "1.0.0"}, "1.1.0"},
+		// The appliance image was replaced since: its own version wins.
+		{map[string]string{VersionKeyTarget: "1.1.0", VersionKeyBase: "0.9.0"}, "1.0.0"},
+		{map[string]string{VersionKeyBase: "1.0.0"}, "1.0.0"},
+	} {
+		if got := EffectiveVersion("1.0.0", tc.pin); got != tc.want {
+			t.Errorf("EffectiveVersion(%v) = %q, want %q", tc.pin, got, tc.want)
+		}
+	}
+}
+
+func TestSyncStackAppliesPinnedVersion(t *testing.T) {
+	f := &fakeCluster{}
+	b := newTestBootstrapper(t, f)
+	ctx := context.Background()
+	if err := b.syncStack(ctx, true); err != nil || f.stack != nil {
+		t.Fatalf("applied before the bootstrap did: err=%v", err)
+	}
+	if err := b.syncStack(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	f.stack = nil
+	if err := b.syncStack(ctx, true); err != nil || f.stack != nil {
+		t.Fatalf("re-applied an unchanged version: err=%v", err)
+	}
+	f.pin = `{"version":"1.1.0","base":"dev"}`
+	if err := b.syncStack(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(f.stack, []byte(`akbench-apiserver:1.1.0"`)) {
+		t.Errorf("stack not applied at the pinned version:\n%s", f.stack)
 	}
 }

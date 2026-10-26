@@ -129,6 +129,15 @@ export interface BuildInfo {
     goVersion?: string;
 }
 
+// internal/api/update.go: updating akbench itself inside the appliance.
+export interface UpdateInfo {
+    managed: boolean;
+    current: string;
+    target?: string;
+    latest?: string;
+    latestError?: string;
+}
+
 export interface ShellContext {
     name: string;
     cluster: string;
@@ -169,6 +178,8 @@ export const api = {
             `/api/v1/infrastructure/providers/${seg(id)}/enable`,
             json("POST", {}),
         ),
+    update: () => request<UpdateInfo>("/api/v1/infrastructure/update"),
+    applyUpdate: () => request<UpdateInfo>("/api/v1/infrastructure/update", json("POST", {})),
     incusCredentials: () =>
         request<List<IncusCredential>>("/api/v1/infrastructure/incus/credentials").then(
             (r) => r.items ?? [],

@@ -126,6 +126,21 @@ under `/var/lib/rancher/k3s/akbench` on the volume.
 
 ## Upgrading
 
+### akbench only, from the web UI
+
+The **Providers** page shows the running akbench version and, when a newer
+build is published (the `:latest` apiserver image), an **Update** button. It
+rolls out that version's operator chart/image and apiserver image without
+touching the container: the web UI pins the version in the
+`authentik-bench/appliance-version` ConfigMap and the appliance applies it
+within a few seconds. The web UI restarts while it does.
+
+The pin only holds for the appliance image it was made on: replacing the
+container with a newer appliance image goes back to the version that image
+ships.
+
+### The whole appliance
+
 Every boot re-runs the whole bootstrap, and every step is idempotent. To upgrade,
 replace the container and keep the volume:
 

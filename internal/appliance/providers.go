@@ -36,3 +36,24 @@ func ParseProviderList(v string) []string {
 	}
 	return out
 }
+
+// The contract for updating akbench itself from the web UI: the UI writes
+// the operator/apiserver version to run into VersionConfigMap, and the
+// appliance's sync loop re-applies the stack at that version. The pin only
+// holds while the appliance image's own version is still VersionKeyBase, so
+// replacing the container with a newer image goes back to the version that
+// image ships.
+const (
+	VersionConfigMap = "appliance-version"
+	VersionKeyTarget = "version"
+	VersionKeyBase   = "base"
+)
+
+// EffectiveVersion is the akbench version to run: the UI's pin while it was
+// made against this image's version, otherwise the image's own.
+func EffectiveVersion(imageVersion string, pin map[string]string) string {
+	if v := pin[VersionKeyTarget]; v != "" && pin[VersionKeyBase] == imageVersion {
+		return v
+	}
+	return imageVersion
+}

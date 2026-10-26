@@ -69,6 +69,11 @@ type Config struct {
 	// (Dockerfile.appliance), where infrastructure providers are enabled
 	// from the UI (infrastructure.go). Elsewhere they're installed by hand.
 	Appliance bool
+	// ApplianceImage and ApplianceVersion are, inside the appliance, the
+	// apiserver image repository and the appliance image's own akbench
+	// version - what updating akbench from the UI (update.go) needs.
+	ApplianceImage   string
+	ApplianceVersion string
 
 	// HTTPClient is used for Prometheus calls. Defaults to a 30s client.
 	HTTPClient *http.Client
@@ -246,6 +251,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/metrics/resources", s.listResourceMetrics)
 
 			r.Get("/infrastructure", s.getInfrastructure)
+			r.Get("/infrastructure/update", s.getUpdate)
+			r.Post("/infrastructure/update", s.applyUpdate)
 			r.Post("/infrastructure/providers/{id}/enable", s.enableInfrastructureProvider)
 			r.Get("/infrastructure/incus/credentials", s.listIncusCredentials)
 			r.Post("/infrastructure/incus/credentials", s.createIncusCredential)

@@ -196,6 +196,8 @@ func run() error {
 		PrometheusURL:    prometheusURL,
 		CAPIAvailable:    capiAvailable,
 		Appliance:        os.Getenv("BENCH_APPLIANCE") == "true",
+		ApplianceImage:   os.Getenv("BENCH_APPLIANCE_IMAGE"),
+		ApplianceVersion: os.Getenv("BENCH_APPLIANCE_VERSION"),
 		OIDC:             verifier,
 		OIDCConfig:       oidcCfg,
 		MCPAuth:          mcpAuthCfg,

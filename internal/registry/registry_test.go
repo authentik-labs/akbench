@@ -96,3 +96,27 @@ func TestParseBearerChallenge(t *testing.T) {
 		t.Error("Basic challenge must not parse as Bearer")
 	}
 }
+
+func TestLabelFollowsIndex(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/a/b/manifests/latest":
+			_, _ = w.Write([]byte(`{"manifests":[{"digest":"sha256:amd64"},{"digest":"sha256:arm64"}]}`))
+		case "/v2/a/b/manifests/sha256:amd64":
+			_, _ = w.Write([]byte(`{"config":{"digest":"sha256:cfg"}}`))
+		case "/v2/a/b/blobs/sha256:cfg":
+			_, _ = w.Write([]byte(`{"config":{"Labels":{"org.opencontainers.image.version":"1.2.3"}}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := &Checker{Endpoints: map[string]string{"ghcr.io": srv.URL}}
+	got, err := c.Label(context.Background(), "ghcr.io/a/b", "latest", "org.opencontainers.image.version")
+	if err != nil || got != "1.2.3" {
+		t.Errorf("got %q, %v", got, err)
+	}
+	if _, err := c.Label(context.Background(), "ghcr.io/a/b", "missing", "x"); err == nil {
+		t.Error("expected an error for a missing tag")
+	}
+}

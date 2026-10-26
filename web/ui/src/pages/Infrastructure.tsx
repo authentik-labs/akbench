@@ -39,6 +39,52 @@ function providerBadge(p: InfrastructureProviderInfo) {
     return <span className="badge neutral">Not installed</span>;
 }
 
+// Inside the appliance, akbench itself (operator + apiserver) updates to the
+// latest published build from here; the appliance's sync loop rolls it out.
+function UpdateSection() {
+    const update = useResource(() => api.update(), [], 30000);
+    const info = update.data;
+    if (!info?.managed) {
+        return null;
+    }
+    const rollingOut = info.target && info.target !== info.current;
+    const available = info.latest && info.latest !== info.target;
+    return (
+        <>
+            <h2>akbench</h2>
+            <Alert>{update.error}</Alert>
+            {info.latestError && <Alert>Checking for updates failed: {info.latestError}</Alert>}
+            <p>
+                Running <code>{info.current}</code>
+                {rollingOut && (
+                    <>
+                        {" "}
+                        - <span className="badge info">Updating to {info.target}</span>
+                    </>
+                )}
+                {!rollingOut && !available && info.latest && (
+                    <span className="muted"> - up to date</span>
+                )}
+            </p>
+            {available && (
+                <button
+                    className="primary"
+                    onClick={() =>
+                        void confirmAndRun(
+                            `Update the operator and web UI to ${info.latest}? The web UI restarts while it rolls out.`,
+                            () => api.applyUpdate(),
+                            update.reload,
+                            `Updating to ${info.latest}`,
+                        )
+                    }
+                >
+                    Update to {info.latest}
+                </button>
+            )}
+        </>
+    );
+}
+
 export function InfrastructurePage() {
     const infra = useResource(() => api.infrastructure(), [], 5000);
     const incus = useResource(() => api.incusCredentials(), [], 10000);
@@ -63,6 +109,7 @@ export function InfrastructurePage() {
             title="Infrastructure"
             subtitle="Where workload clusters are provisioned, and how to reach it."
         >
+            <UpdateSection />
             <Alert>{infra.error}</Alert>
             <h2>Providers</h2>
             {infra.data && !infra.data.managed && (

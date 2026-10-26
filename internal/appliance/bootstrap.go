@@ -64,6 +64,11 @@ type Bootstrapper struct {
 	// operator chart can't be pulled.
 	coreReady     chan struct{}
 	coreReadyOnce sync.Once
+
+	// stackMu guards appliedVersion, the akbench version the stack was last
+	// applied at; empty until the bootstrap first applied it.
+	stackMu        sync.Mutex
+	appliedVersion string
 }
 
 // init prepares the zero-value fields. Called by Serve before it starts the
@@ -113,12 +118,14 @@ func (b *Bootstrapper) providerLoop(ctx context.Context) {
 		msg := ""
 		if err := b.SyncProviders(ctx); err != nil {
 			msg = err.Error()
+		} else if err := b.syncStack(ctx, true); err != nil {
+			msg = "update akbench: " + err.Error()
 		}
 		if msg != lastErr {
 			if msg != "" {
-				b.logf("Infrastructure provider sync failed: %s", msg)
+				b.logf("Sync failed: %s", msg)
 			} else if lastErr != "" {
-				b.logf("Infrastructure providers are in sync again")
+				b.logf("Infrastructure providers and akbench are in sync again")
 			}
 			lastErr = msg
 		}
@@ -156,13 +163,7 @@ func (b *Bootstrapper) RunOnce(ctx context.Context) error {
 	b.init()
 	b.coreReadyOnce.Do(func() { close(b.coreReady) })
 
-	b.logf("Applying akbench %s", b.Config.Version)
-	stack, err := RenderStack(b.Config, b.State)
-	if err != nil {
-		return fmt.Errorf("render stack: %w", err)
-	}
-	if _, err := b.Run(ctx, stack, "kubectl", "apply", "--server-side", "--force-conflicts",
-		"--field-manager="+fieldManager, "-f", "-"); err != nil {
+	if err := b.syncStack(ctx, false); err != nil {
 		return err
 	}
 
@@ -175,6 +176,43 @@ func (b *Bootstrapper) RunOnce(ctx context.Context) error {
 		"deployment/apiserver", "--timeout=10m"); err != nil {
 		return err
 	}
+	return nil
+}
+
+// syncStack applies the akbench stack at EffectiveVersion. With onlyChanged
+// (the sync loop) it does nothing until the bootstrap applied the stack once,
+// and afterwards only when the web UI pinned a different version.
+func (b *Bootstrapper) syncStack(ctx context.Context, onlyChanged bool) error {
+	b.stackMu.Lock()
+	defer b.stackMu.Unlock()
+	if onlyChanged && b.appliedVersion == "" {
+		return nil
+	}
+	raw, err := b.Run(ctx, nil, "kubectl", "-n", SystemNamespace, "get", "configmap", VersionConfigMap,
+		"--ignore-not-found", "-o", "jsonpath={.data}")
+	if err != nil {
+		return err
+	}
+	pin := map[string]string{}
+	if s := strings.TrimSpace(string(raw)); s != "" {
+		if err := json.Unmarshal([]byte(s), &pin); err != nil {
+			return fmt.Errorf("parse %s: %w", VersionConfigMap, err)
+		}
+	}
+	version := EffectiveVersion(b.Config.Version, pin)
+	if onlyChanged && version == b.appliedVersion {
+		return nil
+	}
+	b.logf("Applying akbench %s", version)
+	stack, err := RenderStack(b.Config, b.State, version)
+	if err != nil {
+		return fmt.Errorf("render stack: %w", err)
+	}
+	if _, err := b.Run(ctx, stack, "kubectl", "apply", "--server-side", "--force-conflicts",
+		"--field-manager="+fieldManager, "-f", "-"); err != nil {
+		return err
+	}
+	b.appliedVersion = version
 	return nil
 }
 

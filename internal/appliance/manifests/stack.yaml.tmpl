@@ -29,7 +29,7 @@ spec:
   interval: 10m
   url: {{ toJSON .Config.OperatorChart }}
   ref:
-    tag: {{ toJSON .Config.Version }}
+    tag: {{ toJSON .Version }}
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
@@ -57,7 +57,7 @@ spec:
       manager:
         image:
           repository: {{ toJSON .Config.OperatorImage }}
-          tag: {{ toJSON .Config.Version }}
+          tag: {{ toJSON .Version }}
         # Where the operator seeds the built-in TestCaseTemplates; must match
         # the apiserver's BENCH_NAMESPACE below.
         env:
@@ -111,7 +111,7 @@ spec:
       serviceAccountName: apiserver
       containers:
         - name: apiserver
-          image: {{ toJSON (printf "%s:%s" .Config.APIServerImage .Config.Version) }}
+          image: {{ toJSON (printf "%s:%s" .Config.APIServerImage .Version) }}
           env:
             - name: BENCH_NAMESPACE
               value: {{ toJSON .Config.Namespace }}
@@ -120,6 +120,14 @@ spec:
             # loop installs with clusterctl (internal/appliance/providers.go).
             - name: BENCH_APPLIANCE
               value: "true"
+            # Lets the web UI update akbench to the latest published build:
+            # it looks the version up from this image's :latest tag and pins
+            # it, against the appliance image's own version, in
+            # VersionConfigMap (internal/appliance/providers.go).
+            - name: BENCH_APPLIANCE_IMAGE
+              value: {{ toJSON .Config.APIServerImage }}
+            - name: BENCH_APPLIANCE_VERSION
+              value: {{ toJSON .Config.Version }}
             - name: BENCH_API_TOKEN
               valueFrom:
                 secretKeyRef:
