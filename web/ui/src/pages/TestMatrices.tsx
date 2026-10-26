@@ -5,12 +5,10 @@ import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ConditionList, StatusBadge } from "../components/Status";
 import { burningFor, TARGET_METRICS } from "../components/Targets";
-import { toast } from "../components/Toast";
 import {
     Alert,
     confirmAndRun,
     Empty,
-    errorMessage,
     Loading,
     Page,
     Section,
@@ -45,6 +43,47 @@ function deleteMatrix(name: string, then: () => void) {
         () => api.deleteTestMatrix(name),
         then,
         `Deleted ${name}`,
+    );
+}
+
+/**
+ * setArchived archives or unarchives m, offering on archive to also delete
+ * the deployments it created to free their clusters - archiving leaves them
+ * alone and never recreates them, so the test cases keep their results.
+ */
+function setArchived(m: TestMatrix, archived: boolean, reload: () => void) {
+    const name = m.metadata.name;
+    const own = archived
+        ? [
+              ...new Set(
+                  (m.status?.rows ?? []).flatMap((r) => r.cells ?? []).map((c) => c.deployment),
+              ),
+          ]
+        : [];
+    return confirmAndRun(
+        {
+            title: archived ? "Archive test matrix" : "Unarchive test matrix",
+            message: archived
+                ? `Archive test matrix "${name}"? Its test cases stop running but stay listed with their past runs.`
+                : `Unarchive test matrix "${name}"? Its deployments and test cases are recreated.`,
+            confirmLabel: archived ? "Archive" : "Unarchive",
+            checkbox:
+                own.length > 0
+                    ? {
+                          label: `Also delete its ${own.length === 1 ? "deployment" : `${own.length} deployments`} (${own.join(", ")})`,
+                      }
+                    : undefined,
+        },
+        async (withDeployments) => {
+            await api.updateTestMatrix(name, {
+                spec: { ...m.spec, testCase: { ...m.spec.testCase, archived } },
+            });
+            if (withDeployments) {
+                await Promise.all(own.map((d) => api.deleteDeployment(d)));
+            }
+        },
+        reload,
+        archived ? `Archived ${name}` : `Unarchived ${name}`,
     );
 }
 
@@ -83,12 +122,26 @@ export function TestMatricesPage() {
                     label: "",
                     className: "actions",
                     render: (m) => (
-                        <button
-                            className="small danger"
-                            onClick={() => void deleteMatrix(m.metadata.name, matrices.reload)}
-                        >
-                            Delete
-                        </button>
+                        <span className="row" style={{ justifyContent: "flex-end" }}>
+                            <button
+                                className="small"
+                                onClick={() =>
+                                    void setArchived(m, !m.spec.testCase.archived, matrices.reload)
+                                }
+                            >
+                                {m.spec.testCase.archived ? "Unarchive" : "Archive"}
+                            </button>
+                            {m.spec.testCase.archived && (
+                                <button
+                                    className="small danger"
+                                    onClick={() =>
+                                        void deleteMatrix(m.metadata.name, matrices.reload)
+                                    }
+                                >
+                                    Delete
+                                </button>
+                            )}
+                        </span>
                     ),
                 },
             ]}
@@ -150,7 +203,6 @@ export function TestMatrixViewPage() {
     const testCases = useResource(() => api.testCases(), [], 10000, "TestCase");
     const m = matrix.data;
     const [metricKey, setMetricKey] = useState("iteration_duration_p95");
-    const [saving, setSaving] = useState(false);
 
     const rows = m?.status?.rows ?? [];
     const testids = rows.map((r) => r.testCase);
@@ -203,24 +255,6 @@ export function TestMatrixViewPage() {
             ? formatDuration(burnEnd - 60 - burnStart)
             : undefined;
 
-    async function setArchived(archived: boolean) {
-        if (!m) {
-            return;
-        }
-        setSaving(true);
-        try {
-            await api.updateTestMatrix(name, {
-                spec: { ...m.spec, testCase: { ...m.spec.testCase, archived } },
-            });
-            toast.success(archived ? `Archived ${name}` : `Unarchived ${name}`);
-            matrix.reload();
-        } catch (err) {
-            toast.error(errorMessage(err));
-        } finally {
-            setSaving(false);
-        }
-    }
-
     return (
         <Page
             title={name}
@@ -247,8 +281,9 @@ export function TestMatrixViewPage() {
                             conditions={m.status?.conditions}
                         />
                         <button
-                            disabled={saving}
-                            onClick={() => void setArchived(!m.spec.testCase.archived)}
+                            onClick={() =>
+                                void setArchived(m, !m.spec.testCase.archived, matrix.reload)
+                            }
                         >
                             {m.spec.testCase.archived ? "Unarchive" : "Archive"}
                         </button>
