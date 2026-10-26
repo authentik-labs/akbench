@@ -7,6 +7,7 @@ import (
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
@@ -433,11 +434,12 @@ func TestHelmValuesPyroscopeAlwaysSet(t *testing.T) {
 // replaces.
 func TestHelmValuesTracingOnlyWhenErrorReportingEnabled(t *testing.T) {
 	topo := exampleDeployment()
+	topo.Spec.Authentik.ErrorReporting.Enabled = ptr.To(false)
 	if _, ok := envValue(t, mustValues(t, topo).Server, "AUTHENTIK_ERROR_REPORTING__OTEL_ENDPOINT"); ok {
 		t.Error("AUTHENTIK_ERROR_REPORTING__OTEL_ENDPOINT must not be set when errorReporting.enabled is false")
 	}
 
-	topo.Spec.Authentik.ErrorReporting = benchv1alpha1.ErrorReportingSpec{Enabled: true, SampleRate: "0.25"}
+	topo.Spec.Authentik.ErrorReporting = benchv1alpha1.ErrorReportingSpec{SampleRate: "0.25"}
 	values := mustValues(t, topo)
 
 	er, _ := values.Authentik["error_reporting"].(map[string]any)

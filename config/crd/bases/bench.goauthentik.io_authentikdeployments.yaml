@@ -64,11 +64,14 @@ spec:
                     description: |-
                       ErrorReportingSpec mirrors authentik's error_reporting config section, used
                       both for Sentry (released images) and for OTLP export (the
-                      goauthentik/authentik#25412 branch). Off by default - see the design notes
-                      in the repo README about authentik's OTel support being work in progress.
+                      goauthentik/authentik#25412 branch). On by default.
                     properties:
                       enabled:
-                        default: false
+                        default: true
+                        description: |-
+                          enabled is a pointer so an explicit false survives omitempty; nil
+                          (including a spec with no authentik/errorReporting at all, where the
+                          CRD default never applies) means enabled.
                         type: boolean
                       sampleRate:
                         default: "0.1"

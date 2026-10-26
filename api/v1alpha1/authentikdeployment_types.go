@@ -138,12 +138,14 @@ type WorkloadSpec struct {
 
 // ErrorReportingSpec mirrors authentik's error_reporting config section, used
 // both for Sentry (released images) and for OTLP export (the
-// goauthentik/authentik#25412 branch). Off by default - see the design notes
-// in the repo README about authentik's OTel support being work in progress.
+// goauthentik/authentik#25412 branch). On by default.
 type ErrorReportingSpec struct {
-	// +kubebuilder:default=false
+	// enabled is a pointer so an explicit false survives omitempty; nil
+	// (including a spec with no authentik/errorReporting at all, where the
+	// CRD default never applies) means enabled.
+	// +kubebuilder:default=true
 	// +optional
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 	// tracingEndpoint is the OTLP base endpoint spans are exported to.
 	// +optional
 	TracingEndpoint string `json:"tracingEndpoint,omitempty"`

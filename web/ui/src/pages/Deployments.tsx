@@ -383,9 +383,7 @@ export function DeploymentSpecFields({
     showImage?: boolean;
 }) {
     const authentik = spec.authentik ?? {};
-    const errorReporting = authentik.errorReporting ?? {
-        enabled: true,
-    };
+    const errorReporting = authentik.errorReporting ?? {};
 
     return (
         <>
@@ -481,7 +479,7 @@ export function DeploymentSpecFields({
                     <label className="check">
                         <input
                             type="checkbox"
-                            checked={errorReporting.enabled ?? false}
+                            checked={errorReporting.enabled ?? true}
                             onChange={(e) =>
                                 patch({
                                     authentik: {
@@ -496,7 +494,7 @@ export function DeploymentSpecFields({
                         />
                         Send traces (error reporting / OTLP)
                     </label>
-                    {errorReporting.enabled && (
+                    {errorReporting.enabled !== false && (
                         <Field label="Tracing endpoint" help="Defaults to this cluster's own Tempo">
                             <input
                                 value={errorReporting.tracingEndpoint ?? ""}

@@ -12,6 +12,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
@@ -259,7 +260,7 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 	appendEnv(values.Server, "AUTHENTIK_PYROSCOPE_HOST", pyroscopeHost)
 	appendEnv(values.Worker, "AUTHENTIK_PYROSCOPE_HOST", pyroscopeHost)
 
-	if t.Spec.Authentik.ErrorReporting.Enabled {
+	if ptr.Deref(t.Spec.Authentik.ErrorReporting.Enabled, true) {
 		values.Authentik["error_reporting"] = map[string]any{
 			"enabled": true,
 			// deployment.environment carries this deployment's target name, so
