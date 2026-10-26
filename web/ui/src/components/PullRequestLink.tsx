@@ -1,18 +1,25 @@
 import { AUTHENTIK_REPO, cachedPullRequest, PULL_REQUEST_LABEL, PullRequest } from "../github";
 
 // Links an object to the authentik pull request it was created for (its
-// bench.goauthentik.io/pull-request label), with the PR's live state and title
-// from GitHub. Without GitHub (rate limited, offline) it's still a link.
+// bench.goauthentik.io/pull-request label). With `full` (view pages) it adds
+// the PR's live state and title from GitHub; lists stick to the number, so
+// they don't spend the rate limit. Without GitHub it's still a link.
 import { useEffect, useState } from "react";
 
 const stateClass: Record<string, string> = { open: "ok", merged: "info", closed: "neutral" };
 
-export function PullRequestLink({ labels }: { labels?: Record<string, string> }) {
+export function PullRequestLink({
+    labels,
+    full,
+}: {
+    labels?: Record<string, string>;
+    full?: boolean;
+}) {
     const number = Number(labels?.[PULL_REQUEST_LABEL]);
     const [pr, setPr] = useState<PullRequest>();
 
     useEffect(() => {
-        if (!number) {
+        if (!number || !full) {
             return;
         }
         let current = true;
@@ -23,10 +30,10 @@ export function PullRequestLink({ labels }: { labels?: Record<string, string> })
         return () => {
             current = false;
         };
-    }, [number]);
+    }, [number, full]);
 
     if (!number) {
-        return <>-</>;
+        return full ? null : <>-</>;
     }
     return (
         <span title={pr?.title}>

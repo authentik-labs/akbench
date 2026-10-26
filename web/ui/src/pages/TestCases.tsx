@@ -36,6 +36,7 @@ import {
     timeRangeSeconds,
     newestFirst,
 } from "../format";
+import { PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import { printReport } from "../theme";
 import {
@@ -771,6 +772,12 @@ export function TestCaseViewPage() {
                             : `template ${tc.spec.template ?? "login"}`}
                         {since && ` · burning for ${since}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
+                        {tc.metadata.labels?.[PULL_REQUEST_LABEL] && (
+                            <>
+                                {" · "}
+                                <PullRequestLink labels={tc.metadata.labels} full />
+                            </>
+                        )}
                     </>
                 )
             }

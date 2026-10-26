@@ -27,6 +27,7 @@ import {
     SINCE_START,
     timeRangeSeconds,
 } from "../format";
+import { PULL_REQUEST_LABEL } from "../github";
 import { printReport } from "../theme";
 import { TestMatrix } from "../types";
 import { useResource } from "../useResource";
@@ -274,6 +275,12 @@ export function TestMatrixViewPage() {
                         VUs each
                         {since && ` · burning for ${since}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
+                        {m.metadata.labels?.[PULL_REQUEST_LABEL] && (
+                            <>
+                                {" · "}
+                                <PullRequestLink labels={m.metadata.labels} full />
+                            </>
+                        )}
                     </>
                 )
             }

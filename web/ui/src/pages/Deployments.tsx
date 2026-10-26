@@ -25,6 +25,7 @@ import {
     targetNameOf,
     timeRangeSeconds,
 } from "../format";
+import { PULL_REQUEST_LABEL } from "../github";
 import { psqlCommand, shellLinkForCluster } from "../shell/links";
 import {
     AuthentikDeployment,
@@ -868,8 +869,17 @@ export function DeploymentViewPage() {
         <Page
             title={name}
             subtitle={
-                d &&
-                `AuthentikDeployment on ${cluster ?? "the management cluster"}, namespace ${ns}`
+                d && (
+                    <>
+                        AuthentikDeployment on {cluster ?? "the management cluster"}, namespace {ns}
+                        {d.metadata.labels?.[PULL_REQUEST_LABEL] && (
+                            <>
+                                {" · "}
+                                <PullRequestLink labels={d.metadata.labels} full />
+                            </>
+                        )}
+                    </>
+                )
             }
             actions={
                 <>
