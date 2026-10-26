@@ -29,6 +29,7 @@ import {
     LogBreakdown,
     ProfileBreakdown,
     TraceBreakdown,
+    WorkerActor,
     WorkerMetric,
     WorkloadCluster,
     WorkloadClusterSpec,
@@ -348,6 +349,11 @@ export const api = {
         request<RangeResponse>(
             `/api/v1/deployments/${seg(name)}/worker-metrics?metric=${seg(metric)}` +
                 `&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
+        ),
+    // A deployment worker's busiest actors over [start, end], by tasks processed.
+    workerActors: (name: string, startSeconds: number, endSeconds: number) =>
+        request<WorkerActor[]>(
+            `/api/v1/deployments/${seg(name)}/worker-actors?start=${startSeconds}&end=${endSeconds}`,
         ),
 
     // A workload cluster's observability stack (bench-system) over time.

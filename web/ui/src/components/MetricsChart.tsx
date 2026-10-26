@@ -6,9 +6,11 @@ import {
     MonitoringMetric,
     PostgresMetric,
     RangeResponse,
+    WorkerActor,
     WorkerMetric,
 } from "../types";
 import { useResource } from "../useResource";
+import { Column, Table } from "./ui";
 
 import {
     Chart as ChartJS,
@@ -592,31 +594,95 @@ export function WorkerCharts({
         "db_duration",
     ];
     return (
-        <div className="grid2">
-            {metrics.map((metric) => (
-                <DeploymentChart
-                    key={metric}
-                    deployment={deployments.join(",")}
-                    metric={metric}
-                    fetch={(start, end, step) =>
-                        Promise.all(
-                            deployments.map((d) => api.workerMetrics(d, metric, start, end, step)),
-                        ).then((responses) => ({
-                            ...responses[0],
-                            series: responses.flatMap((r, i) =>
-                                deployments.length > 1
-                                    ? r.series.map((s) => ({
-                                          ...s,
-                                          target: `${deployments[i]} · ${s.target}`,
-                                      }))
-                                    : r.series,
-                            ),
-                        }))
-                    }
-                    rangeSeconds={rangeSeconds}
-                    endSeconds={endSeconds}
-                />
-            ))}
+        <>
+            <div className="grid2">
+                {metrics.map((metric) => (
+                    <DeploymentChart
+                        key={metric}
+                        deployment={deployments.join(",")}
+                        metric={metric}
+                        fetch={(start, end, step) =>
+                            Promise.all(
+                                deployments.map((d) =>
+                                    api.workerMetrics(d, metric, start, end, step),
+                                ),
+                            ).then((responses) => ({
+                                ...responses[0],
+                                series: responses.flatMap((r, i) =>
+                                    deployments.length > 1
+                                        ? r.series.map((s) => ({
+                                              ...s,
+                                              target: `${deployments[i]} · ${s.target}`,
+                                          }))
+                                        : r.series,
+                                ),
+                            }))
+                        }
+                        rangeSeconds={rangeSeconds}
+                        endSeconds={endSeconds}
+                    />
+                ))}
+            </div>
+            <WorkerActorTable
+                deployments={deployments}
+                rangeSeconds={rangeSeconds}
+                endSeconds={endSeconds}
+            />
+        </>
+    );
+}
+
+type WorkerActorRow = WorkerActor & { deployment: string };
+
+/**
+ * WorkerActorTable is the deployments' busiest worker actors over the
+ * window, by tasks processed - the per-actor breakdown the charts sum away.
+ */
+function WorkerActorTable({
+    deployments,
+    rangeSeconds = 900,
+    endSeconds,
+    refreshMs = 15000,
+}: {
+    deployments: string[];
+    rangeSeconds?: number;
+    endSeconds?: number;
+    refreshMs?: number;
+}) {
+    const { data, error } = useResource<WorkerActorRow[]>(
+        () => {
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
+            return Promise.all(
+                deployments.map((d) =>
+                    api
+                        .workerActors(d, end - rangeSeconds, end)
+                        .then((actors) => actors.map((a) => ({ ...a, deployment: d }))),
+                ),
+            ).then((all) => all.flat());
+        },
+        [deployments.join(","), rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
+    );
+    const columns: Column<WorkerActorRow>[] = [
+        { label: "Actor", render: (r) => <span className="mono">{r.actor}</span> },
+        // increase() extrapolates, so counts come back fractional.
+        { label: "Tasks", render: (r) => Math.round(r.tasks).toLocaleString() },
+        { label: "p95", render: (r) => formatMetricValue(r.p95, "s") },
+        { label: "Errors", render: (r) => Math.round(r.errors).toLocaleString() },
+    ];
+    if (deployments.length > 1) {
+        columns.unshift({ label: "Deployment", render: (r) => r.deployment });
+    }
+    return (
+        <div className="panel" style={{ marginTop: "var(--ak-global--spacer--md)" }}>
+            <h3>Busiest worker actors</h3>
+            {error && <div className="alert error">{error}</div>}
+            <Table
+                rows={data}
+                rowKey={(r) => `${r.deployment}/${r.actor}`}
+                empty="No tasks in this window."
+                columns={columns}
+            />
         </div>
     );
 }

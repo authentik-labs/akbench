@@ -446,6 +446,15 @@ export interface RangeSeries {
     points: RangePoint[];
 }
 
+// WorkerActor mirrors internal/api/workermetrics.go: one actor's row of a
+// worker's busiest actors over a window. p95 is seconds.
+export interface WorkerActor {
+    actor: string;
+    tasks: number;
+    p95?: number;
+    errors: number;
+}
+
 export interface RangeResponse {
     metric: CompareMetric;
     series: RangeSeries[];

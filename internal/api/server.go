@@ -242,6 +242,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/deployments/{name}/reset", s.resetDeployment)
 			r.Get("/deployments/{name}/postgres-metrics", s.listPostgresMetrics)
 			r.Get("/deployments/{name}/worker-metrics", s.listWorkerMetrics)
+			r.Get("/deployments/{name}/worker-actors", s.listWorkerActors)
 
 			r.Post("/testcases/{name}/runs", s.createRun)
 
