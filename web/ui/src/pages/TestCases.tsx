@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { LogBreakdownSection } from "../components/LogBreakdown";
-import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
+import { MetricsGrid, ResourceCharts, WorkerCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
@@ -608,6 +608,7 @@ const SECTIONS = [
     { id: "tracing", label: "Tracing" },
     { id: "profiling", label: "Profiling" },
     { id: "logs", label: "Logs" },
+    { id: "worker", label: "Worker" },
     { id: "resources", label: "Resources" },
     { id: "status", label: "Status" },
 ];
@@ -947,6 +948,25 @@ export function TestCaseViewPage() {
             {tc && <TraceBreakdownSection testid={name} rows={rows} baseline={baseline} />}
             {tc && <ProfileBreakdownSection testid={name} rows={rows} baseline={baseline} />}
             {tc && <LogBreakdownSection testid={name} rows={rows} baseline={baseline} />}
+
+            <Section
+                id="worker"
+                title="Worker"
+                description="Each target's authentik worker: background tasks, queue, failures and database queries over the timeline's range."
+            >
+                {rows.map((r) => (
+                    <div key={r.deploymentName}>
+                        {rows.length > 1 && <h3>{r.deploymentName}</h3>}
+                        <WorkerCharts
+                            deployment={r.deploymentName}
+                            endSeconds={metricsEnd}
+                            rangeSeconds={
+                                profile === "Quick" ? anchor?.rangeSeconds : timelineRange
+                            }
+                        />
+                    </div>
+                ))}
+            </Section>
 
             <Section
                 id="resources"

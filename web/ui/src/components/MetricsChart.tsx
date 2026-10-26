@@ -478,6 +478,7 @@ function DeploymentChart({
     rangeSeconds = 900,
     refreshMs = 15000,
     height = 260,
+    endSeconds,
 }: {
     deployment: string;
     metric: string;
@@ -485,10 +486,11 @@ function DeploymentChart({
     rangeSeconds?: number;
     refreshMs?: number;
     height?: number;
+    endSeconds?: number;
 }) {
     const { data: windowed, error } = useResource<WindowedRange>(
         () => {
-            const end = Math.floor(Date.now() / 1000);
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
             const window = { start: end - rangeSeconds, end };
             return fetch(window.start, window.end, stepFor(rangeSeconds)).then((response) => ({
                 response,
@@ -496,8 +498,8 @@ function DeploymentChart({
             }));
         },
         // Not fetch: a fresh closure every render. deployment and metric are what it closes over.
-        [deployment, metric, rangeSeconds],
-        refreshMs,
+        [deployment, metric, rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
     );
 
     const data = windowed?.response;
@@ -571,9 +573,11 @@ export function PostgresCharts({
 export function WorkerCharts({
     deployment,
     rangeSeconds,
+    endSeconds,
 }: {
     deployment: string;
     rangeSeconds?: number;
+    endSeconds?: number;
 }) {
     const metrics: WorkerMetric[] = [
         "tasks",
@@ -594,6 +598,7 @@ export function WorkerCharts({
                         api.workerMetrics(deployment, metric, start, end, step)
                     }
                     rangeSeconds={rangeSeconds}
+                    endSeconds={endSeconds}
                 />
             ))}
         </div>
