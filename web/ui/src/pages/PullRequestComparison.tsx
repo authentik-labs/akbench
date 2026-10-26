@@ -7,6 +7,7 @@ import {
     fetchBranchHead,
     fetchLatestRelease,
     fetchPullRequest,
+    PULL_REQUEST_LABEL,
     k8sNameSegment,
     parsePullRequestNumber,
     PullRequest,
@@ -19,9 +20,6 @@ import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-// Set on all three objects this flow creates, so one PR's comparison can be
-// found again with `kubectl get authentikdeployments,testcases -l ...`.
-const PULL_REQUEST_LABEL = "bench.goauthentik.io/pull-request";
 // The branch comparison's equivalent, with the branch as a name segment.
 const BRANCH_LABEL = "bench.goauthentik.io/branch";
 

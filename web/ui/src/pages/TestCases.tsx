@@ -4,6 +4,7 @@ import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
+import { PullRequestLink } from "../components/PullRequestLink";
 import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
 import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
@@ -178,6 +179,10 @@ export function TestCasesPage() {
                     { label: "Profile", render: (tc) => <Badge value={tc.spec.profile} /> },
                     { label: "VUs", render: (tc) => tc.spec.vus },
                     { label: "Created by", render: (tc) => createdBy(tc.metadata) },
+                    {
+                        label: "Pull request",
+                        render: (tc) => <PullRequestLink labels={tc.metadata.labels} />,
+                    },
                     {
                         label: "Status",
                         render: (tc) => (

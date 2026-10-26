@@ -9,6 +9,12 @@
 export const AUTHENTIK_REPO = "goauthentik/authentik";
 
 /**
+ * Set by the pull-request comparison on its TestMatrix (and copied by the
+ * operator onto the test cases and deployments it creates) to the PR number.
+ */
+export const PULL_REQUEST_LABEL = "bench.goauthentik.io/pull-request";
+
+/**
  * Every commit CI builds - pushes to main and same-repo PR branches - is
  * published here as gh-<full commit sha>.
  */
@@ -115,6 +121,23 @@ export async function fetchPullRequest(number: number): Promise<PullRequest> {
         baseRef: pr.base.ref,
         sameRepo: pr.head.repo?.full_name.toLowerCase() === AUTHENTIK_REPO,
     };
+}
+
+const pullRequests = new Map<number, Promise<PullRequest>>();
+
+/**
+ * cachedPullRequest is fetchPullRequest memoized for the page's lifetime, so a
+ * list of objects from the same PR costs one request against the rate limit.
+ */
+export function cachedPullRequest(number: number): Promise<PullRequest> {
+    let pr = pullRequests.get(number);
+    if (!pr) {
+        pr = fetchPullRequest(number);
+        // Don't keep failures (e.g. rate limited): retry on the next render.
+        pr.catch(() => pullRequests.delete(number));
+        pullRequests.set(number, pr);
+    }
+    return pr;
 }
 
 /** fetchLatestRelease returns the newest release's version, e.g. "2026.6.0". */

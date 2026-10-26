@@ -4,6 +4,7 @@ import { CodeEditor } from "../components/CodeEditor";
 import { MetricsGrid, PostgresCharts, WorkerCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { NodePlacement } from "../components/Placement";
+import { PullRequestLink } from "../components/PullRequestLink";
 import { Rollout } from "../components/Rollout";
 import { ConditionList, StatusBadge } from "../components/Status";
 import { toast } from "../components/Toast";
@@ -72,6 +73,10 @@ export function DeploymentsPage() {
                             `${d.spec.server.replicas} server / ${d.spec.worker.replicas} worker`,
                     },
                     { label: "Created by", render: (d) => createdBy(d.metadata) },
+                    {
+                        label: "Pull request",
+                        render: (d) => <PullRequestLink labels={d.metadata.labels} />,
+                    },
                     {
                         label: "Status",
                         render: (d) => (

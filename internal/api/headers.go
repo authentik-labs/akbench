@@ -55,7 +55,8 @@ func dropUpstreamSecurityHeaders(res *http.Response) error {
 //     compiles it at runtime;
 //   - inline styles: React style props and Monaco's injected <style> tags;
 //   - blob: workers: Monaco's language workers spawn from blob URLs;
-//   - api.github.com: the pull-request comparison page (web/ui/src/github.ts);
+//   - api.github.com: the pull-request comparison page and the PR column on
+//     the list pages (web/ui/src/github.ts);
 //   - the OIDC issuer: discovery and token requests (connect-src) and
 //     oidc-client-ts' silent renew iframe (frame-src).
 func spaCSP(oidcIssuer string) string {

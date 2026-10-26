@@ -3,6 +3,7 @@ import { ActivityLog } from "../components/ActivityLog";
 import { MatrixGrid } from "../components/Matrix";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
+import { PullRequestLink } from "../components/PullRequestLink";
 import { ConditionList, StatusBadge } from "../components/Status";
 import { burningFor, TARGET_METRICS } from "../components/Targets";
 import {
@@ -108,6 +109,10 @@ export function TestMatricesPage() {
                 },
                 { label: "Templates", render: (m) => m.spec.templates.join(", ") },
                 { label: "Created by", render: (m) => createdBy(m.metadata) },
+                {
+                    label: "Pull request",
+                    render: (m) => <PullRequestLink labels={m.metadata.labels} />,
+                },
                 {
                     label: "Status",
                     render: (m) => (
