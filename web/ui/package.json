@@ -18,7 +18,7 @@
         "@goauthentik/fonts": "^2.0.0",
         "@goauthentik/theme": "^2.0.1",
         "@monaco-editor/react": "^4.7.0",
-        "chart.js": "^4.5.1",
+        "chart.js": "^4.6.1",
         "ghostty-web": "0.4.0",
         "monaco-editor": "^0.57.0",
         "oidc-client-ts": "^3.5.0",
