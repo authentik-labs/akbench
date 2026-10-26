@@ -100,6 +100,17 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "mixed-usage-sso", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "mixed-usage plus OAuth2/OIDC and SAML logins through oidc-test-client and saml-test-sp, " +
+					"with the same seeded sequence per TestCase.",
+				Script: mustEmbeddedScript("mixed.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{
+					benchv1alpha1.DependencyOIDCClient, benchv1alpha1.DependencySAMLClient,
+				},
+			},
+		},
+		{
 			Name: "breakpoint", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description: "Test until failure: logs in like login, adding spec.vus VUs every 2 minutes " +

@@ -100,7 +100,8 @@ What each component does.
   `mixed-usage`, a weighted mix of logins, logins + API browsing, failed
   logins and flow page loads, drawn from a PRNG seeded per TestCase via
   `spec.seed` - defaulting to a hash of the TestCase name - so every run
-  replays the same sequence; `breakpoint`, a test-until-failure login run
+  replays the same sequence; `mixed-usage-sso`, the same mix plus OIDC and
+  SAML logins through oidc-test-client and saml-test-sp; `breakpoint`, a test-until-failure login run
   that adds `spec.vus` VUs every 2 minutes and aborts once authentik's error
   rate or p95 latency crosses its thresholds),
   sourced from the exact same embedded `k6/scripts/*.ts` files the operator

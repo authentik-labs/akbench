@@ -1,7 +1,22 @@
 import http from "k6/http";
 import { check } from "k6";
 import type { Trace, User } from "./bench.ts";
-import { authentikBase, benchOptions, flow, iteration, loadUsers, loginStages, newTrace, params, userFor, walkFlow } from "./bench.ts";
+import {
+    authentikBase,
+    benchOptions,
+    flow,
+    iteration,
+    loadUsers,
+    loginStages,
+    newTrace,
+    oidcLogin,
+    oidcTestClient,
+    params,
+    samlLogin,
+    samlTestSP,
+    userFor,
+    walkFlow,
+} from "./bench.ts";
 
 // Mixed-usage test plan: each iteration picks one of several realistic
 // authentik interactions (see `actions` below) instead of running the same
@@ -89,6 +104,15 @@ const actions: Action[] = [
         },
     },
 ];
+// SSO logins through the oidc-client/saml-client dependencies, when the
+// template lists them (mixed-usage-sso) - so the plain mix, and its seeded
+// sequence, are unchanged without them.
+if (oidcTestClient) {
+    actions.push({ name: "oidc", weight: 20, run: (trace, user) => oidcLogin(trace, loginStages(user)) });
+}
+if (samlTestSP) {
+    actions.push({ name: "saml", weight: 20, run: (trace, user) => samlLogin(trace, loginStages(user)) });
+}
 const totalWeight = actions.reduce((sum, a) => sum + a.weight, 0);
 
 function pickAction(): Action {
