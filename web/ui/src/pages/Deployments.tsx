@@ -1027,7 +1027,7 @@ export function DeploymentViewPage() {
                 <>
                     <h3>Worker</h3>
                     <WorkerCharts
-                        deployment={name}
+                        deployments={[name]}
                         rangeSeconds={timeRangeSeconds(range, burnStart)}
                     />
                 </>

@@ -952,20 +952,13 @@ export function TestCaseViewPage() {
             <Section
                 id="worker"
                 title="Worker"
-                description="Each target's authentik worker: background tasks, queue, failures and database queries over the timeline's range."
+                description="Every target's authentik worker: background tasks, queue, failures and database queries over the timeline's range."
             >
-                {rows.map((r) => (
-                    <div key={r.deploymentName}>
-                        {rows.length > 1 && <h3>{r.deploymentName}</h3>}
-                        <WorkerCharts
-                            deployment={r.deploymentName}
-                            endSeconds={metricsEnd}
-                            rangeSeconds={
-                                profile === "Quick" ? anchor?.rangeSeconds : timelineRange
-                            }
-                        />
-                    </div>
-                ))}
+                <WorkerCharts
+                    deployments={rows.map((r) => r.deploymentName)}
+                    endSeconds={metricsEnd}
+                    rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
+                />
             </Section>
 
             <Section

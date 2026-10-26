@@ -9,8 +9,6 @@ import (
 	"github.com/authentik-labs/akbench/internal/render"
 )
 
-const byActor = "actor_name"
-
 // workerSelector scopes a query to one deployment's authentik metrics:
 // %[1]q its namespace, %[2]q its target label (scrapeRelabelings). Server
 // and worker share job="authentik", but the authentik_tasks_* series only
@@ -23,21 +21,31 @@ const workerPods = workerSelector + `, pod=~%[3]q`
 
 // workerMetrics is keyed by the ?metric= query param. The task series come
 // from django-dramatiq-postgres' MetricsMiddleware, the database ones from
-// django-prometheus, both labelled by the worker's own actor names. Each
-// Query takes workerSelector's verbs, %[3]q the worker pods' name regex
-// and %[4]s the rate() window. Per-actor charts keep the top 8, so a
-// login-heavy run's long tail of rare actors doesn't bury the legend.
+// django-prometheus. Each Query takes workerSelector's verbs, %[3]q the
+// worker pods' name regex and %[4]s the rate() window. Tasks are summed
+// across actors rather than broken out per actor: topk in a range query
+// picks its top 8 per step, so the legend still filled up with every actor
+// that was ever in it.
 var workerMetrics = map[string]deploymentChart{
 	"tasks": {Label: "Worker tasks processed", Unit: "tasks/s", Queries: []deploymentQuery{{
-		By:    byActor,
-		Query: `topk(8, sum by (actor_name) (rate(authentik_tasks_total{` + workerSelector + `}[%[4]s])))`,
+		Name:  "processed",
+		Query: `sum(rate(authentik_tasks_total{` + workerSelector + `}[%[4]s]))`,
 	}}},
-	"duration": {Label: "Worker task duration p95", Unit: "s", Queries: []deploymentQuery{{
-		By: byActor,
-		// The histogram is in milliseconds; the UI formats seconds.
-		Query: `topk(8, histogram_quantile(0.95, sum by (le, actor_name) ` +
-			`(rate(authentik_tasks_duration_milliseconds_bucket{` + workerSelector + `}[%[4]s]))) / 1000)`,
-	}}},
+	// The histogram is in milliseconds; the UI formats seconds.
+	"duration": {Label: "Worker task duration", Unit: "s", Queries: []deploymentQuery{
+		{
+			Name:  "p50",
+			Query: `histogram_quantile(0.50, sum by (le) (rate(authentik_tasks_duration_milliseconds_bucket{` + workerSelector + `}[%[4]s]))) / 1000`,
+		},
+		{
+			Name:  "p95",
+			Query: `histogram_quantile(0.95, sum by (le) (rate(authentik_tasks_duration_milliseconds_bucket{` + workerSelector + `}[%[4]s]))) / 1000`,
+		},
+		{
+			Name:  "p99",
+			Query: `histogram_quantile(0.99, sum by (le) (rate(authentik_tasks_duration_milliseconds_bucket{` + workerSelector + `}[%[4]s]))) / 1000`,
+		},
+	}},
 	"queue": {Label: "Worker queue", Unit: "tasks", Queries: []deploymentQuery{
 		{
 			Name: "queued",

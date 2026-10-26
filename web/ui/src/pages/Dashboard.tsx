@@ -1,10 +1,12 @@
 import { api } from "../api";
 import { MatrixGrid } from "../components/Matrix";
 import { NodePlacement } from "../components/Placement";
+import { PullRequestLink } from "../components/PullRequestLink";
 import { Badge } from "../components/Status";
 import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
+import { PULL_REQUEST_LABEL } from "../github";
 import { RangePoint, TestMatrix, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
 
@@ -208,6 +210,12 @@ export function DashboardPage() {
                                             {rows.length === 1 ? "target" : "targets"} ·{" "}
                                             {tc.spec.vus} VUs each
                                             {since && ` · burning for ${since}`}
+                                            {tc.metadata.labels?.[PULL_REQUEST_LABEL] && (
+                                                <>
+                                                    {" · "}
+                                                    <PullRequestLink labels={tc.metadata.labels} />
+                                                </>
+                                            )}
                                         </span>
                                     </span>
                                     {degraded > 0 ? (
@@ -243,6 +251,12 @@ export function DashboardPage() {
                                     · {m.spec.variants.map((v) => v.name).join(" vs ")} ·{" "}
                                     {m.spec.testCase.vus} VUs each
                                     {since && ` · burning for ${since}`}
+                                    {m.metadata.labels?.[PULL_REQUEST_LABEL] && (
+                                        <>
+                                            {" · "}
+                                            <PullRequestLink labels={m.metadata.labels} />
+                                        </>
+                                    )}
                                 </span>
                             </span>
                             <Badge value={m.status?.phase ?? "Pending"} />

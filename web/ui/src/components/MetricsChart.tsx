@@ -566,19 +566,23 @@ export function PostgresCharts({
 }
 
 /**
- * WorkerCharts is a deployment's authentik worker: background tasks
- * processed and their p95 duration per actor, the queue, task failures, and
- * the database queries the worker runs.
+ * WorkerCharts is the authentik worker of one or more deployments, all on
+ * the same charts: background tasks processed and their duration, the
+ * queue, task failures, and the database queries the worker runs. With
+ * more than one deployment each line is prefixed with its deployment.
  */
 export function WorkerCharts({
-    deployment,
+    deployments,
     rangeSeconds,
     endSeconds,
 }: {
-    deployment: string;
+    deployments: string[];
     rangeSeconds?: number;
     endSeconds?: number;
 }) {
+    if (deployments.length === 0) {
+        return null;
+    }
     const metrics: WorkerMetric[] = [
         "tasks",
         "duration",
@@ -592,10 +596,22 @@ export function WorkerCharts({
             {metrics.map((metric) => (
                 <DeploymentChart
                     key={metric}
-                    deployment={deployment}
+                    deployment={deployments.join(",")}
                     metric={metric}
                     fetch={(start, end, step) =>
-                        api.workerMetrics(deployment, metric, start, end, step)
+                        Promise.all(
+                            deployments.map((d) => api.workerMetrics(d, metric, start, end, step)),
+                        ).then((responses) => ({
+                            ...responses[0],
+                            series: responses.flatMap((r, i) =>
+                                deployments.length > 1
+                                    ? r.series.map((s) => ({
+                                          ...s,
+                                          target: `${deployments[i]} · ${s.target}`,
+                                      }))
+                                    : r.series,
+                            ),
+                        }))
                     }
                     rangeSeconds={rangeSeconds}
                     endSeconds={endSeconds}

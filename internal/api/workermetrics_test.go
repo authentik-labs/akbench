@@ -18,8 +18,8 @@ func TestListWorkerMetricsQueriesDeploymentWorker(t *testing.T) {
 		wantInQuery string
 		wantLabel   string
 	}{
-		{"tasks", 1, `rate(authentik_tasks_total{`, "actor"},
-		{"duration", 1, `authentik_tasks_duration_milliseconds_bucket{`, "actor"},
+		{"tasks", 1, `rate(authentik_tasks_total{`, "processed"},
+		{"duration", 3, `authentik_tasks_duration_milliseconds_bucket{`, "p50"},
 		{"queue", 3, `authentik_tasks_queued{`, "queued"},
 		{"failures", 3, `authentik_tasks_errors_total{`, "errors"},
 		{"db_queries", 1, `pod=~"topo-authentik-worker-.+"`, "topo-authentik-worker-abc"},
