@@ -17,7 +17,13 @@ import {
     Table,
     TimeRangeSelect,
 } from "../components/ui";
-import { earliestBurnStart, parseTimeRange, targetNameOf, timeRangeSeconds } from "../format";
+import {
+    createdBy,
+    earliestBurnStart,
+    parseTimeRange,
+    targetNameOf,
+    timeRangeSeconds,
+} from "../format";
 import { psqlCommand, shellLinkForCluster } from "../shell/links";
 import {
     AuthentikDeployment,
@@ -65,6 +71,7 @@ export function DeploymentsPage() {
                         render: (d) =>
                             `${d.spec.server.replicas} server / ${d.spec.worker.replicas} worker`,
                     },
+                    { label: "Created by", render: (d) => createdBy(d.metadata) },
                     {
                         label: "Status",
                         render: (d) => (

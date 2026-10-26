@@ -346,3 +346,12 @@ export function newestFirst<T extends { metadata: { creationTimestamp?: string }
         (b.metadata.creationTimestamp ?? "").localeCompare(a.metadata.creationTimestamp ?? ""),
     );
 }
+
+/**
+ * createdBy is who created an object through the API (the
+ * bench.goauthentik.io/created-by annotation cmd/apiserver sets), or "-" for
+ * objects made some other way (kubectl, a matrix, before it was tracked).
+ */
+export function createdBy(meta: { annotations?: Record<string, string> }): string {
+    return meta.annotations?.["bench.goauthentik.io/created-by"] ?? "-";
+}

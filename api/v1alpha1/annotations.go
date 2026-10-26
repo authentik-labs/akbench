@@ -10,4 +10,9 @@ const (
 	// request time, for humans only; the operator removes the annotation
 	// once the reset is done and the normal reconcile takes over.
 	AnnotationResetRequested = "bench.goauthentik.io/reset-requested-at"
+
+	// AnnotationCreatedBy names who created an object through the web UI
+	// backend: the authenticated principal, set by cmd/apiserver on create
+	// and kept on update so a client can't forge or rewrite it.
+	AnnotationCreatedBy = "bench.goauthentik.io/created-by"
 )

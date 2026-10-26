@@ -137,6 +137,37 @@ func TestCreateIgnoresSubmittedStatus(t *testing.T) {
 	}
 }
 
+// The creator comes from authentication, never the body, and survives edits.
+func TestCreatedByIsServerSet(t *testing.T) {
+	s, c := newServer(t, Config{})
+	spec := map[string]any{
+		"namespace": "ak-owned",
+		"server":    map[string]any{"replicas": 1},
+		"worker":    map[string]any{"replicas": 1},
+		"postgres":  map[string]any{"mode": "Embedded"},
+	}
+	forged := map[string]any{benchv1alpha1.AnnotationCreatedBy: "someone-else"}
+	rec := do(t, s, http.MethodPost, "/api/v1/deployments", map[string]any{
+		"metadata": map[string]any{"name": "owned", "annotations": forged},
+		"spec":     spec,
+	})
+	requireStatus(t, rec, http.StatusCreated)
+	rec = do(t, s, http.MethodPut, "/api/v1/deployments/owned", map[string]any{
+		"metadata": map[string]any{"annotations": forged},
+		"spec":     spec,
+	})
+	requireStatus(t, rec, http.StatusOK)
+
+	var stored benchv1alpha1.AuthentikDeployment
+	key := types.NamespacedName{Name: "owned", Namespace: testNamespace}
+	if err := c.Get(context.Background(), key, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if got := stored.Annotations[benchv1alpha1.AnnotationCreatedBy]; got != staticTokenPrincipal {
+		t.Fatalf("got created-by %q, want %q", got, staticTokenPrincipal)
+	}
+}
+
 func TestGetStatusSubresource(t *testing.T) {
 	s, _ := newServer(t, Config{}, sampleDeployment("ready-topo"))
 	rec := do(t, s, http.MethodGet, "/api/v1/deployments/ready-topo/status", nil)

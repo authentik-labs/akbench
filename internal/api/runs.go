@@ -73,6 +73,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
 				Overrides:     body.Overrides,
 			},
 		}
+		setCreatedBy(r, run)
 		if err := s.client.Create(r.Context(), run); err != nil {
 			writeAPIError(w, r, err)
 			return

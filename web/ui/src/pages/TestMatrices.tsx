@@ -18,6 +18,7 @@ import {
 } from "../components/ui";
 import {
     archivedBurnWindow,
+    createdBy,
     earliestBurnStart,
     formatDuration,
     newestFirst,
@@ -106,6 +107,7 @@ export function TestMatricesPage() {
                     render: (m) => m.spec.variants.map((v) => v.name).join(" vs "),
                 },
                 { label: "Templates", render: (m) => m.spec.templates.join(", ") },
+                { label: "Created by", render: (m) => createdBy(m.metadata) },
                 {
                     label: "Status",
                     render: (m) => (

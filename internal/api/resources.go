@@ -114,6 +114,7 @@ func (s *Server) createResource(k resourceKind) http.HandlerFunc {
 			writeError(w, r, http.StatusBadRequest, "metadata.name is required")
 			return
 		}
+		setCreatedBy(r, obj)
 		if err := s.client.Create(r.Context(), obj); err != nil {
 			writeAPIError(w, r, err)
 			return
@@ -152,6 +153,11 @@ func (s *Server) replaceResource(k resourceKind) http.HandlerFunc {
 			existing.SetLabels(labels)
 		}
 		if annotations := submitted.GetAnnotations(); annotations != nil {
+			if creator, ok := existing.GetAnnotations()[benchv1alpha1.AnnotationCreatedBy]; ok {
+				annotations[benchv1alpha1.AnnotationCreatedBy] = creator
+			} else {
+				delete(annotations, benchv1alpha1.AnnotationCreatedBy)
+			}
 			existing.SetAnnotations(annotations)
 		}
 		if err := s.client.Update(r.Context(), existing); err != nil {
@@ -211,6 +217,17 @@ func (s *Server) kickResource(k resourceKind) http.HandlerFunc {
 		}
 		writeJSON(w, r, http.StatusOK, obj)
 	}
+}
+
+// setCreatedBy records the request's principal on obj, overwriting whatever
+// the client sent.
+func setCreatedBy(r *http.Request, obj client.Object) {
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[benchv1alpha1.AnnotationCreatedBy] = principal(r.Context())
+	obj.SetAnnotations(annotations)
 }
 
 func (s *Server) fetch(r *http.Request, k resourceKind) (*unstructured.Unstructured, error) {

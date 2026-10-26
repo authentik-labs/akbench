@@ -25,6 +25,7 @@ import {
 } from "../components/ui";
 import {
     archivedBurnWindow,
+    createdBy,
     earliestBurnStart,
     formatDuration,
     metricsAnchorFromRuns,
@@ -176,6 +177,7 @@ export function TestCasesPage() {
                     },
                     { label: "Profile", render: (tc) => <Badge value={tc.spec.profile} /> },
                     { label: "VUs", render: (tc) => tc.spec.vus },
+                    { label: "Created by", render: (tc) => createdBy(tc.metadata) },
                     {
                         label: "Status",
                         render: (tc) => (
