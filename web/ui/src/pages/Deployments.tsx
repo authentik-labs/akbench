@@ -655,6 +655,26 @@ export function DeploymentSpecFields({
                             />
                         </Field>
                     )}
+                    {spec.postgres.mode === "Embedded" && (
+                        <label className="check">
+                            <input
+                                type="checkbox"
+                                checked={spec.postgres.embedded?.tls ?? false}
+                                onChange={(e) =>
+                                    patch({
+                                        postgres: {
+                                            ...spec.postgres,
+                                            embedded: {
+                                                ...spec.postgres.embedded,
+                                                tls: e.target.checked || undefined,
+                                            },
+                                        },
+                                    })
+                                }
+                            />
+                            TLS (self-signed, sslmode=require)
+                        </label>
+                    )}
                     {spec.postgres.mode === "CNPG" && (
                         <>
                             <Field label="Instances">

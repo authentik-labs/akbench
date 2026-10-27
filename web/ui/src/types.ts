@@ -104,7 +104,12 @@ export interface AuthentikDeploymentSpec {
     };
     postgres: {
         mode: PostgresMode;
-        embedded?: { storageSize?: string; storageClassName?: string; maxStorageSize?: string };
+        embedded?: {
+            storageSize?: string;
+            storageClassName?: string;
+            maxStorageSize?: string;
+            tls?: boolean;
+        };
         cnpg?: {
             instances?: number;
             storageSize?: string;

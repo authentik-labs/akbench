@@ -82,6 +82,11 @@ type EmbeddedPostgresSpec struct {
 	// allowVolumeExpansion.
 	// +optional
 	MaxStorageSize string `json:"maxStorageSize,omitempty"`
+	// tls serves the bundled postgresql over TLS with a self-signed,
+	// chart-generated certificate, and has authentik connect with
+	// sslmode=require.
+	// +optional
+	TLS bool `json:"tls,omitempty"`
 }
 
 // CNPGPostgresSpec configures a CloudNativePG Cluster provisioned for this

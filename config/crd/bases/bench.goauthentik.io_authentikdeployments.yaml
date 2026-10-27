@@ -259,6 +259,12 @@ spec:
                         type: string
                       storageSize:
                         type: string
+                      tls:
+                        description: |-
+                          tls serves the bundled postgresql over TLS with a self-signed,
+                          chart-generated certificate, and has authentik connect with
+                          sslmode=require.
+                        type: boolean
                     type: object
                   external:
                     description: ExternalPostgresSpec points at an operator-unmanaged
