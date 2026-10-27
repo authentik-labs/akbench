@@ -45,7 +45,7 @@ dependencies:
     version: 0.33.0
     repository: https://grafana-community.github.io/helm-charts
   - name: pyroscope
-    version: 2.4.1
+    version: 2.4.2
     repository: https://grafana.github.io/helm-charts
   - name: alloy
     version: 1.14.3
