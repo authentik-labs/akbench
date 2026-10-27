@@ -161,10 +161,10 @@ export function TestMatricesPage() {
             subtitle="authentik builds crossed with test case templates, each template on its own deployments."
             actions={
                 <span className="row">
-                    <Link className="button" to="/branches/new">
+                    <Link className="button" to="/branches/new?matrix">
                         Compare a branch
                     </Link>
-                    <Link className="button primary" to="/pull-requests/new">
+                    <Link className="button primary" to="/pull-requests/new?matrix">
                         Compare a PR
                     </Link>
                 </span>

@@ -13,12 +13,12 @@ import {
     PullRequest,
     RELEASE_IMAGE,
 } from "../github";
-import { AuthentikDeploymentSpec } from "../types";
+import { AuthentikDeploymentSpec, TestCaseSpec } from "../types";
 import { useResource } from "../useResource";
 import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
 // The branch comparison's equivalent, with the branch as a name segment.
 const BRANCH_LABEL = "bench.goauthentik.io/branch";
@@ -92,13 +92,16 @@ export function BranchComparisonPage() {
  * pull request's CI build against its base branch or a release: two
  * deployments sharing every setting but the image, and one TestCase driving
  * both with the same load. In branch mode the PR is replaced by a branch and
- * the baseline is always a release. It creates a single TestMatrix, which
- * owns one such pair of deployments plus a TestCase per picked template, so
- * the templates' provisioning and load don't interfere with each other.
+ * the baseline is always a release. It creates those objects directly,
+ * unless several templates are picked or the page was opened from the test
+ * matrices (?matrix): then a single TestMatrix owning one such pair of
+ * deployments plus a TestCase per template, so the templates' provisioning
+ * and load don't interfere with each other.
  */
 export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "branch" }) {
     const isBranch = mode === "branch";
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const templates = useResource(() => api.testCaseTemplates(), [], 0);
 
     const [prInput, setPrInput] = useState("");
@@ -224,6 +227,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
     const tooLong = rows
         .flatMap((r) => r.deployments.map((d) => d.deploymentName))
         .filter((n) => n.length > MAX_DEPLOYMENT_NAME_LENGTH);
+    const asMatrix = searchParams.has("matrix") || rows.length > 1;
 
     async function submit(event: FormEvent) {
         event.preventDefault();
@@ -242,6 +246,11 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
             : prNumber !== undefined
               ? { [PULL_REQUEST_LABEL]: String(prNumber) }
               : undefined;
+        const testCase = { profile: "Burn" as const, vus, flow, burnDuration, traceSampleRate };
+        if (!asMatrix) {
+            await createDirectly(rows[0], labels, testCase);
+            return;
+        }
         try {
             await api.createTestMatrix({
                 metadata: { name: effectivePrefix, labels },
@@ -251,13 +260,60 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     templates: selectedTemplates,
                     deployment: spec,
                     extraValues: extraValuesYAML.trim() ? extraValuesYAML : undefined,
-                    testCase: { profile: "Burn", vus, flow, burnDuration, traceSampleRate },
+                    testCase,
                 },
             });
             toast.success(`Created test matrix ${effectivePrefix}`);
             navigate(`/testmatrices/${effectivePrefix}`);
         } catch (err) {
             setError(errorMessage(err));
+            setSaving(false);
+        }
+    }
+
+    // createDirectly is the matrix's work for a single template, without the
+    // matrix: the deployments and a TestCase driving them, named the same.
+    async function createDirectly(
+        row: (typeof rows)[number],
+        labels: Record<string, string> | undefined,
+        testCase: Omit<TestCaseSpec, "template">,
+    ) {
+        const created: string[] = [];
+        try {
+            for (const d of row.deployments) {
+                await api.createDeployment({
+                    metadata: { name: d.deploymentName, labels },
+                    spec: {
+                        ...spec,
+                        namespace: d.deploymentName,
+                        authentik: { ...spec.authentik, image: d.image, tag: d.tag },
+                    },
+                });
+                created.push(`deployment ${d.deploymentName}`);
+                if (extraValuesYAML.trim()) {
+                    await api.setExtraValues(d.deploymentName, extraValuesYAML);
+                }
+            }
+            await api.createTestCase({
+                metadata: { name: row.testCaseName, labels },
+                spec: {
+                    ...testCase,
+                    template: row.template,
+                    deploymentRefs: row.deployments.map((d) => ({ name: d.deploymentName })),
+                    baselineRef: {
+                        name: row.deployments.find((d) => d.name === baselineSuffix)!
+                            .deploymentName,
+                    },
+                },
+            });
+            toast.success(`Created test case ${row.testCaseName}`);
+            navigate(`/testcases/${row.testCaseName}`);
+        } catch (err) {
+            setError(
+                created.length > 0
+                    ? `${errorMessage(err)} (already created: ${created.join(", ")} - delete or reuse them before retrying)`
+                    : errorMessage(err),
+            );
             setSaving(false);
         }
     }
@@ -484,7 +540,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     </p>
                     <div className="fields">
                         <Field
-                            label="Matrix name"
+                            label={asMatrix ? "Matrix name" : "Name"}
                             help="Test cases, deployments and namespaces are named after it"
                         >
                             <input
@@ -579,10 +635,12 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
 
                 <fieldset>
                     <legend>Creates</legend>
-                    <p className="muted">
-                        One test matrix <code>{effectivePrefix || "…"}</code>, which creates and
-                        owns:
-                    </p>
+                    {asMatrix && (
+                        <p className="muted">
+                            One test matrix <code>{effectivePrefix || "…"}</code>, which creates and
+                            owns:
+                        </p>
+                    )}
                     <ul className="muted">
                         {rows.map((row) => (
                             <li key={row.template}>
@@ -604,7 +662,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     </ul>
                     {tooLong.length > 0 && (
                         <Alert>
-                            {`${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the matrix name.`}
+                            {`${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the ${asMatrix ? "matrix " : ""}name.`}
                         </Alert>
                     )}
                 </fieldset>
