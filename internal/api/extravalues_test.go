@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
@@ -104,5 +106,31 @@ func TestGetHelmValues(t *testing.T) {
 	requireStatus(t, rec, http.StatusOK)
 	if got, want := decodeBody[extraValuesBody](t, rec).ValuesYAML, "authentik:\n  log_level: debug\n"; got != want {
 		t.Fatalf("valuesYAML = %q, want %q", got, want)
+	}
+}
+
+func TestPutExtraValuesOnMatrixDeploymentUpdatesMatrix(t *testing.T) {
+	m := &benchv1alpha1.TestMatrix{Name: "pr-1", Namespace: testNamespace, UID: "matrix-uid"}
+	topo := sampleDeployment("pr-1-head-login")
+	topo.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: benchv1alpha1.GroupVersion.String(), Kind: "TestMatrix",
+		Name: m.Name, UID: m.UID, Controller: ptr.To(true),
+	}}
+	s, k8s := newServer(t, Config{}, m, topo)
+
+	yamlBody := "authentik:\n  log_level: debug\n"
+	rec := do(t, s, http.MethodPut, "/api/v1/deployments/pr-1-head-login/extra-values", extraValuesBody{ValuesYAML: yamlBody})
+	requireStatus(t, rec, http.StatusOK)
+
+	if err := k8s.Get(t.Context(), types.NamespacedName{Name: m.Name, Namespace: testNamespace}, m); err != nil {
+		t.Fatalf("get matrix: %v", err)
+	}
+	if m.Spec.ExtraValues != yamlBody {
+		t.Fatalf("matrix extraValues = %q, want %q", m.Spec.ExtraValues, yamlBody)
+	}
+	rec = do(t, s, http.MethodGet, "/api/v1/deployments/pr-1-head-login/extra-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[extraValuesBody](t, rec).ValuesYAML; got != yamlBody {
+		t.Fatalf("GET valuesYAML = %q, want %q", got, yamlBody)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
@@ -31,11 +32,39 @@ type extraValuesBody struct {
 	ValuesYAML string `json:"valuesYAML"`
 }
 
+// owningMatrix returns the TestMatrix controlling topo, or nil. The matrix
+// re-applies its deployments' whole spec, so a per-deployment extraValuesRef
+// would be reverted: its extra values live in the matrix's spec.extraValues
+// instead, shared by every variant.
+func (s *Server) owningMatrix(r *http.Request, topo *benchv1alpha1.AuthentikDeployment) (*benchv1alpha1.TestMatrix, error) {
+	owner := metav1.GetControllerOf(topo)
+	if owner == nil || owner.Kind != "TestMatrix" {
+		return nil, nil
+	}
+	var m benchv1alpha1.TestMatrix
+	if err := s.client.Get(r.Context(), types.NamespacedName{Name: owner.Name, Namespace: topo.Namespace}, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
 // getExtraValues returns the deployment's current extra-values YAML, or an
 // empty string if none is set - not a 404, since "no extra values" is a
 // normal, common state rather than a missing resource.
 func (s *Server) getExtraValues(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	var topo benchv1alpha1.AuthentikDeployment
+	if err := s.client.Get(r.Context(), types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}, &topo); err == nil {
+		m, err := s.owningMatrix(r, &topo)
+		if err != nil {
+			writeAPIError(w, r, err)
+			return
+		}
+		if m != nil {
+			writeJSON(w, r, http.StatusOK, extraValuesBody{ValuesYAML: m.Spec.ExtraValues})
+			return
+		}
+	}
 	var cm corev1.ConfigMap
 	key := types.NamespacedName{Name: extraValuesConfigMapName(name), Namespace: s.cfg.Namespace}
 	if err := s.client.Get(r.Context(), key, &cm); err != nil {
@@ -77,6 +106,20 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, err)
 		return
 	}
+	m, err := s.owningMatrix(r, &topo)
+	if err != nil {
+		writeAPIError(w, r, err)
+		return
+	}
+	if m != nil {
+		m.Spec.ExtraValues = body.ValuesYAML
+		if err := s.client.Update(r.Context(), m); err != nil {
+			writeAPIError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, body)
+		return
+	}
 
 	cmName := extraValuesConfigMapName(name)
 	cm := &corev1.ConfigMap{
@@ -84,7 +127,7 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		Data: map[string]string{"values.yaml": body.ValuesYAML},
 	}
 	var existing corev1.ConfigMap
-	err := s.client.Get(r.Context(), types.NamespacedName{Name: cmName, Namespace: s.cfg.Namespace}, &existing)
+	err = s.client.Get(r.Context(), types.NamespacedName{Name: cmName, Namespace: s.cfg.Namespace}, &existing)
 	switch {
 	case apierrors.IsNotFound(err):
 		if err := s.client.Create(r.Context(), cm); err != nil {
