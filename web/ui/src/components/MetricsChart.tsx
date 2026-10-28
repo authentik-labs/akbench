@@ -1,5 +1,13 @@
 import { api } from "../api";
-import { colorFor, formatMetricValue, onlyTargets, stepFor } from "../format";
+import {
+    colorFor,
+    formatMetricValue,
+    onlyTargets,
+    relativeDelta,
+    seriesAverage,
+    stepFor,
+    topActors,
+} from "../format";
 import { useDarkTheme } from "../theme";
 import {
     CompareMetric,
@@ -10,6 +18,7 @@ import {
     WorkerMetric,
 } from "../types";
 import { useResource } from "../useResource";
+import { Delta } from "./Targets";
 import { Column, Table } from "./ui";
 
 import {
@@ -287,26 +296,16 @@ export function MetricsChart({
         // oxlint-disable-next-line react-hooks/exhaustive-deps
         [data, targetKey, theme.dark],
     );
-    const hasData = datasets.some((d) => d.data.length > 0);
-    const options = useMemo(
-        () => rangeChartOptions(unit, datasets.length > 1, theme, windowed?.window),
-        [unit, datasets.length, theme, windowed?.window],
-    );
-
     return (
-        <div className="panel">
-            <h3>{label}</h3>
-            {error && <div className="alert error">{error}</div>}
-            {!hasData ? (
-                <div className="muted" style={{ height, display: "grid", placeItems: "center" }}>
-                    No data in this window yet.
-                </div>
-            ) : (
-                <div style={{ height }}>
-                    <Line data={{ datasets }} options={options} />
-                </div>
-            )}
-        </div>
+        <ChartPanel
+            title={label}
+            unit={unit}
+            datasets={datasets}
+            theme={theme}
+            window={windowed?.window}
+            error={error}
+            height={height}
+        />
     );
 }
 
@@ -346,74 +345,32 @@ export function MetricsGrid({
     );
 }
 
-/**
- * ResourceChart is one big chart for one resource (cpu/memory), one line per
- * *test* - each line is that test's own deployment summed across its pods
- * (internal/api/podmetrics.go), not broken out per pod: confirmed live that
- * reads as unreadable (a deployment mid-rollout leaves its old ReplicaSet
- * generation's pods in the same time window as the new one, turning a
- * single test into 6+ tangled lines). Matches MetricsChart's own "one line
- * per test" shape above - this is the Compare page's resource-usage
- * equivalent of the k6-metric charts, not a per-pod drill-down.
- */
-export function ResourceChart({
-    resource,
-    component,
-    testids,
-    rangeSeconds = 900,
-    step,
-    refreshMs = 15000,
-    height = 320,
-    endSeconds,
+/** ChartPanel is one titled line chart, or a placeholder without data. */
+function ChartPanel({
+    title,
+    unit,
+    datasets,
+    theme,
+    window,
+    error,
+    height,
 }: {
-    resource: "cpu" | "memory";
-    /** Only this authentik process's pods (default: every pod of the deployment). */
-    component?: "server" | "worker";
-    testids: string[];
-    rangeSeconds?: number;
-    /** Defaults to stepFor(rangeSeconds). */
-    step?: string;
-    refreshMs?: number;
-    height?: number;
-    endSeconds?: number;
+    title: string;
+    unit: string;
+    datasets: ReturnType<typeof rangeDatasets>;
+    theme: ChartTheme;
+    window?: ChartWindow;
+    error?: string;
+    height: number;
 }) {
-    const { data: windowed, error } = useResource<WindowedRange | undefined>(
-        () => {
-            if (testids.length === 0) {
-                return Promise.resolve(undefined);
-            }
-            const end = endSeconds ?? Math.floor(Date.now() / 1000);
-            const window = { start: end - rangeSeconds, end };
-            return api
-                .resourceRange(
-                    testids,
-                    resource,
-                    window.start,
-                    window.end,
-                    step ?? stepFor(rangeSeconds),
-                    component,
-                )
-                .then((response) => ({ response, window }));
-        },
-        [testids.join(","), resource, component, rangeSeconds, step, endSeconds],
-        endSeconds !== undefined ? 0 : refreshMs,
-    );
-
-    const data = windowed?.response;
-    const unit = data?.metric.unit ?? "";
-    const resourceLabel = data?.metric.label ?? resource;
-    const label = component ? `${resourceLabel} · ${component}` : resourceLabel;
-    const theme = useChartTheme();
-    const datasets = useMemo(() => rangeDatasets(data, theme.dark), [data, theme.dark]);
     const hasData = datasets.some((d) => d.data.length > 0);
     const options = useMemo(
-        () => rangeChartOptions(unit, datasets.length > 1, theme, windowed?.window),
-        [unit, datasets.length, theme, windowed?.window],
+        () => rangeChartOptions(unit, datasets.length > 1, theme, window),
+        [unit, datasets.length, theme, window],
     );
-
     return (
         <div className="panel">
-            <h3>{label}</h3>
+            <h3>{title}</h3>
             {error && <div className="alert error">{error}</div>}
             {!hasData ? (
                 <div className="muted" style={{ height, display: "grid", placeItems: "center" }}>
@@ -428,48 +385,207 @@ export function ResourceChart({
     );
 }
 
+interface AverageColumn {
+    label: string;
+    unit: string;
+    better: "higher" | "lower";
+}
+
+interface AverageRow {
+    key: string;
+    label: string;
+    /** One per column. */
+    values: (number | undefined)[];
+}
+
+/**
+ * AverageTable is a section's charts boiled down to one average per line
+ * over the window, each with its change relative to the baseline row (the
+ * first row unless baseline names another).
+ */
+function AverageTable({
+    columns,
+    rows,
+    baseline,
+}: {
+    columns: AverageColumn[];
+    rows: AverageRow[];
+    baseline?: string;
+}) {
+    if (rows.length === 0) {
+        return null;
+    }
+    const base = rows.find((r) => r.key === baseline) ?? rows[0];
+    return (
+        <div
+            className="panel table-scroll"
+            style={{ marginBottom: "var(--ak-global--spacer--md)" }}
+        >
+            <h3>Averages over the window</h3>
+            <table className="table">
+                <thead>
+                    <tr>
+                        <th />
+                        {columns.map((c) => (
+                            <th key={c.label} className="num">
+                                {c.label}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.key}>
+                            <td>
+                                {row.label}
+                                {rows.length > 1 && row === base && (
+                                    <span className="muted"> (baseline)</span>
+                                )}
+                            </td>
+                            {columns.map((c, i) => (
+                                <td key={c.label} className="mono num">
+                                    {formatMetricValue(row.values[i], c.unit)}
+                                    {rows.length > 1 && row !== base && (
+                                        <>
+                                            {" "}
+                                            <Delta
+                                                value={relativeDelta(row.values[i], base.values[i])}
+                                                better={c.better}
+                                            />
+                                        </>
+                                    )}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+const RESOURCE_CHARTS = [
+    { resource: "cpu", component: "server" },
+    { resource: "cpu", component: "worker" },
+    { resource: "memory", component: "server" },
+    { resource: "memory", component: "worker" },
+] as const;
+
 /**
  * ResourceCharts renders four big charts - CPU and memory, each for
  * authentik's server and worker pods - with one line per given test and
- * target.
+ * target, under a table of each line's average. Each line is that test's
+ * own deployment summed across its pods (internal/api/podmetrics.go), not
+ * broken out per pod: a deployment mid-rollout leaves its old ReplicaSet's
+ * pods in the same window as the new one, turning one test into 6+ tangled
+ * lines.
  */
 export function ResourceCharts({
     testids,
     endSeconds,
-    rangeSeconds,
+    rangeSeconds = 900,
     wide,
+    baseline,
+    refreshMs = 15000,
 }: {
     testids: string[];
     endSeconds?: number;
     rangeSeconds?: number;
     /** Fewer, wider charts per row. */
     wide?: boolean;
+    /** The k6 target the averages' Δ is relative to (default: the first line). */
+    baseline?: string;
+    refreshMs?: number;
 }) {
-    const charts = [
-        { resource: "cpu", component: "server" },
-        { resource: "cpu", component: "worker" },
-        { resource: "memory", component: "server" },
-        { resource: "memory", component: "worker" },
-    ] as const;
-    return (
-        <div className={wide ? "grid2 wide" : "grid2"}>
-            {charts.map(({ resource, component }) => (
-                <ResourceChart
-                    key={`${resource}-${component}`}
-                    resource={resource}
-                    component={component}
-                    testids={testids}
-                    endSeconds={endSeconds}
-                    rangeSeconds={rangeSeconds}
-                />
-            ))}
-        </div>
+    const { data, error } = useResource(
+        () => {
+            if (testids.length === 0) {
+                return Promise.resolve(undefined);
+            }
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
+            const window = { start: end - rangeSeconds, end };
+            return Promise.all(
+                RESOURCE_CHARTS.map(({ resource, component }) =>
+                    api.resourceRange(
+                        testids,
+                        resource,
+                        window.start,
+                        window.end,
+                        stepFor(rangeSeconds),
+                        component,
+                    ),
+                ),
+            ).then((responses) => ({ responses, window }));
+        },
+        [testids.join(","), rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
     );
+    const theme = useChartTheme();
+    const charts = useMemo(
+        () =>
+            RESOURCE_CHARTS.map(({ resource, component }, i) => {
+                const response = data?.responses[i];
+                return {
+                    title: `${response?.metric.label ?? resource} · ${component}`,
+                    unit: response?.metric.unit ?? "",
+                    series: response?.series ?? [],
+                    datasets: rangeDatasets(response, theme.dark),
+                };
+            }),
+        [data, theme.dark],
+    );
+
+    // One row per (testid, target) line, labeled as the charts' legend.
+    const lines = charts[0].series;
+    const labels = charts[0].datasets.map((d) => d.label);
+    const rows = lines.map((line, i) => ({
+        key: `${line.testid}::${line.target}`,
+        label: labels[i],
+        values: charts.map((c) =>
+            seriesAverage(
+                c.series.filter((s) => s.testid === line.testid && s.target === line.target),
+            ),
+        ),
+    }));
+    return (
+        <>
+            {error && <div className="alert error">{error}</div>}
+            <AverageTable
+                columns={charts.map((c) => ({ label: c.title, unit: c.unit, better: "lower" }))}
+                rows={rows}
+                baseline={baseline && rows[lines.findIndex((l) => l.target === baseline)]?.key}
+            />
+            <div className={wide ? "grid2 wide" : "grid2"}>
+                {charts.map((c) => (
+                    <ChartPanel
+                        key={c.title}
+                        title={c.title}
+                        unit={c.unit}
+                        datasets={c.datasets}
+                        theme={theme}
+                        window={data?.window}
+                        height={320}
+                    />
+                ))}
+            </div>
+        </>
+    );
+}
+
+/** deploymentDatasets is one line per series, labeled by its target. */
+function deploymentDatasets(data: RangeResponse | undefined, dark: boolean) {
+    return (data?.series ?? []).map((s, i) => ({
+        label: s.target,
+        data: (s.points ?? []).map((p) => ({ x: p.time, y: p.value })),
+        borderColor: colorFor(i, dark),
+        backgroundColor: colorFor(i, dark),
+        spanGaps: true,
+    }));
 }
 
 /**
  * DeploymentChart is one chart of a deployment's own components (postgres,
- * worker), one line per series the backend returns, labelled by the
+ * monitoring), one line per series the backend returns, labelled by the
  * series' target - not tied to any test. fetch runs the range query for
  * the window.
  */
@@ -505,39 +621,18 @@ function DeploymentChart({
     );
 
     const data = windowed?.response;
-    const unit = data?.metric.unit ?? "";
     const theme = useChartTheme();
-    const datasets = useMemo(
-        () =>
-            (data?.series ?? []).map((s, i) => ({
-                label: s.target,
-                data: (s.points ?? []).map((p) => ({ x: p.time, y: p.value })),
-                borderColor: colorFor(i, theme.dark),
-                backgroundColor: colorFor(i, theme.dark),
-                spanGaps: true,
-            })),
-        [data, theme.dark],
-    );
-    const hasData = datasets.some((d) => d.data.length > 0);
-    const options = useMemo(
-        () => rangeChartOptions(unit, datasets.length > 1, theme, windowed?.window),
-        [unit, datasets.length, theme, windowed?.window],
-    );
-
+    const datasets = useMemo(() => deploymentDatasets(data, theme.dark), [data, theme.dark]);
     return (
-        <div className="panel">
-            <h3>{data?.metric.label ?? metric}</h3>
-            {error && <div className="alert error">{error}</div>}
-            {!hasData ? (
-                <div className="muted" style={{ height, display: "grid", placeItems: "center" }}>
-                    No data in this window yet.
-                </div>
-            ) : (
-                <div style={{ height }}>
-                    <Line data={{ datasets }} options={options} />
-                </div>
-            )}
-        </div>
+        <ChartPanel
+            title={data?.metric.label ?? metric}
+            unit={data?.metric.unit ?? ""}
+            datasets={datasets}
+            theme={theme}
+            window={windowed?.window}
+            error={error}
+            height={height}
+        />
     );
 }
 
@@ -567,59 +662,145 @@ export function PostgresCharts({
     );
 }
 
+const WORKER_METRICS: WorkerMetric[] = [
+    "tasks",
+    "duration",
+    "queue",
+    "failures",
+    "db_queries",
+    "db_duration",
+];
+
+/**
+ * WORKER_AVERAGES are the worker averages' columns: a metric's series by
+ * name, or every series of it summed (db_queries, one per pod).
+ */
+const WORKER_AVERAGES: {
+    metric: WorkerMetric;
+    series?: string;
+    label: string;
+    better: "higher" | "lower";
+}[] = [
+    { metric: "tasks", series: "processed", label: "Tasks", better: "higher" },
+    { metric: "duration", series: "p95", label: "Task duration p95", better: "lower" },
+    { metric: "queue", series: "queued", label: "Queued", better: "lower" },
+    { metric: "failures", series: "errors", label: "Task errors", better: "lower" },
+    { metric: "db_queries", label: "Database queries", better: "lower" },
+    { metric: "db_duration", series: "p95", label: "Database query p95", better: "lower" },
+];
+
 /**
  * WorkerCharts is the authentik worker of one or more deployments, all on
  * the same charts: background tasks processed and their duration, the
- * queue, task failures, and the database queries the worker runs. With
- * more than one deployment each line is prefixed with its deployment.
+ * queue, task failures, and the database queries the worker runs - under a
+ * table of each deployment's averages. With more than one deployment each
+ * line is prefixed with its deployment.
  */
 export function WorkerCharts({
     deployments,
-    rangeSeconds,
+    rangeSeconds = 900,
     endSeconds,
+    baseline,
+    refreshMs = 15000,
 }: {
     deployments: string[];
     rangeSeconds?: number;
     endSeconds?: number;
+    /** The deployment the averages' Δ is relative to (default: the first). */
+    baseline?: string;
+    refreshMs?: number;
 }) {
+    const { data, error } = useResource(
+        () => {
+            if (deployments.length === 0) {
+                return Promise.resolve(undefined);
+            }
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
+            const window = { start: end - rangeSeconds, end };
+            // byDeployment[d][m]: deployment d's response for WORKER_METRICS[m].
+            return Promise.all(
+                deployments.map((d) =>
+                    Promise.all(
+                        WORKER_METRICS.map((metric) =>
+                            api.workerMetrics(
+                                d,
+                                metric,
+                                window.start,
+                                window.end,
+                                stepFor(rangeSeconds),
+                            ),
+                        ),
+                    ),
+                ),
+            ).then((byDeployment) => ({ byDeployment, window }));
+        },
+        [deployments.join(","), rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
+    );
+    const theme = useChartTheme();
+    const charts = useMemo(
+        () =>
+            WORKER_METRICS.map((metric, m) => {
+                const responses = (data?.byDeployment ?? []).map((r) => r[m]);
+                const merged = responses[0] && {
+                    ...responses[0],
+                    series: responses.flatMap((r, i) =>
+                        deployments.length > 1
+                            ? r.series.map((s) => ({
+                                  ...s,
+                                  target: `${deployments[i]} · ${s.target}`,
+                              }))
+                            : r.series,
+                    ),
+                };
+                return {
+                    metric,
+                    title: merged?.metric.label ?? metric,
+                    unit: merged?.metric.unit ?? "",
+                    datasets: deploymentDatasets(merged, theme.dark),
+                };
+            }),
+        // deployments is what data was fetched for.
+        // oxlint-disable-next-line react-hooks/exhaustive-deps
+        [data, theme.dark],
+    );
     if (deployments.length === 0) {
         return null;
     }
-    const metrics: WorkerMetric[] = [
-        "tasks",
-        "duration",
-        "queue",
-        "failures",
-        "db_queries",
-        "db_duration",
-    ];
+
+    const rows = (data?.byDeployment ?? []).map((responses, i) => ({
+        key: deployments[i],
+        label: deployments[i],
+        values: WORKER_AVERAGES.map(({ metric, series }) =>
+            seriesAverage(
+                responses[WORKER_METRICS.indexOf(metric)].series.filter(
+                    (s) => series === undefined || s.target === series,
+                ),
+            ),
+        ),
+    }));
     return (
         <>
+            {error && <div className="alert error">{error}</div>}
+            <AverageTable
+                columns={WORKER_AVERAGES.map((a) => ({
+                    label: a.label,
+                    unit: charts[WORKER_METRICS.indexOf(a.metric)].unit,
+                    better: a.better,
+                }))}
+                rows={rows}
+                baseline={baseline}
+            />
             <div className="grid2">
-                {metrics.map((metric) => (
-                    <DeploymentChart
-                        key={metric}
-                        deployment={deployments.join(",")}
-                        metric={metric}
-                        fetch={(start, end, step) =>
-                            Promise.all(
-                                deployments.map((d) =>
-                                    api.workerMetrics(d, metric, start, end, step),
-                                ),
-                            ).then((responses) => ({
-                                ...responses[0],
-                                series: responses.flatMap((r, i) =>
-                                    deployments.length > 1
-                                        ? r.series.map((s) => ({
-                                              ...s,
-                                              target: `${deployments[i]} · ${s.target}`,
-                                          }))
-                                        : r.series,
-                                ),
-                            }))
-                        }
-                        rangeSeconds={rangeSeconds}
-                        endSeconds={endSeconds}
+                {charts.map((c) => (
+                    <ChartPanel
+                        key={c.metric}
+                        title={c.title}
+                        unit={c.unit}
+                        datasets={c.datasets}
+                        theme={theme}
+                        window={data?.window}
+                        height={260}
                     />
                 ))}
             </div>
@@ -632,11 +813,16 @@ export function WorkerCharts({
     );
 }
 
-type WorkerActorRow = WorkerActor & { deployment: string };
+/** One actor's row: its WorkerActor per deployment, in deployment order. */
+interface WorkerActorRow {
+    actor: string;
+    byDeployment: (WorkerActor | undefined)[];
+}
 
 /**
  * WorkerActorTable is the deployments' busiest worker actors over the
  * window, by tasks processed - the per-actor breakdown the charts sum away.
+ * One row per actor, with each deployment's numbers side by side.
  */
 function WorkerActorTable({
     deployments,
@@ -653,39 +839,57 @@ function WorkerActorTable({
         () => {
             const end = endSeconds ?? Math.floor(Date.now() / 1000);
             return Promise.all(
-                deployments.map((d) =>
-                    api
-                        .workerActors(d, end - rangeSeconds, end)
-                        .then((actors) => actors.map((a) => ({ ...a, deployment: d }))),
-                ),
-            ).then((all) => all.flat());
+                deployments.map((d) => api.workerActors(d, end - rangeSeconds, end)),
+            ).then((lists) =>
+                topActors(lists, WORKER_ACTOR_LIMIT).map((actor) => ({
+                    actor,
+                    byDeployment: lists.map((l) => l.find((a) => a.actor === actor)),
+                })),
+            );
         },
         [deployments.join(","), rangeSeconds, endSeconds],
         endSeconds !== undefined ? 0 : refreshMs,
     );
+    const suffix = (d: string) => (deployments.length > 1 ? ` · ${d}` : "");
     const columns: Column<WorkerActorRow>[] = [
         { label: "Actor", render: (r) => <span className="mono">{r.actor}</span> },
-        // increase() extrapolates, so counts come back fractional.
-        { label: "Tasks", render: (r) => Math.round(r.tasks).toLocaleString() },
-        { label: "p95", render: (r) => formatMetricValue(r.p95, "s") },
-        { label: "Errors", render: (r) => Math.round(r.errors).toLocaleString() },
+        ...deployments.flatMap((d, i): Column<WorkerActorRow>[] => [
+            // increase() extrapolates, so counts come back fractional.
+            {
+                label: `Tasks${suffix(d)}`,
+                render: (r) => formatCount(r.byDeployment[i]?.tasks),
+            },
+            {
+                label: `p95${suffix(d)}`,
+                render: (r) => formatMetricValue(r.byDeployment[i]?.p95, "s"),
+            },
+            {
+                label: `Errors${suffix(d)}`,
+                render: (r) => formatCount(r.byDeployment[i]?.errors),
+            },
+        ]),
     ];
-    if (deployments.length > 1) {
-        columns.unshift({ label: "Deployment", render: (r) => r.deployment });
-    }
     return (
         <div className="panel" style={{ marginTop: "var(--ak-global--spacer--md)" }}>
             <h3>Busiest worker actors</h3>
             {error && <div className="alert error">{error}</div>}
-            <Table
-                rows={data}
-                rowKey={(r) => `${r.deployment}/${r.actor}`}
-                empty="No tasks in this window."
-                columns={columns}
-            />
+            <div className="table-scroll">
+                <Table
+                    rows={data}
+                    rowKey={(r) => r.actor}
+                    empty="No tasks in this window."
+                    columns={columns}
+                />
+            </div>
         </div>
     );
 }
+
+/** How many actors WorkerActorTable lists - internal/api's workerActorLimit. */
+const WORKER_ACTOR_LIMIT = 10;
+
+const formatCount = (n: number | undefined) =>
+    n === undefined ? "-" : Math.round(n).toLocaleString();
 
 /** MonitoringCharts is a workload cluster's observability stack: CPU, memory and disk. */
 export function MonitoringCharts({ cluster }: { cluster: string }) {

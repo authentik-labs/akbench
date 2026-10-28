@@ -12,10 +12,12 @@ import {
     readableTextOn,
     relativeDelta,
     shortTag,
+    seriesAverage,
     SINCE_START,
     stepFor,
     targetNameOf,
     timeRangeSeconds,
+    topActors,
 } from "./format";
 
 import { describe, expect, it } from "vitest";
@@ -326,5 +328,42 @@ describe("newestFirst", () => {
             undefined,
         ]);
         expect(items[0].metadata.creationTimestamp).toBe("2026-01-01T00:00:00Z");
+    });
+});
+
+describe("seriesAverage", () => {
+    it("averages the per-timestamp total of every series", () => {
+        expect(
+            seriesAverage([
+                {
+                    points: [
+                        { time: 1, value: 1 },
+                        { time: 2, value: 3 },
+                    ],
+                },
+                { points: [{ time: 2, value: 2 }] },
+            ]),
+        ).toBe(3);
+        expect(seriesAverage([{ points: [] }])).toBeUndefined();
+    });
+});
+
+describe("topActors", () => {
+    it("de-duplicates actors across lists, busiest first", () => {
+        expect(
+            topActors(
+                [
+                    [
+                        { actor: "a", tasks: 5 },
+                        { actor: "b", tasks: 1 },
+                    ],
+                    [
+                        { actor: "b", tasks: 9 },
+                        { actor: "c", tasks: 2 },
+                    ],
+                ],
+                2,
+            ),
+        ).toEqual(["b", "a"]);
     });
 });

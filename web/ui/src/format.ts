@@ -118,6 +118,41 @@ export function onlyTargets<T extends { series: { target: string }[] }>(
     return { ...data, series: data.series.filter((s) => targets.includes(s.target)) };
 }
 
+/**
+ * seriesAverage is the mean over time of the given series summed per
+ * timestamp - one series' plain average, or several (a deployment's pods)
+ * as their total. Undefined without any points.
+ */
+export function seriesAverage(
+    series: { points: { time: number; value: number }[] }[],
+): number | undefined {
+    const totals = new Map<number, number>();
+    for (const s of series) {
+        for (const p of s.points ?? []) {
+            totals.set(p.time, (totals.get(p.time) ?? 0) + p.value);
+        }
+    }
+    if (totals.size === 0) {
+        return undefined;
+    }
+    return [...totals.values()].reduce((a, b) => a + b, 0) / totals.size;
+}
+
+/**
+ * topActors merges several deployments' busiest-actor lists into one list of
+ * distinct actor names, busiest first by whichever deployment ran it the most.
+ */
+export function topActors(lists: { actor: string; tasks: number }[][], limit: number): string[] {
+    const peak = new Map<string, number>();
+    for (const a of lists.flat()) {
+        peak.set(a.actor, Math.max(peak.get(a.actor) ?? 0, a.tasks));
+    }
+    return [...peak.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([actor]) => actor);
+}
+
 // A small qualitative palette, cycled by index so the same test keeps the
 // same color across every chart on a page. One variant per theme: each
 // color holds at least 3:1 against its own theme's surface, which a single

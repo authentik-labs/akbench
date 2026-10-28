@@ -956,6 +956,7 @@ export function TestCaseViewPage() {
             >
                 <WorkerCharts
                     deployments={rows.map((r) => r.deploymentName)}
+                    baseline={rows.find((r) => r.target === baseline)?.deploymentName}
                     endSeconds={metricsEnd}
                     rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
                 />
@@ -968,6 +969,7 @@ export function TestCaseViewPage() {
             >
                 <ResourceCharts
                     testids={[name]}
+                    baseline={baseline}
                     endSeconds={metricsEnd}
                     rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
                 />
