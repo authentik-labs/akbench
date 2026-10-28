@@ -1196,9 +1196,15 @@ dialog.report::backdrop {
 }
 .report-controls {
     display: grid;
-    grid-template-columns: 1fr 2fr auto;
+    grid-template-columns: 1fr 2fr auto auto;
     gap: var(--ak-global--spacer--md);
     align-items: end;
+}
+.report-labels {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--ak-global--spacer--md);
+    margin-top: var(--ak-global--spacer--md);
 }
 .report-metrics {
     display: flex;

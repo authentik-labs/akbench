@@ -1,4 +1,5 @@
 import {
+    smoothPoints,
     archivedBurnWindow,
     buildLabel,
     colorFor,
@@ -365,5 +366,13 @@ describe("topActors", () => {
                 2,
             ),
         ).toEqual(["b", "a"]);
+    });
+});
+
+describe("smoothPoints", () => {
+    it("averages a centered window, shrinking at the ends", () => {
+        const points = [1, 2, 3, 10].map((value, time) => ({ time, value }));
+        expect(smoothPoints(points, 0)).toBe(points);
+        expect(smoothPoints(points, 1).map((p) => p.value)).toEqual([1.5, 2, 5, 6.5]);
     });
 });

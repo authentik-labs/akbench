@@ -390,3 +390,17 @@ export function newestFirst<T extends { metadata: { creationTimestamp?: string }
 export function createdBy(meta: { annotations?: Record<string, string> }): string {
     return meta.annotations?.["bench.goauthentik.io/created-by"] ?? "-";
 }
+
+/**
+ * smoothPoints is a centered moving average over radius points on each side
+ * (fewer at the ends); radius 0 returns the points unchanged.
+ */
+export function smoothPoints<T extends { value: number }>(points: T[], radius: number): T[] {
+    if (radius <= 0) {
+        return points;
+    }
+    return points.map((p, i) => {
+        const window = points.slice(Math.max(0, i - radius), i + radius + 1);
+        return { ...p, value: window.reduce((sum, w) => sum + w.value, 0) / window.length };
+    });
+}

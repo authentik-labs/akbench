@@ -2,7 +2,14 @@
 // 1920x1080 image for sharing: a big number and a chart per picked metric,
 // drawn straight onto a canvas so the preview is exactly the exported PNG.
 import { api } from "../api";
-import { colorFor, formatMetricValue, relativeDelta, seriesAverage, stepFor } from "../format";
+import {
+    colorFor,
+    formatMetricValue,
+    relativeDelta,
+    seriesAverage,
+    smoothPoints,
+    stepFor,
+} from "../format";
 import { RangeResponse } from "../types";
 import { useResource } from "../useResource";
 import { TargetRow } from "./Targets";
@@ -103,6 +110,10 @@ interface DrawInput {
     end: number;
     rows: TargetRow[];
     baseline?: string;
+    /** Display names keyed by k6 target; unset or empty keeps the target. */
+    labels: Record<string, string>;
+    /** Moving-average radius, in points, applied to the chart lines only. */
+    smoothing: number;
 }
 
 /** fitFont sets the largest font up to size that fits text in maxWidth. */
@@ -130,6 +141,7 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
         getComputedStyle(document.documentElement)
             .getPropertyValue("--ak-global--font-family--heading")
             .trim() || "sans-serif";
+    const nameOf = (row: TargetRow) => input.labels[row.target] || row.target;
     const colorOf = (row: TargetRow) =>
         rows.length === 1 ? t.accent : colorFor(row.index, input.theme === "dark");
     const baselineRow = rows.find((r) => r.target === input.baseline) ?? rows[0];
@@ -147,10 +159,10 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
     if (rows.length > 1) {
         ctx.font = `600 26px ${family}`;
         for (const row of [...rows].reverse()) {
-            const w = ctx.measureText(row.target).width;
+            const w = ctx.measureText(nameOf(row)).width;
             legendX -= w;
             ctx.fillStyle = t.text;
-            ctx.fillText(row.target, legendX, PAD + 20);
+            ctx.fillText(nameOf(row), legendX, PAD + 20);
             ctx.fillStyle = colorOf(row);
             ctx.beginPath();
             ctx.arc(legendX - 20, PAD + 11, 9, 0, Math.PI * 2);
@@ -227,7 +239,7 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
             const delta =
                 row === baselineRow ? undefined : relativeDelta(value, valueOf(baselineRow));
             if (delta !== undefined) {
-                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}% vs ${baselineRow.target}`;
+                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}% vs ${nameOf(baselineRow)}`;
                 ctx.fillStyle = delta >= 0 === (metric.better === "higher") ? t.good : t.bad;
                 fitFont(ctx, label, colW - 16, 22, 600, family);
                 ctx.fillText(label, vx, vy + 34);
@@ -252,7 +264,10 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
                     const points =
                         response.series.find((s) => s.target === row.target)?.points ?? [];
                     return {
-                        data: points.map((p) => ({ x: p.time, y: p.value })),
+                        data: smoothPoints(points, input.smoothing).map((p) => ({
+                            x: p.time,
+                            y: p.value,
+                        })),
                         borderColor: color,
                         backgroundColor: `${color}33`,
                         fill: rows.length === 1 ? "origin" : false,
@@ -317,6 +332,8 @@ export function MarketingReport({
     const [title, setTitle] = useState(testid);
     const [subtitle, setSubtitle] = useState(defaultSubtitle);
     const [theme, setTheme] = useState<ThemeName>("dark");
+    const [labels, setLabels] = useState<Record<string, string>>({});
+    const [smoothing, setSmoothing] = useState(0);
     const metrics = REPORT_METRICS.filter((m) => selected.includes(m.key));
 
     useEffect(() => dialogRef.current?.showModal(), []);
@@ -347,13 +364,22 @@ export function MarketingReport({
         // Web fonts must be in before the canvas measures and draws text.
         void document.fonts.ready.then(() => {
             if (!cancelled) {
-                drawReport(ctx, { ...data, title, subtitle, theme, rows, baseline });
+                drawReport(ctx, {
+                    ...data,
+                    title,
+                    subtitle,
+                    theme,
+                    rows,
+                    baseline,
+                    labels,
+                    smoothing,
+                });
             }
         });
         return () => {
             cancelled = true;
         };
-    }, [data, title, subtitle, theme, rows, baseline]);
+    }, [data, title, subtitle, theme, rows, baseline, labels, smoothing]);
 
     function toggle(key: string) {
         setSelected((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
@@ -403,7 +429,33 @@ export function MarketingReport({
                     value={theme}
                     onChange={setTheme}
                 />
+                <label className="field">
+                    Smoothing ({smoothing})
+                    <input
+                        type="range"
+                        min={0}
+                        max={20}
+                        value={smoothing}
+                        onChange={(e) => setSmoothing(Number(e.target.value))}
+                    />
+                </label>
             </div>
+            {rows.length > 1 && (
+                <div className="report-labels">
+                    {rows.map((row) => (
+                        <label className="field" key={row.target}>
+                            {row.deploymentName}
+                            <input
+                                value={labels[row.target] ?? ""}
+                                placeholder={row.target}
+                                onChange={(e) =>
+                                    setLabels((l) => ({ ...l, [row.target]: e.target.value }))
+                                }
+                            />
+                        </label>
+                    ))}
+                </div>
+            )}
             <div className="report-metrics">
                 {REPORT_METRICS.map((m) => (
                     <label className="check" key={m.key}>
