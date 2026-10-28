@@ -1180,3 +1180,38 @@ details > summary {
         break-inside: avoid;
     }
 }
+
+/* MarketingReport.tsx: the image is drawn at 1920x1080 and scaled to fit. */
+dialog.report {
+    width: min(1280px, calc(100vw - 32px));
+    padding: var(--ak-global--spacer--lg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+}
+dialog.report::backdrop {
+    background: var(--ak-global--color--scrim--light);
+}
+.report-controls {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    gap: var(--ak-global--spacer--md);
+    align-items: end;
+}
+.report-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ak-global--spacer--sm) var(--ak-global--spacer--lg);
+    margin: var(--ak-global--spacer--md) 0;
+}
+dialog.report canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+}
+dialog.report canvas.loading {
+    opacity: 0.5;
+}

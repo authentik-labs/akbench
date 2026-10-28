@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { LogBreakdownSection } from "../components/LogBreakdown";
+import { MarketingReport } from "../components/MarketingReport";
 import { MetricsGrid, ResourceCharts, WorkerCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
@@ -38,7 +39,6 @@ import {
 } from "../format";
 import { PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
-import { printReport } from "../theme";
 import {
     TestCase,
     TestCaseSpec,
@@ -706,6 +706,7 @@ export function TestCaseViewPage() {
             ? formatDuration(archivedWindow.end - archivedWindow.start)
             : undefined;
 
+    const [reportOpen, setReportOpen] = useState(false);
     const [busy, setBusy] = useState(false);
     const [actionError, setActionError] = useState<string>();
 
@@ -813,7 +814,7 @@ export function TestCaseViewPage() {
                             {tc.spec.archived ? "Unarchive" : "Archive"}
                         </button>
                     )}
-                    {tc && <button onClick={printReport}>Report (PDF)</button>}
+                    {tc && <button onClick={() => setReportOpen(true)}>Report</button>}
                 </>
             }
         >
@@ -976,6 +977,17 @@ export function TestCaseViewPage() {
             </Section>
 
             {!rollingOut && statusSection}
+            {reportOpen && tc && (
+                <MarketingReport
+                    testid={name}
+                    subtitle={`${rows.length === 1 ? rows[0].target : rows.map((r) => r.target).join(" vs ")} · ${tc.spec.vus} VUs${rows.length > 1 ? " each" : ""}`}
+                    rows={rows}
+                    baseline={baseline}
+                    endSeconds={metricsEnd}
+                    rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
+                    onClose={() => setReportOpen(false)}
+                />
+            )}
         </Page>
     );
 }
