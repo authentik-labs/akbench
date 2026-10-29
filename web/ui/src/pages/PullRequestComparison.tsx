@@ -24,7 +24,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 const BRANCH_LABEL = "bench.goauthentik.io/branch";
 
 // Helm's release name limit; a deployment's name is its release name.
-const MAX_DEPLOYMENT_NAME_LENGTH = 53;
+const MAX_DEPLOYMENT_NAME_LENGTH = 41;
 
 type Baseline = "base" | "release";
 
@@ -223,7 +223,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
             deploymentName: effectivePrefix && v.name && `${effectivePrefix}-${v.name}-${template}`,
         })),
     }));
-    // Each deployment's name is its Helm release name, which Helm caps at 53.
+    // Mirrors AuthentikDeployment's CEL name limit (postgresql pod label length).
     const tooLong = rows
         .flatMap((r) => r.deployments.map((d) => d.deploymentName))
         .filter((n) => n.length > MAX_DEPLOYMENT_NAME_LENGTH);

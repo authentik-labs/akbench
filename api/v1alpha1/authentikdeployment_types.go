@@ -286,6 +286,12 @@ type AuthentikDeploymentStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
 // AuthentikDeployment is the Schema for the authentikdeployments API
+//
+// The name is capped at 41 characters: it is the Helm release name, and the
+// bundled postgresql StatefulSet's pods get a controller-revision-hash label
+// of "<name>-postgresql-<10-char hash>", which must fit in 63. Checked on
+// create only, so existing longer names can still be updated and deleted.
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 41",message="name must be no more than 41 characters",optionalOldSelf=true
 type AuthentikDeployment struct {
 	metav1.TypeMeta `json:",inline"`
 

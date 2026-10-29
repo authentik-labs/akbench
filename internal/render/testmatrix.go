@@ -19,9 +19,9 @@ type TestMatrixObjects struct {
 	ExtraValues *corev1.ConfigMap
 }
 
-// maxDeploymentNameLength is Helm's release name limit: an
-// AuthentikDeployment's name is its HelmRelease's release name.
-const maxDeploymentNameLength = 53
+// maxDeploymentNameLength mirrors AuthentikDeployment's CEL name limit:
+// "<name>-postgresql-<10-char hash>" is a pod label value, capped at 63.
+const maxDeploymentNameLength = 41
 
 // TestMatrix builds one TestCase per template, each driving its own
 // AuthentikDeployment per variant. Every object carries the matrix's own

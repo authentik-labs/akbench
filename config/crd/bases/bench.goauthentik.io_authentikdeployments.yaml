@@ -30,8 +30,13 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AuthentikDeployment is the Schema for the authentikdeployments
-          API
+        description: |-
+          AuthentikDeployment is the Schema for the authentikdeployments API
+
+          The name is capped at 41 characters: it is the Helm release name, and the
+          bundled postgresql StatefulSet's pods get a controller-revision-hash label
+          of "<name>-postgresql-<10-char hash>", which must fit in 63. Checked on
+          create only, so existing longer names can still be updated and deleted.
         properties:
           apiVersion:
             description: |-
@@ -608,6 +613,10 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: name must be no more than 41 characters
+          optionalOldSelf: true
+          rule: oldSelf.hasValue() || size(self.metadata.name) <= 41
     served: true
     storage: true
     subresources:

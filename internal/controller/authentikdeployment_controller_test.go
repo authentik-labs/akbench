@@ -247,6 +247,20 @@ var _ = Describe("AuthentikDeployment Controller", func() {
 		Expect(k8sClient.Create(ctx, topo)).To(MatchError(ContainSubstring("management cluster is not allowed")))
 	})
 
+	It("rejects a name too long for the postgresql pod's controller-revision-hash label", func() {
+		topo := &benchv1alpha1.AuthentikDeployment{
+			Name: "2026-10-29-main-2026-8-5-oauth-token-exchange", Namespace: "default",
+			Spec: benchv1alpha1.AuthentikDeploymentSpec{
+				ClusterRef: corev1.LocalObjectReference{Name: "some-workload-cluster"},
+				Namespace:  "authentik-deployment-long",
+				Server:     benchv1alpha1.WorkloadSpec{Replicas: 1},
+				Worker:     benchv1alpha1.WorkloadSpec{Replicas: 1},
+				Postgres:   benchv1alpha1.PostgresSpec{Mode: benchv1alpha1.PostgresEmbedded},
+			},
+		}
+		Expect(k8sClient.Create(ctx, topo)).To(MatchError(ContainSubstring("no more than 41 characters")))
+	})
+
 	Context("clusterRef set without a multicluster tracker wired up", func() {
 		It("reports DependencyNotReady and requeues instead of touching a remote cluster", func() {
 			topo := &benchv1alpha1.AuthentikDeployment{
