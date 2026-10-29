@@ -1,6 +1,7 @@
-// MarketingReport turns a test case's headline numbers into one stylized
-// 1920x1080 image for sharing: a big number and a chart per picked metric,
-// drawn straight onto a canvas so the preview is exactly the exported PNG.
+// MarketingReport turns a test case's (or a matrix's test cases') headline
+// numbers into one stylized 1920x1080 image for sharing: a big number and a
+// chart per picked metric, drawn straight onto a canvas so the preview is
+// exactly the exported PNG.
 import { api } from "../api";
 import {
     colorFor,
@@ -13,7 +14,6 @@ import {
 } from "../format";
 import { RangeResponse } from "../types";
 import { useResource } from "../useResource";
-import { TargetRow } from "./Targets";
 import { toast } from "./Toast";
 import { Alert, errorMessage, Segmented } from "./ui";
 
@@ -101,22 +101,46 @@ const THEMES = {
 };
 type ThemeName = keyof typeof THEMES;
 
+/**
+ * ReportRow is one series' k6 target and compare values within a source.
+ * Rows line up by position across sources: position i is the same series
+ * (a test case's deployment, a matrix's variant) in every one of them.
+ */
+export interface ReportRow {
+    target: string;
+    values: Record<string, number>;
+}
+
+/** ReportSource is a test case a metric can be pulled from. */
+export interface ReportSource {
+    testid: string;
+    label: string;
+    rows: ReportRow[];
+}
+
+interface Panel {
+    metric: ReportMetric;
+    response?: RangeResponse;
+    rows: ReportRow[];
+    /** The source's label, shown when there is more than one to pick from. */
+    source?: string;
+}
+
 interface DrawInput {
     title: string;
     subtitle: string;
     theme: ThemeName;
-    metrics: ReportMetric[];
-    responses: RangeResponse[];
+    panels: Panel[];
     start: number;
     end: number;
-    rows: TargetRow[];
-    baseline?: string;
-    /** Display names keyed by k6 target; unset or empty keeps the target. */
-    labels: Record<string, string>;
+    /** Display name per series position. */
+    names: string[];
+    /** Series position the deltas are relative to. */
+    baseline: number;
     /** Moving-average radius, in points, applied to the chart lines only. */
     smoothing: number;
-    /** Palette indexes keyed by k6 target; unset keeps the page's color. */
-    colors: Record<string, number>;
+    /** Palette indexes keyed by series position; unset keeps the page's color. */
+    colors: Record<number, number>;
 }
 
 /** fitFont sets the largest font up to size that fits text in maxWidth. */
@@ -138,20 +162,19 @@ function fitFont(
 }
 
 function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
-    const { metrics, responses, rows, start, end } = input;
+    const { panels, names, start, end } = input;
     const t = THEMES[input.theme];
+    const dark = input.theme === "dark";
     const family =
         getComputedStyle(document.documentElement)
             .getPropertyValue("--ak-global--font-family--heading")
             .trim() || "sans-serif";
-    const nameOf = (row: TargetRow) => input.labels[row.target] || row.target;
-    const colorOf = (row: TargetRow) =>
-        input.colors[row.target] !== undefined
-            ? colorFor(input.colors[row.target], input.theme === "dark")
-            : rows.length === 1
+    const colorOf = (i: number) =>
+        input.colors[i] !== undefined
+            ? colorFor(input.colors[i], dark)
+            : names.length === 1
               ? t.accent
-              : colorFor(row.index, input.theme === "dark");
-    const baselineRow = rows.find((r) => r.target === input.baseline) ?? rows[0];
+              : colorFor(i, dark);
 
     const bg = ctx.createLinearGradient(0, 0, W, H);
     bg.addColorStop(0, t.bg[0]);
@@ -161,16 +184,15 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
     ctx.textBaseline = "alphabetic";
     ctx.textAlign = "left";
 
-    // Legend, top right; its width is what the title has to stay clear of.
-    let legendX = W - PAD;
-    if (rows.length > 1) {
+    // Legend, top right.
+    if (names.length > 1) {
+        let legendX = W - PAD;
         ctx.font = `600 26px ${family}`;
-        for (const row of [...rows].reverse()) {
-            const w = ctx.measureText(nameOf(row)).width;
-            legendX -= w;
+        for (let i = names.length - 1; i >= 0; i--) {
+            legendX -= ctx.measureText(names[i]).width;
             ctx.fillStyle = t.text;
-            ctx.fillText(nameOf(row), legendX, PAD + 20);
-            ctx.fillStyle = colorOf(row);
+            ctx.fillText(names[i], legendX, PAD + 20);
+            ctx.fillStyle = colorOf(i);
             ctx.beginPath();
             ctx.arc(legendX - 20, PAD + 11, 9, 0, Math.PI * 2);
             ctx.fill();
@@ -196,7 +218,7 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
     ctx.fillText("goauthentik.io", W - PAD, H - 56);
     ctx.textAlign = "left";
 
-    const n = metrics.length;
+    const n = panels.length;
     if (n === 0) {
         return;
     }
@@ -208,8 +230,7 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
     const pw = (W - 2 * PAD - (cols - 1) * gap) / cols;
     const ph = (bottom - top - (lines - 1) * gap) / lines;
 
-    metrics.forEach((metric, i) => {
-        const response = responses[i];
+    panels.forEach(({ metric, response, rows, source }, i) => {
         const unit = response?.metric.unit ?? "";
         const x = PAD + (i % cols) * (pw + gap);
         const y = top + Math.floor(i / cols) * (ph + gap);
@@ -221,16 +242,20 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
         ctx.fill();
         ctx.stroke();
 
+        const heading = (source ? `${metric.label} · ${source}` : metric.label).toUpperCase();
         ctx.fillStyle = t.muted;
-        ctx.font = `600 24px ${family}`;
-        ctx.fillText(metric.label.toUpperCase(), x + 32, y + 52);
+        fitFont(ctx, heading, pw - 64, 24, 600, family);
+        ctx.fillText(heading, x + 32, y + 52);
 
         // Compare metrics use the page's own window summary; resources
         // (which compare doesn't cover) average their range.
-        const valueOf = (row: TargetRow) =>
-            metric.resource
-                ? seriesAverage(response?.series.filter((s) => s.target === row.target) ?? [])
-                : row.values[metric.key];
+        const valueOf = (row: ReportRow | undefined) =>
+            !row
+                ? undefined
+                : metric.resource
+                  ? seriesAverage(response?.series.filter((s) => s.target === row.target) ?? [])
+                  : row.values[metric.key];
+        const baselineValue = valueOf(rows[input.baseline]);
         const colW = (pw - 64) / rows.length;
         const maxSize = Math.min(rows.length === 1 ? 96 : 60, ph / 4);
         let valuesBottom = y + 52;
@@ -240,13 +265,12 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
             const vx = x + 32 + j * colW;
             const size = fitFont(ctx, text, colW - 16, maxSize, 700, family);
             const vy = y + 64 + size;
-            ctx.fillStyle = rows.length === 1 ? t.text : colorOf(row);
+            ctx.fillStyle = rows.length === 1 ? t.text : colorOf(j);
             ctx.fillText(text, vx, vy);
             valuesBottom = Math.max(valuesBottom, vy);
-            const delta =
-                row === baselineRow ? undefined : relativeDelta(value, valueOf(baselineRow));
+            const delta = j === input.baseline ? undefined : relativeDelta(value, baselineValue);
             if (delta !== undefined) {
-                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}% vs ${nameOf(baselineRow)}`;
+                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}% vs ${names[input.baseline]}`;
                 ctx.fillStyle = delta >= 0 === (metric.better === "higher") ? t.good : t.bad;
                 fitFont(ctx, label, colW - 16, 22, 600, family);
                 ctx.fillText(label, vx, vy + 34);
@@ -259,15 +283,14 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
         if (!response || chartH < 80) {
             return;
         }
-        const chartW = Math.floor(pw - 40);
         const off = document.createElement("canvas");
-        off.width = chartW;
+        off.width = Math.floor(pw - 40);
         off.height = chartH;
         const chart = new ChartJS(off, {
             type: "line",
             data: {
-                datasets: rows.map((row) => {
-                    const color = colorOf(row);
+                datasets: rows.map((row, j) => {
+                    const color = colorOf(j);
                     const points =
                         response.series.find((s) => s.target === row.target)?.points ?? [];
                     return {
@@ -311,24 +334,51 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
     });
 }
 
+/** fetchRanges runs each pick's range query against its source test case. */
+function fetchRanges(
+    picks: { metric: ReportMetric; source: number }[],
+    sources: ReportSource[],
+    rangeSeconds: number,
+    endSeconds?: number,
+) {
+    const end = endSeconds ?? Math.floor(Date.now() / 1000);
+    const start = end - rangeSeconds;
+    const step = stepFor(rangeSeconds);
+    return Promise.all(
+        picks.map(({ metric: m, source }) => {
+            const testid = sources[source]?.testid;
+            if (!testid) {
+                return Promise.resolve(undefined);
+            }
+            return m.resource
+                ? api.resourceRange([testid], m.resource, start, end, step, m.component)
+                : api.metricsRange([testid], m.key, start, end, step);
+        }),
+    ).then((responses) => ({ responses, start, end, picks }));
+}
+
 /**
  * MarketingReport is a modal that picks metrics and renders/exports the
- * image. The window and per-target values come from the test case page, so
+ * image. The window and per-target values come from the page opening it, so
  * the image shows the same numbers the page does.
  */
 export function MarketingReport({
-    testid,
+    name,
     subtitle: defaultSubtitle,
-    rows,
-    baseline,
+    sources,
+    names: defaultNames,
+    baseline = 0,
     endSeconds,
     rangeSeconds = 900,
     onClose,
 }: {
-    testid: string;
+    /** Default title and file name. */
+    name: string;
     subtitle: string;
-    rows: TargetRow[];
-    baseline?: string;
+    sources: ReportSource[];
+    /** Default display name per series position. */
+    names: string[];
+    baseline?: number;
     endSeconds?: number;
     rangeSeconds?: number;
     onClose: () => void;
@@ -336,30 +386,26 @@ export function MarketingReport({
     const dialogRef = useRef<HTMLDialogElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [selected, setSelected] = useState(DEFAULT_METRICS);
-    const [title, setTitle] = useState(testid);
+    // Source index per metric key; unset is the first source.
+    const [sourceOf, setSourceOf] = useState<Record<string, number>>({});
+    const [title, setTitle] = useState(name);
     const [subtitle, setSubtitle] = useState(defaultSubtitle);
     const [theme, setTheme] = useState<ThemeName>("dark");
-    const [labels, setLabels] = useState<Record<string, string>>({});
+    const [labels, setLabels] = useState<Record<number, string>>({});
     const [smoothing, setSmoothing] = useState(0);
-    const [colors, setColors] = useState<Record<string, number>>({});
+    const [colors, setColors] = useState<Record<number, number>>({});
     const metrics = REPORT_METRICS.filter((m) => selected.includes(m.key));
+    const picks = metrics.map((m) => ({ metric: m, source: sourceOf[m.key] ?? 0 }));
 
     useEffect(() => dialogRef.current?.showModal(), []);
 
     const { data, error, loading } = useResource(
-        () => {
-            const end = endSeconds ?? Math.floor(Date.now() / 1000);
-            const start = end - rangeSeconds;
-            const step = stepFor(rangeSeconds);
-            return Promise.all(
-                metrics.map((m) =>
-                    m.resource
-                        ? api.resourceRange([testid], m.resource, start, end, step, m.component)
-                        : api.metricsRange([testid], m.key, start, end, step),
-                ),
-            ).then((responses) => ({ responses, start, end, metrics }));
-        },
-        [testid, selected.join(","), endSeconds, rangeSeconds],
+        () => fetchRanges(picks, sources, rangeSeconds, endSeconds),
+        [
+            picks.map((p) => `${p.metric.key}@${sources[p.source]?.testid}`).join(","),
+            endSeconds,
+            rangeSeconds,
+        ],
         0,
     );
 
@@ -368,18 +414,25 @@ export function MarketingReport({
         if (!ctx || !data) {
             return;
         }
+        const panels = data.picks.map(({ metric, source }, i) => ({
+            metric,
+            response: data.responses[i],
+            rows: sources[source]?.rows ?? [],
+            source: sources.length > 1 ? sources[source]?.label : undefined,
+        }));
         let cancelled = false;
         // Web fonts must be in before the canvas measures and draws text.
         void document.fonts.ready.then(() => {
             if (!cancelled) {
                 drawReport(ctx, {
-                    ...data,
                     title,
                     subtitle,
                     theme,
-                    rows,
+                    panels,
+                    start: data.start,
+                    end: data.end,
+                    names: defaultNames.map((n, i) => labels[i] || n),
                     baseline,
-                    labels,
                     smoothing,
                     colors,
                 });
@@ -388,7 +441,7 @@ export function MarketingReport({
         return () => {
             cancelled = true;
         };
-    }, [data, title, subtitle, theme, rows, baseline, labels, smoothing, colors]);
+    }, [data, title, subtitle, theme, sources, defaultNames, labels, baseline, smoothing, colors]);
 
     function toggle(key: string) {
         setSelected((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
@@ -404,7 +457,7 @@ export function MarketingReport({
         const url = URL.createObjectURL(await toBlob());
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${testid}.png`;
+        a.download = `${name}.png`;
         a.click();
         URL.revokeObjectURL(url);
     }
@@ -450,28 +503,26 @@ export function MarketingReport({
                 </label>
             </div>
             <div className="report-labels">
-                {rows.map((row) => (
-                    <div className="field" key={row.target}>
-                        {row.deploymentName}
-                        {rows.length > 1 && (
+                {defaultNames.map((n, i) => (
+                    <div className="field" key={i}>
+                        {n}
+                        {defaultNames.length > 1 && (
                             <input
-                                aria-label={`Label for ${row.deploymentName}`}
-                                value={labels[row.target] ?? ""}
-                                placeholder={row.target}
-                                onChange={(e) =>
-                                    setLabels((l) => ({ ...l, [row.target]: e.target.value }))
-                                }
+                                aria-label={`Label for ${n}`}
+                                value={labels[i] ?? ""}
+                                placeholder={n}
+                                onChange={(e) => setLabels((l) => ({ ...l, [i]: e.target.value }))}
                             />
                         )}
                         <div className="report-swatches" role="group" aria-label="Color">
-                            {palettes[theme].map((color, i) => (
+                            {palettes[theme].map((color, c) => (
                                 <button
                                     key={color}
                                     type="button"
-                                    aria-label={`Color ${i + 1}`}
-                                    aria-pressed={colors[row.target] === i}
+                                    aria-label={`Color ${c + 1}`}
+                                    aria-pressed={colors[i] === c}
                                     style={{ background: color }}
-                                    onClick={() => setColors((c) => ({ ...c, [row.target]: i }))}
+                                    onClick={() => setColors((cs) => ({ ...cs, [i]: c }))}
                                 />
                             ))}
                         </div>
@@ -480,15 +531,35 @@ export function MarketingReport({
             </div>
             <div className="report-metrics">
                 {REPORT_METRICS.map((m) => (
-                    <label className="check" key={m.key}>
-                        <input
-                            type="checkbox"
-                            checked={selected.includes(m.key)}
-                            disabled={!selected.includes(m.key) && selected.length >= MAX_METRICS}
-                            onChange={() => toggle(m.key)}
-                        />
-                        {m.label}
-                    </label>
+                    <span className="row" key={m.key}>
+                        <label className="check">
+                            <input
+                                type="checkbox"
+                                checked={selected.includes(m.key)}
+                                disabled={
+                                    !selected.includes(m.key) && selected.length >= MAX_METRICS
+                                }
+                                onChange={() => toggle(m.key)}
+                            />
+                            {m.label}
+                        </label>
+                        {sources.length > 1 && selected.includes(m.key) && (
+                            <select
+                                className="small"
+                                aria-label={`Test case for ${m.label}`}
+                                value={sourceOf[m.key] ?? 0}
+                                onChange={(e) =>
+                                    setSourceOf((s) => ({ ...s, [m.key]: Number(e.target.value) }))
+                                }
+                            >
+                                {sources.map((src, i) => (
+                                    <option key={src.testid} value={i}>
+                                        {src.label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </span>
                 ))}
             </div>
             <Alert>{error}</Alert>

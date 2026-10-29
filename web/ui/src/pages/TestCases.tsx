@@ -979,10 +979,14 @@ export function TestCaseViewPage() {
             {!rollingOut && statusSection}
             {reportOpen && tc && (
                 <MarketingReport
-                    testid={name}
-                    subtitle={`${rows.length === 1 ? rows[0].target : rows.map((r) => r.target).join(" vs ")} · ${tc.spec.vus} VUs${rows.length > 1 ? " each" : ""}`}
-                    rows={rows}
-                    baseline={baseline}
+                    name={name}
+                    subtitle={`${rows.map((r) => r.target).join(" vs ")} · ${tc.spec.vus} VUs${rows.length > 1 ? " each" : ""}`}
+                    sources={[{ testid: name, label: name, rows }]}
+                    names={rows.map((r) => r.target)}
+                    baseline={Math.max(
+                        0,
+                        rows.findIndex((r) => r.target === baseline),
+                    )}
                     endSeconds={metricsEnd}
                     rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
                     onClose={() => setReportOpen(false)}

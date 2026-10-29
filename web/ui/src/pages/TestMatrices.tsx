@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
-import { MatrixGrid } from "../components/Matrix";
+import { MarketingReport } from "../components/MarketingReport";
+import { baselineOf, MatrixGrid } from "../components/Matrix";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { PullRequestLink } from "../components/PullRequestLink";
@@ -28,7 +29,6 @@ import {
     timeRangeSeconds,
 } from "../format";
 import { PULL_REQUEST_LABEL } from "../github";
-import { printReport } from "../theme";
 import { TestMatrix } from "../types";
 import { useResource } from "../useResource";
 
@@ -211,6 +211,7 @@ export function TestMatrixViewPage() {
     const testCases = useResource(() => api.testCases(), [], 10000, "TestCase");
     const m = matrix.data;
     const [metricKey, setMetricKey] = useState("iteration_duration_p95");
+    const [reportOpen, setReportOpen] = useState(false);
 
     const rows = m?.status?.rows ?? [];
     const testids = rows.map((r) => r.testCase);
@@ -301,7 +302,7 @@ export function TestMatrixViewPage() {
                         >
                             {m.spec.testCase.archived ? "Unarchive" : "Archive"}
                         </button>
-                        <button onClick={printReport}>Report (PDF)</button>
+                        <button onClick={() => setReportOpen(true)}>Report</button>
                         <button
                             className="danger"
                             onClick={() => void deleteMatrix(name, () => navigate("/testmatrices"))}
@@ -392,6 +393,38 @@ export function TestMatrixViewPage() {
                 )}
                 <ObjectYaml object={m} />
             </Section>
+            {reportOpen && m && (
+                <MarketingReport
+                    name={name}
+                    subtitle={`${m.spec.variants.map((v) => v.name).join(" vs ")} · ${m.spec.testCase.vus} VUs each`}
+                    // One source per template; its rows in variant order, the
+                    // cell's deployment being its k6 target (as in MatrixGrid).
+                    sources={rows.map((row) => ({
+                        testid: row.testCase,
+                        label: row.template,
+                        rows: m.spec.variants.map((v) => {
+                            const target =
+                                row.cells?.find((c) => c.variant === v.name)?.deployment ?? "";
+                            return {
+                                target,
+                                values:
+                                    comparison.data?.results.find(
+                                        (res) =>
+                                            res.testid === row.testCase && res.target === target,
+                                    )?.values ?? {},
+                            };
+                        }),
+                    }))}
+                    names={m.spec.variants.map((v) => v.name)}
+                    baseline={Math.max(
+                        0,
+                        m.spec.variants.findIndex((v) => v.name === baselineOf(m)),
+                    )}
+                    endSeconds={burnEnd}
+                    rangeSeconds={range}
+                    onClose={() => setReportOpen(false)}
+                />
+            )}
         </Page>
     );
 }
