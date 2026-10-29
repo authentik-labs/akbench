@@ -10,15 +10,22 @@ import (
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
 
-// embeddedPostgresServiceName/embeddedPostgresSecretName are the bundled
-// Bitnami-shaped postgresql subchart's own fullname-templated Service/Secret
-// names - confirmed live (kubectl get svc/secret), both "<release>-postgresql".
+// embeddedPostgresFullname is the bundled postgresql subchart's
+// fullnameOverride, which its Service, Secret and StatefulSet are all named
+// after: "<release>-postgresql", the subchart's own default, but pinned (it
+// drops "-postgresql" for a release name containing "postgresql") and
+// shortened so the StatefulSet's pods' controller-revision-hash label,
+// "<fullname>-<10-char hash>", fits in 63.
+func embeddedPostgresFullname(t *benchv1alpha1.AuthentikDeployment) string {
+	return BoundedName(t.Name+"-postgresql", maxNameLength-11)
+}
+
 func embeddedPostgresServiceName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-postgresql"
+	return embeddedPostgresFullname(t)
 }
 
 func embeddedPostgresSecretName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-postgresql"
+	return embeddedPostgresFullname(t)
 }
 
 // EmbeddedPostgresStatefulSetName is the bundled subchart's StatefulSet -
@@ -29,7 +36,7 @@ func embeddedPostgresSecretName(t *benchv1alpha1.AuthentikDeployment) string {
 // settle - see reconcilePostgresRoleFix's own doc comment for why those two
 // are not the same thing.
 func EmbeddedPostgresStatefulSetName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-postgresql"
+	return embeddedPostgresFullname(t)
 }
 
 // postgresRoleFixImage runs a one-shot psql command - pinned to match the
@@ -46,7 +53,7 @@ var postgresRoleFixImage = pinnedImage("postgresRoleFix")
 // to run or it doesn't, tracked the same create-once way any other
 // idempotent addon in this codebase is.
 func PostgresRoleFixJobName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-postgres-role-fix"
+	return BoundedName(t.Name+"-postgres-role-fix", maxNameLength)
 }
 
 // PostgresRoleFixJob works around a real gap in the authentik chart's own

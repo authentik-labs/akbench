@@ -19,9 +19,8 @@ type TestMatrixObjects struct {
 	ExtraValues *corev1.ConfigMap
 }
 
-// maxDeploymentNameLength mirrors AuthentikDeployment's CEL name limit:
-// "<name>-postgresql-<10-char hash>" is a pod label value, capped at 63.
-const maxDeploymentNameLength = 41
+// maxDeploymentNameLength mirrors AuthentikDeployment's CEL name limit.
+const maxDeploymentNameLength = 53
 
 // TestMatrix builds one TestCase per template, each driving its own
 // AuthentikDeployment per variant. Every object carries the matrix's own
@@ -54,6 +53,10 @@ func TestMatrix(m *benchv1alpha1.TestMatrix) (TestMatrixObjects, error) {
 
 	baseline := m.BaselineVariant()
 	for _, template := range m.Spec.Templates {
+		if name := m.TestCaseName(template); len(name) > maxNameLength {
+			return TestMatrixObjects{}, fmt.Errorf("test case name %q is longer than %d characters; shorten the matrix or template name",
+				name, maxNameLength)
+		}
 		tc := &benchv1alpha1.TestCase{
 			Kind: "TestCase", APIVersion: benchv1alpha1.SchemeGroupVersion.String(),
 			ObjectMeta: meta(m.TestCaseName(template)),

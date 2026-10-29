@@ -67,6 +67,6 @@ func TestTestMatrixBuildsOneTestCaseAndDeploymentPairPerTemplate(t *testing.T) {
 
 	m.Name = "a-matrix-name-long-enough-to-overflow"
 	if _, err := TestMatrix(m); err == nil {
-		t.Error("want an error for a deployment name past Helm's release name limit")
+		t.Error("want an error for a deployment name past the AuthentikDeployment name limit")
 	}
 }

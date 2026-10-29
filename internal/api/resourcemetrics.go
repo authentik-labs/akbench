@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
+	"github.com/authentik-labs/akbench/internal/render"
 )
 
 // resourceMetric is one resource-usage query this endpoint can run, scoped
@@ -178,7 +179,7 @@ func (s *Server) listResourceMetrics(w http.ResponseWriter, r *http.Request) {
 		for _, target := range s.deploymentTargetsForTestID(r.Context(), id) {
 			podFilter := ""
 			if component != "" {
-				podFilter = fmt.Sprintf(", pod=~%q", regexp.QuoteMeta(target.Deployment)+"-authentik-"+component+"-.+")
+				podFilter = fmt.Sprintf(", pod=~%q", regexp.QuoteMeta(render.AuthentikFullname(target.Deployment))+"-"+component+"-.+")
 			}
 			query := fmt.Sprintf(metric.Query, target.Namespace, window, podFilter)
 			points, err := s.promRange(r.Context(), target.PrometheusURL, query, start, end, step)

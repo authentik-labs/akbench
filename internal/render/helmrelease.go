@@ -65,11 +65,12 @@ const helmInstallTimeout = 15 * time.Minute
 // into spec.values. Exported so unit/contract tests can assert on the
 // concrete shape without re-parsing JSON.
 type AuthentikDeploymentHelmValues struct {
-	Global    map[string]any `json:"global,omitempty"`
-	Server    map[string]any `json:"server"`
-	Worker    map[string]any `json:"worker"`
-	Authentik map[string]any `json:"authentik"`
-	Postgres  map[string]any `json:"postgresql"`
+	FullnameOverride string         `json:"fullnameOverride"`
+	Global           map[string]any `json:"global,omitempty"`
+	Server           map[string]any `json:"server"`
+	Worker           map[string]any `json:"worker"`
+	Authentik        map[string]any `json:"authentik"`
+	Postgres         map[string]any `json:"postgresql"`
 }
 
 // HelmValues builds the authentik chart values for a deployment, per the
@@ -144,6 +145,7 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 		},
 	}
 	values := AuthentikDeploymentHelmValues{
+		FullnameOverride: AuthentikFullname(HelmReleaseName(t)),
 		Server: map[string]any{
 			valuesKeyReplicas: t.Spec.Server.Replicas,
 			"metrics":         authentikMetrics,
@@ -163,7 +165,8 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 			"secret_key": secretKey,
 		},
 		Postgres: map[string]any{
-			"enabled": embedded,
+			"enabled":          embedded,
+			"fullnameOverride": embeddedPostgresFullname(t),
 		},
 	}
 	if embedded {
@@ -495,11 +498,19 @@ func retryOnFailure(hr *helmv2.HelmRelease) *helmv2.HelmRelease {
 	return hr
 }
 
-// ServiceEndpoint is the authentik chart's own service-name convention:
-// "<release>-authentik-server" in the target namespace, serving HTTP on the
-// chart's server.service.servicePortHttp (default 80). Confirmed against a
-// live install of chart version 2026.8.0 - the chart's fullname template
-// always includes "-authentik-", it isn't just the release name.
+// AuthentikFullname is the authentik chart's fullnameOverride, the prefix
+// of every object (and pod) name it renders. It's what the chart derives
+// itself, "<release>-authentik", but pinned: the chart drops "-authentik"
+// for a release name that contains "authentik", and appends suffixes after
+// its own 63-character truncation, so it's shortened here until its longest
+// object name, "<fullname>-server-metrics", fits.
+func AuthentikFullname(releaseName string) string {
+	return BoundedName(releaseName+"-authentik", maxNameLength-len("-server-metrics"))
+}
+
+// ServiceEndpoint is the authentik chart's server Service in the target
+// namespace, serving HTTP on the chart's server.service.servicePortHttp
+// (default 80).
 func ServiceEndpoint(t *benchv1alpha1.AuthentikDeployment) string {
-	return fmt.Sprintf("%s-authentik-server.%s.svc.cluster.local:80", HelmReleaseName(t), t.Spec.Namespace)
+	return fmt.Sprintf("%s-server.%s.svc.cluster.local:80", AuthentikFullname(HelmReleaseName(t)), t.Spec.Namespace)
 }

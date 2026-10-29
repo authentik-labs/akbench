@@ -287,11 +287,13 @@ type AuthentikDeploymentStatus struct {
 
 // AuthentikDeployment is the Schema for the authentikdeployments API
 //
-// The name is capped at 41 characters: it is the Helm release name, and the
-// bundled postgresql StatefulSet's pods get a controller-revision-hash label
-// of "<name>-postgresql-<10-char hash>", which must fit in 63. Checked on
-// create only, so existing longer names can still be updated and deleted.
-// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 41",message="name must be no more than 41 characters",optionalOldSelf=true
+// The name is the Helm release name, which Helm caps at 53 characters, and
+// must be a DNS label (no dots): it names the target namespace in a
+// TestMatrix and is a label value. Object names the charts derive from it
+// are shortened separately (render.AuthentikFullname). Checked on create
+// only, so existing objects can still be updated and deleted.
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 53",message="name must be no more than 53 characters",optionalOldSelf=true
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="name must consist of lowercase alphanumeric characters or '-' (no dots)",optionalOldSelf=true
 type AuthentikDeployment struct {
 	metav1.TypeMeta `json:",inline"`
 

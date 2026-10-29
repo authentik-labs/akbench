@@ -1,5 +1,11 @@
 package render
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
+
 // Shared literals repeated across this package's own hand-authored objects
 // (as opposed to vendored third-party manifests) - every metav1.TypeMeta a
 // project-authored Deployment/Service/Namespace/ConfigMap sets must match
@@ -36,3 +42,18 @@ const (
 	// node-level, not zone-level, spreading.
 	topologyKeyHostname = "kubernetes.io/hostname"
 )
+
+// maxNameLength is the DNS label limit Service names and label values
+// (e.g. a Job's job-name) share.
+const maxNameLength = 63
+
+// BoundedName returns name unchanged when it fits in maxLen, and otherwise
+// a truncated prefix plus a hash of the full name, so long TestCase/
+// deployment names still give unique, valid names.
+func BoundedName(name string, maxLen int) string {
+	if len(name) <= maxLen {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return strings.TrimRight(name[:maxLen-9], "-") + "-" + hex.EncodeToString(sum[:])[:8]
+}

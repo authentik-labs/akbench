@@ -212,7 +212,8 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 		NodeSelector:            nodeSelector,
 		Tolerations:             tolerations,
 	}
-	jobName := "testrun-" + run.Name
+	// The Job controller copies the name onto its pods as a label value.
+	jobName := render.BoundedName("testrun-"+run.Name, 63)
 	job := render.QuickJob(jobName, run.Namespace, params)
 	// A cross-cluster ownerReference would carry a UID the remote cluster's
 	// garbage collector can never recognize, so remote cleanup instead goes

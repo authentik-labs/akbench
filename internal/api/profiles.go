@@ -149,7 +149,7 @@ func (s *Server) queryProfileBreakdown(ctx context.Context, tc *benchv1alpha1.Te
 // quoting it as a regexp literal is all it needs.
 func profileLabelSelector(deployment, component string) string {
 	return fmt.Sprintf(`{service_name=%q, hostname=~%q}`,
-		pyroscopeServiceName, regexp.QuoteMeta(deployment)+"-authentik-"+component+"-.+")
+		pyroscopeServiceName, regexp.QuoteMeta(render.AuthentikFullname(deployment))+"-"+component+"-.+")
 }
 
 // selectMergeProfile calls Pyroscope's QuerierService.SelectMergeProfile

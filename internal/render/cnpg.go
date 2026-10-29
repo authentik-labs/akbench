@@ -28,9 +28,11 @@ const (
 	cnpgOwner    = "authentik"
 )
 
-// CNPGClusterName is deterministic from the deployment name.
+// CNPGClusterName is deterministic from the deployment name, shortened to
+// 50 characters so CNPG's own derived names ("<cluster>-rw",
+// "<cluster>-1-initdb" Jobs, ...) stay within 63.
 func CNPGClusterName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-postgres"
+	return BoundedName(t.Name+"-postgres", 50)
 }
 
 // CNPGAppSecretName is the connection Secret CNPG generates for the

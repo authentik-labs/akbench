@@ -67,15 +67,15 @@ const (
 // instance per TestCase/target deployment pair, since each is configured
 // against exactly one authentik.
 func SAMLTestSPName(tc *benchv1alpha1.TestCase, deploymentName string) string {
-	return "saml-test-sp-" + tc.Name + "-" + deploymentName
+	return BoundedName("saml-test-sp-"+tc.Name+"-"+deploymentName, maxNameLength)
 }
 
 func SAMLTestIdPName(tc *benchv1alpha1.TestCase, deploymentName string) string {
-	return "saml-test-idp-" + tc.Name + "-" + deploymentName
+	return BoundedName("saml-test-idp-"+tc.Name+"-"+deploymentName, maxNameLength)
 }
 
 func DexName(tc *benchv1alpha1.TestCase, deploymentName string) string {
-	return "dex-" + tc.Name + "-" + deploymentName
+	return BoundedName("dex-"+tc.Name+"-"+deploymentName, maxNameLength)
 }
 
 // ServiceURL is the cluster-local http://<name>.<namespace>.svc... root of a

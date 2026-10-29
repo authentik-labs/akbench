@@ -29,7 +29,7 @@ const OIDCTestClientPort = 9009
 // TestCaseTemplateSpec.Dependencies' own doc comment for why: keeps
 // "what's being tested" out of the deployment).
 func OIDCTestClientName(tc *benchv1alpha1.TestCase, deploymentName string) string {
-	return "oidc-test-client-" + tc.Name + "-" + deploymentName
+	return BoundedName("oidc-test-client-"+tc.Name+"-"+deploymentName, maxNameLength)
 }
 
 // OIDCTestClientRootURL is this TestCase/deployment pair's own

@@ -137,7 +137,7 @@ func (s *Server) queryLogBreakdown(ctx context.Context, tc *benchv1alpha1.TestCa
 func logStreamSelector(namespace, deployment string) string {
 	return fmt.Sprintf(`{%s=%q, %s=~%q}`,
 		render.LokiLabelNamespace, namespace,
-		render.LokiLabelPod, regexp.QuoteMeta(deployment)+"-authentik-("+strings.Join(profileComponents, "|")+")-.+")
+		render.LokiLabelPod, regexp.QuoteMeta(render.AuthentikFullname(deployment))+"-("+strings.Join(profileComponents, "|")+")-.+")
 }
 
 // logRange is span as a LogQL range.
@@ -216,9 +216,9 @@ func (s *Server) lokiInstantQuery(ctx context.Context, lokiURL, adminPassword, q
 }
 
 // podComponent is the authentik component a pod of deployment belongs to,
-// from its name (<deployment>-authentik-<component>-...).
+// from its name (<render.AuthentikFullname>-<component>-...).
 func podComponent(deployment, pod string) string {
-	rest, ok := strings.CutPrefix(pod, deployment+"-authentik-")
+	rest, ok := strings.CutPrefix(pod, render.AuthentikFullname(deployment)+"-")
 	if !ok {
 		return ""
 	}

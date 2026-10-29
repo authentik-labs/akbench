@@ -30,7 +30,7 @@ const blueprintSourceMountPath = "/blueprints/source"
 // command, not a self-contained tool) gets a real database connection,
 // identical to what the server/worker pods themselves run with.
 func authentikConfigSecretName(t *benchv1alpha1.AuthentikDeployment) string {
-	return t.Name + "-authentik"
+	return AuthentikFullname(HelmReleaseName(t))
 }
 
 // BlueprintJobName is deterministic from the deployment name, a caller-given

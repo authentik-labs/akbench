@@ -117,7 +117,7 @@ func (s *Server) listWorkerMetrics(w http.ResponseWriter, r *http.Request) {
 		if target == "" {
 			target = d.Name
 		}
-		pods := regexp.QuoteMeta(render.HelmReleaseName(d)) + "-authentik-worker-.+"
+		pods := regexp.QuoteMeta(render.AuthentikFullname(render.HelmReleaseName(d))) + "-worker-.+"
 		return fmt.Sprintf(query, d.Spec.Namespace, target, pods, window), nil
 	})
 }

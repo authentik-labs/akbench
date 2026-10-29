@@ -979,7 +979,7 @@ export function DeploymentViewPage() {
                             className="button"
                             to={shellLinkForCluster(
                                 cluster,
-                                `kubectl logs -n ${ns} deploy/${name}-authentik-server -f --tail=200`,
+                                `kubectl logs -n ${ns} -l app.kubernetes.io/instance=${name},app.kubernetes.io/component=server --prefix -f --tail=200`,
                                 ns,
                             )}
                         >
