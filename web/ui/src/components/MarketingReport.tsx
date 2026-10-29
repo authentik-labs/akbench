@@ -5,6 +5,7 @@ import { api } from "../api";
 import {
     colorFor,
     formatMetricValue,
+    palettes,
     relativeDelta,
     seriesAverage,
     smoothPoints,
@@ -114,6 +115,8 @@ interface DrawInput {
     labels: Record<string, string>;
     /** Moving-average radius, in points, applied to the chart lines only. */
     smoothing: number;
+    /** Palette indexes keyed by k6 target; unset keeps the page's color. */
+    colors: Record<string, number>;
 }
 
 /** fitFont sets the largest font up to size that fits text in maxWidth. */
@@ -143,7 +146,11 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
             .trim() || "sans-serif";
     const nameOf = (row: TargetRow) => input.labels[row.target] || row.target;
     const colorOf = (row: TargetRow) =>
-        rows.length === 1 ? t.accent : colorFor(row.index, input.theme === "dark");
+        input.colors[row.target] !== undefined
+            ? colorFor(input.colors[row.target], input.theme === "dark")
+            : rows.length === 1
+              ? t.accent
+              : colorFor(row.index, input.theme === "dark");
     const baselineRow = rows.find((r) => r.target === input.baseline) ?? rows[0];
 
     const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -334,6 +341,7 @@ export function MarketingReport({
     const [theme, setTheme] = useState<ThemeName>("dark");
     const [labels, setLabels] = useState<Record<string, string>>({});
     const [smoothing, setSmoothing] = useState(0);
+    const [colors, setColors] = useState<Record<string, number>>({});
     const metrics = REPORT_METRICS.filter((m) => selected.includes(m.key));
 
     useEffect(() => dialogRef.current?.showModal(), []);
@@ -373,13 +381,14 @@ export function MarketingReport({
                     baseline,
                     labels,
                     smoothing,
+                    colors,
                 });
             }
         });
         return () => {
             cancelled = true;
         };
-    }, [data, title, subtitle, theme, rows, baseline, labels, smoothing]);
+    }, [data, title, subtitle, theme, rows, baseline, labels, smoothing, colors]);
 
     function toggle(key: string) {
         setSelected((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
@@ -440,22 +449,35 @@ export function MarketingReport({
                     />
                 </label>
             </div>
-            {rows.length > 1 && (
-                <div className="report-labels">
-                    {rows.map((row) => (
-                        <label className="field" key={row.target}>
-                            {row.deploymentName}
+            <div className="report-labels">
+                {rows.map((row) => (
+                    <div className="field" key={row.target}>
+                        {row.deploymentName}
+                        {rows.length > 1 && (
                             <input
+                                aria-label={`Label for ${row.deploymentName}`}
                                 value={labels[row.target] ?? ""}
                                 placeholder={row.target}
                                 onChange={(e) =>
                                     setLabels((l) => ({ ...l, [row.target]: e.target.value }))
                                 }
                             />
-                        </label>
-                    ))}
-                </div>
-            )}
+                        )}
+                        <div className="report-swatches" role="group" aria-label="Color">
+                            {palettes[theme].map((color, i) => (
+                                <button
+                                    key={color}
+                                    type="button"
+                                    aria-label={`Color ${i + 1}`}
+                                    aria-pressed={colors[row.target] === i}
+                                    style={{ background: color }}
+                                    onClick={() => setColors((c) => ({ ...c, [row.target]: i }))}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
             <div className="report-metrics">
                 {REPORT_METRICS.map((m) => (
                     <label className="check" key={m.key}>

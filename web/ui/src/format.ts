@@ -157,7 +157,7 @@ export function topActors(lists: { actor: string; tasks: number }[][], limit: nu
 // same color across every chart on a page. One variant per theme: each
 // color holds at least 3:1 against its own theme's surface, which a single
 // palette can't do for both a white and a near-black background.
-const palettes = {
+export const palettes = {
     light: ["#0066cc", "#3e8635", "#a36a00", "#c9190b", "#6753ac", "#007a7b", "#c46100", "#4f7c00"],
     dark: ["#2b9af3", "#5ba352", "#f0ab00", "#fe5142", "#a18fff", "#2fb5b6", "#ec7a08", "#8bc34a"],
 };

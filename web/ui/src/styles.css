@@ -1206,6 +1206,22 @@ dialog.report::backdrop {
     gap: var(--ak-global--spacer--md);
     margin-top: var(--ak-global--spacer--md);
 }
+.report-swatches {
+    display: flex;
+    gap: 6px;
+    margin-top: var(--ak-global--spacer--xs);
+}
+.report-swatches button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+}
+.report-swatches button[aria-pressed="true"] {
+    outline: 2px solid var(--text);
+    outline-offset: 1px;
+}
 .report-metrics {
     display: flex;
     flex-wrap: wrap;
