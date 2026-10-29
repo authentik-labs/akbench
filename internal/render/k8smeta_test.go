@@ -22,6 +22,9 @@ func TestBoundedName(t *testing.T) {
 func TestChartFullnamesFitLongReleaseNames(t *testing.T) {
 	// Helm's own 53-character release name limit.
 	release := strings.Repeat("a", 53)
+	if got := AuthentikFullname("2026.8.5-test-case-dev"); got != "2026-8-5-test-case-dev-authentik" {
+		t.Errorf("dotted release not made a DNS label: %q", got)
+	}
 	if got := AuthentikFullname("ak"); got != "ak-authentik" {
 		t.Errorf("short release renamed: %q", got)
 	}

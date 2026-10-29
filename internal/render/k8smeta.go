@@ -3,6 +3,7 @@ package render
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 )
 
@@ -47,13 +48,20 @@ const (
 // (e.g. a Job's job-name) share.
 const maxNameLength = 63
 
-// BoundedName returns name unchanged when it fits in maxLen, and otherwise
-// a truncated prefix plus a hash of the full name, so long TestCase/
-// deployment names still give unique, valid names.
+// nonDNSLabel matches what a DNS label can't contain. Object names may
+// (dots), and objects created before the CRDs' name rules still exist.
+var nonDNSLabel = regexp.MustCompile(`[^a-z0-9-]+`)
+
+// BoundedName turns name into a DNS label of at most maxLen characters:
+// anything but [a-z0-9-] becomes "-", and a name that's still too long is
+// truncated with a hash of the full name appended, so long TestCase/
+// deployment names still give unique, valid names. A name that already
+// fits is returned unchanged.
 func BoundedName(name string, maxLen int) string {
-	if len(name) <= maxLen {
-		return name
+	label := nonDNSLabel.ReplaceAllString(strings.ToLower(name), "-")
+	if len(label) <= maxLen {
+		return label
 	}
 	sum := sha256.Sum256([]byte(name))
-	return strings.TrimRight(name[:maxLen-9], "-") + "-" + hex.EncodeToString(sum[:])[:8]
+	return strings.TrimRight(label[:maxLen-9], "-") + "-" + hex.EncodeToString(sum[:])[:8]
 }
