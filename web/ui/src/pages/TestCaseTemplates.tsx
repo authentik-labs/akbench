@@ -5,6 +5,7 @@ import { ObjectYaml } from "../components/ObjectYaml";
 import { StatusBadge } from "../components/Status";
 import { toast } from "../components/Toast";
 import { Alert, confirmAndRun, Empty, errorMessage, Field, Page, Table } from "../components/ui";
+import { k8sNameInput } from "../github";
 import {
     TestCaseDependency,
     testCaseDependencies,
@@ -145,7 +146,7 @@ function TestCaseTemplateForm({ existing }: { existing?: TestCaseTemplate }) {
                             required
                             value={name}
                             disabled={Boolean(existing)}
-                            onChange={(e) => setName(e.target.value)}
+                            onChange={(e) => setName(k8sNameInput(e.target.value))}
                         />
                     </Field>
                     <Field label="Description">

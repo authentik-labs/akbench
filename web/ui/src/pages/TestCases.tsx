@@ -37,7 +37,7 @@ import {
     timeRangeSeconds,
     newestFirst,
 } from "../format";
-import { PULL_REQUEST_LABEL } from "../github";
+import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import {
     TestCase,
@@ -376,7 +376,7 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
                                 required
                                 value={name}
                                 disabled={Boolean(existing)}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(e) => setName(k8sNameInput(e.target.value))}
                             />
                         </Field>
                         <div className="field wide">

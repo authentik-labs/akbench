@@ -25,7 +25,7 @@ import {
     targetNameOf,
     timeRangeSeconds,
 } from "../format";
-import { PULL_REQUEST_LABEL } from "../github";
+import { k8sNameInput, k8sNameSegment, PULL_REQUEST_LABEL } from "../github";
 import { psqlCommand, shellLinkForCluster } from "../shell/links";
 import {
     AuthentikDeployment,
@@ -159,14 +159,6 @@ export function emptySpec(): AuthentikDeploymentSpec {
     };
 }
 
-/** slugify turns a deployment name into a namespace-safe default. */
-export function slugify(value: string): string {
-    return value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-}
-
 /** duplicateLink opens the new deployment form prefilled from `name`. */
 function duplicateLink(name: string): string {
     return `/deployments/new?${new URLSearchParams({ from: name })}`;
@@ -265,9 +257,9 @@ function DeploymentForm({
                                 value={name}
                                 disabled={Boolean(existing)}
                                 onChange={(e) => {
-                                    setName(e.target.value);
+                                    setName(k8sNameInput(e.target.value));
                                     if (!namespaceEdited) {
-                                        patch({ namespace: slugify(e.target.value) });
+                                        patch({ namespace: k8sNameSegment(e.target.value) });
                                     }
                                 }}
                             />
@@ -276,7 +268,9 @@ function DeploymentForm({
                             <input
                                 value={spec.targetName ?? ""}
                                 placeholder={name}
-                                onChange={(e) => patch({ targetName: e.target.value || undefined })}
+                                onChange={(e) =>
+                                    patch({ targetName: k8sNameInput(e.target.value) || undefined })
+                                }
                             />
                         </Field>
                         <Field label="Namespace on the target cluster">
@@ -285,7 +279,7 @@ function DeploymentForm({
                                 value={spec.namespace}
                                 onChange={(e) => {
                                     setNamespaceEdited(true);
-                                    patch({ namespace: e.target.value });
+                                    patch({ namespace: k8sNameInput(e.target.value) });
                                 }}
                             />
                         </Field>

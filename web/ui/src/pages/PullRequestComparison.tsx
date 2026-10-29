@@ -8,6 +8,7 @@ import {
     fetchLatestRelease,
     fetchPullRequest,
     PULL_REQUEST_LABEL,
+    k8sNameInput,
     k8sNameSegment,
     parsePullRequestNumber,
     PullRequest,
@@ -549,7 +550,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                                 placeholder={isBranch ? "main" : "pr-12345"}
                                 onChange={(e) => {
                                     setPrefixEdited(true);
-                                    setPrefix(e.target.value);
+                                    setPrefix(k8sNameInput(e.target.value));
                                 }}
                             />
                         </Field>

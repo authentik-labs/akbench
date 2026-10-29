@@ -1,5 +1,6 @@
 import { api, MANAGEMENT_CLUSTER, ShellContext } from "../api";
 import { Alert } from "../components/ui";
+import { k8sNameInput } from "../github";
 import { useResource } from "../useResource";
 import { sanitizeNamespace, sanitizePrefill } from "./links";
 import { SessionStatus, TerminalSession } from "./TerminalSession";
@@ -151,7 +152,7 @@ export function ShellWorkspace({ visible }: { visible: boolean }) {
                     </select>
                     <input
                         value={pickedNamespace}
-                        onChange={(e) => setPickedNamespace(e.target.value)}
+                        onChange={(e) => setPickedNamespace(k8sNameInput(e.target.value))}
                         placeholder="namespace (optional)"
                         aria-label="Namespace"
                         aria-invalid={

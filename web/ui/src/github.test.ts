@@ -1,4 +1,10 @@
-import { devImageTag, k8sNameSegment, parsePullRequestNumber, releaseVersion } from "./github";
+import {
+    devImageTag,
+    k8sNameInput,
+    k8sNameSegment,
+    parsePullRequestNumber,
+    releaseVersion,
+} from "./github";
 
 import { describe, expect, it } from "vitest";
 
@@ -53,5 +59,7 @@ describe("image helpers", () => {
         expect(k8sNameSegment("2026.6.0")).toBe("2026-6-0");
         expect(k8sNameSegment("version-2026.6")).toBe("version-2026-6");
         expect(k8sNameSegment("Feature/Foo_bar")).toBe("feature-foo-bar");
+        expect(k8sNameInput("My Deploy-")).toBe("my-deploy-");
+        expect(k8sNameInput(" -a.b")).toBe("a-b");
     });
 });

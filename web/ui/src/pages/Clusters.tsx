@@ -6,6 +6,7 @@ import { AddonList, Badge, ConditionList, StatusBadge } from "../components/Stat
 import { toast } from "../components/Toast";
 import { Alert, confirmAndRun, errorMessage, Field, Page, Table } from "../components/ui";
 import { formatDuration } from "../format";
+import { k8sNameInput } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import {
     ClusterPool,
@@ -243,7 +244,7 @@ function ClusterForm({ existing }: { existing?: WorkloadCluster }) {
                                 required
                                 value={name}
                                 disabled={locked}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(e) => setName(k8sNameInput(e.target.value))}
                             />
                         </Field>
                         <Field label="Kubernetes version">

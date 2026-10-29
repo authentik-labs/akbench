@@ -80,6 +80,17 @@ export function k8sNameSegment(value: string): string {
         .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * k8sNameInput slugifies a Kubernetes object name as it is typed: unlike
+ * k8sNameSegment it keeps a trailing dash, so "foo-" can become "foo-bar".
+ */
+export function k8sNameInput(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/^-+/, "");
+}
+
 async function github<T>(path: string): Promise<T> {
     const res = await fetch(`https://api.github.com/repos/${AUTHENTIK_REPO}${path}`, {
         headers: { Accept: "application/vnd.github+json" },

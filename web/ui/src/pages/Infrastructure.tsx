@@ -10,6 +10,7 @@ import {
     Page,
     Table,
 } from "../components/ui";
+import { k8sNameInput } from "../github";
 import {
     IncusCredential,
     IncusCredentialInput,
@@ -316,7 +317,7 @@ function IncusCredentialForm({ existing }: { existing?: IncusCredential }) {
                                 required
                                 value={name}
                                 disabled={Boolean(existing)}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(e) => setName(k8sNameInput(e.target.value))}
                             />
                         </Field>
                         <Field label="Server URL" help="The Incus API, usually on port 8443">
