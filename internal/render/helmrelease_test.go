@@ -130,6 +130,9 @@ func TestHelmValuesEmbedded(t *testing.T) {
 	if akPg["password"] != "pw" {
 		t.Errorf("authentik.postgresql.password = %v, want pw (must match the bundled subchart's own password)", akPg["password"])
 	}
+	if akPg["host"] != values.Postgres["fullnameOverride"] {
+		t.Errorf("authentik.postgresql.host = %v, want the subchart's Service %v", akPg["host"], values.Postgres["fullnameOverride"])
+	}
 	// authentik.secret_key as a literal value, not authentik.existingSecret:
 	// existingSecret makes the chart skip rendering its own config Secret
 	// entirely, silently dropping postgresql.*/log_level/error_reporting too

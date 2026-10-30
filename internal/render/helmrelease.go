@@ -33,6 +33,7 @@ const (
 	valuesKeyReplicas = "replicas"
 	valuesKeyPassword = "password"
 	valuesKeyName     = "name"
+	valuesKeyHost     = "host"
 
 	valuesKeyRelabelings = "relabelings"
 )
@@ -314,7 +315,9 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 		// otherwise; we pin it to our generated value so authentik's own
 		// AUTHENTIK_POSTGRESQL__PASSWORD (below) actually matches it.
 		values.Postgres["auth"] = map[string]any{valuesKeyPassword: pgConn.Password}
-		akPg := map[string]any{valuesKeyPassword: pgConn.Password}
+		// The chart's default host is "<release>-postgresql", which isn't the
+		// subchart's Service once its fullnameOverride shortens the name.
+		akPg := map[string]any{valuesKeyHost: embeddedPostgresServiceName(t), valuesKeyPassword: pgConn.Password}
 		if e := t.Spec.Postgres.Embedded; e != nil && e.TLS {
 			// The subchart's self-signed cert can't be verified, so require
 			// rather than verify-ca/verify-full.
@@ -339,7 +342,7 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 		values.Authentik["postgresql"] = akPg
 	case !embedded && pgConn != nil:
 		values.Authentik["postgresql"] = map[string]any{
-			"host":            pgConn.Host,
+			valuesKeyHost:     pgConn.Host,
 			"port":            pgConn.Port,
 			valuesKeyName:     pgConn.Database,
 			"user":            pgConn.User,
