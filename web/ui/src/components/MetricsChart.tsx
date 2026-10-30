@@ -636,29 +636,107 @@ function DeploymentChart({
     );
 }
 
-/** PostgresCharts is a deployment's postgres CPU, memory, disk usage and disk IO. */
-export function PostgresCharts({
-    deployment,
-    rangeSeconds,
-}: {
-    deployment: string;
-    rangeSeconds?: number;
-}) {
-    const metrics: PostgresMetric[] = ["cpu", "memory", "disk", "io"];
+/**
+ * mergeDeployments folds one response per deployment into one response,
+ * each line prefixed with its deployment when there's more than one.
+ */
+function mergeDeployments(
+    responses: RangeResponse[],
+    deployments: string[],
+): RangeResponse | undefined {
     return (
-        <div className="grid2">
-            {metrics.map((metric) => (
-                <DeploymentChart
-                    key={metric}
-                    deployment={deployment}
-                    metric={metric}
-                    fetch={(start, end, step) =>
-                        api.postgresMetrics(deployment, metric, start, end, step)
-                    }
-                    rangeSeconds={rangeSeconds}
-                />
-            ))}
-        </div>
+        responses[0] && {
+            ...responses[0],
+            series: responses.flatMap((r, i) =>
+                deployments.length > 1
+                    ? r.series.map((s) => ({ ...s, target: `${deployments[i]} · ${s.target}` }))
+                    : r.series,
+            ),
+        }
+    );
+}
+
+const POSTGRES_METRICS: PostgresMetric[] = ["cpu", "memory", "disk", "io"];
+
+/**
+ * PostgresCharts is the postgres CPU, memory, disk usage and disk IO of one
+ * or more deployments, all on the same charts. With more than one
+ * deployment each line is prefixed with its deployment.
+ */
+export function PostgresCharts({
+    deployments,
+    rangeSeconds = 900,
+    endSeconds,
+    refreshMs = 15000,
+}: {
+    deployments: string[];
+    rangeSeconds?: number;
+    endSeconds?: number;
+    refreshMs?: number;
+}) {
+    const { data, error } = useResource(
+        () => {
+            if (deployments.length === 0) {
+                return Promise.resolve(undefined);
+            }
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
+            const window = { start: end - rangeSeconds, end };
+            // byMetric[m][d]: deployment d's response for POSTGRES_METRICS[m].
+            return Promise.all(
+                POSTGRES_METRICS.map((metric) =>
+                    Promise.all(
+                        deployments.map((d) =>
+                            api.postgresMetrics(
+                                d,
+                                metric,
+                                window.start,
+                                window.end,
+                                stepFor(rangeSeconds),
+                            ),
+                        ),
+                    ),
+                ),
+            ).then((byMetric) => ({ byMetric, window }));
+        },
+        [deployments.join(","), rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
+    );
+    const theme = useChartTheme();
+    const charts = useMemo(
+        () =>
+            POSTGRES_METRICS.map((metric, m) => {
+                const merged = mergeDeployments(data?.byMetric[m] ?? [], deployments);
+                return {
+                    metric,
+                    title: merged?.metric.label ?? metric,
+                    unit: merged?.metric.unit ?? "",
+                    datasets: deploymentDatasets(merged, theme.dark),
+                };
+            }),
+        // deployments is what data was fetched for.
+        // oxlint-disable-next-line react-hooks/exhaustive-deps
+        [data, theme.dark],
+    );
+    if (deployments.length === 0) {
+        return null;
+    }
+    return (
+        <>
+            {error && <div className="alert error">{error}</div>}
+            <div className="grid2">
+                {charts.map((c) => (
+                    <ChartPanel
+                        key={c.metric}
+                        title={c.title}
+                        unit={c.unit}
+                        datasets={c.datasets}
+                        theme={theme}
+                        window={data?.window}
+                        height={260}
+                    />
+                ))}
+            </div>
+        </>
     );
 }
 
@@ -742,17 +820,7 @@ export function WorkerCharts({
         () =>
             WORKER_METRICS.map((metric, m) => {
                 const responses = (data?.byDeployment ?? []).map((r) => r[m]);
-                const merged = responses[0] && {
-                    ...responses[0],
-                    series: responses.flatMap((r, i) =>
-                        deployments.length > 1
-                            ? r.series.map((s) => ({
-                                  ...s,
-                                  target: `${deployments[i]} · ${s.target}`,
-                              }))
-                            : r.series,
-                    ),
-                };
+                const merged = mergeDeployments(responses, deployments);
                 return {
                     metric,
                     title: merged?.metric.label ?? metric,

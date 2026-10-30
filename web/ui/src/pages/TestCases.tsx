@@ -2,7 +2,12 @@ import { api } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MarketingReport } from "../components/MarketingReport";
-import { MetricsGrid, ResourceCharts, WorkerCharts } from "../components/MetricsChart";
+import {
+    MetricsGrid,
+    PostgresCharts,
+    ResourceCharts,
+    WorkerCharts,
+} from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
@@ -610,6 +615,7 @@ const SECTIONS = [
     { id: "profiling", label: "Profiling" },
     { id: "logs", label: "Logs" },
     { id: "worker", label: "Worker" },
+    { id: "postgres", label: "Postgres" },
     { id: "resources", label: "Resources" },
     { id: "status", label: "Status" },
 ];
@@ -967,6 +973,22 @@ export function TestCaseViewPage() {
                 <WorkerCharts
                     deployments={rows.map((r) => r.deploymentName)}
                     baseline={rows.find((r) => r.target === baseline)?.deploymentName}
+                    endSeconds={metricsEnd}
+                    rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
+                />
+            </Section>
+
+            <Section
+                id="postgres"
+                title="Postgres"
+                description="Every target's postgres (external ones aren't monitored): CPU, memory, disk usage and disk IO over the timeline's range."
+            >
+                <PostgresCharts
+                    deployments={rows
+                        .filter(
+                            (r) => r.deployment && r.deployment.spec.postgres.mode !== "External",
+                        )
+                        .map((r) => r.deploymentName)}
                     endSeconds={metricsEnd}
                     rangeSeconds={profile === "Quick" ? anchor?.rangeSeconds : timelineRange}
                 />

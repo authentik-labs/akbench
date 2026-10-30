@@ -1050,7 +1050,7 @@ export function DeploymentViewPage() {
                 <>
                     <h3>Postgres</h3>
                     <PostgresCharts
-                        deployment={name}
+                        deployments={[name]}
                         rangeSeconds={timeRangeSeconds(range, burnStart)}
                     />
                 </>
