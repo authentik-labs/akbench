@@ -2,11 +2,14 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -104,6 +107,30 @@ var _ = Describe("TestMatrix Controller", func() {
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: name + "-main-oauth-oidc", Namespace: "default"}, &benchv1alpha1.AuthentikDeployment{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-main-login", Namespace: "default"}, &benchv1alpha1.AuthentikDeployment{})).To(Succeed())
+	})
+
+	It("schedules its burn start once every TestCase is staged", func() {
+		reconcileOnce()
+		stage := func(template string) {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-" + template, Namespace: "default"}, &tc)).To(Succeed())
+			meta.SetStatusCondition(&tc.Status.Conditions, metav1.Condition{
+				Type: benchv1alpha1.ConditionBurnStaged, Status: metav1.ConditionTrue, Reason: benchv1alpha1.ReasonReady,
+			})
+			Expect(k8sClient.Status().Update(ctx, &tc)).To(Succeed())
+		}
+		var m benchv1alpha1.TestMatrix
+
+		stage("login")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+		Expect(m.Status.BurnStartAt).To(BeNil())
+
+		stage("oauth-oidc")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+		Expect(m.Status.BurnStartAt).NotTo(BeNil())
+		Expect(m.Status.BurnStartAt.After(time.Now())).To(BeTrue())
 	})
 
 	It("archives its TestCases without recreating deleted deployments", func() {

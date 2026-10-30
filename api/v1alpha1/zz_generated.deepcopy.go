@@ -788,6 +788,10 @@ func (in *TestMatrixStatus) DeepCopyInto(out *TestMatrixStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.BurnStartAt != nil {
+		in, out := &in.BurnStartAt, &out.BurnStartAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Rows != nil {
 		in, out := &in.Rows, &out.Rows
 		*out = make([]TestMatrixRow, len(*in))

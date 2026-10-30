@@ -40,6 +40,7 @@ import {
 import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import {
+    MATRIX_LABEL,
     TestCase,
     TestCaseSpec,
     TestProfile,
@@ -774,6 +775,14 @@ export function TestCaseViewPage() {
                             : `template ${tc.spec.template ?? "login"}`}
                         {burn && ` · ${burn}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
+                        {tc.metadata.labels?.[MATRIX_LABEL] && (
+                            <>
+                                {" · part of matrix "}
+                                <Link to={`/testmatrices/${tc.metadata.labels[MATRIX_LABEL]}`}>
+                                    {tc.metadata.labels[MATRIX_LABEL]}
+                                </Link>
+                            </>
+                        )}
                         {tc.metadata.labels?.[PULL_REQUEST_LABEL] && (
                             <>
                                 {" · "}

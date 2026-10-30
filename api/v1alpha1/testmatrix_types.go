@@ -95,6 +95,13 @@ type TestMatrixStatus struct {
 	// +optional
 	Phase ReconcilePhase `json:"phase,omitempty"`
 
+	// burnStartAt is when every TestCase of a Burn matrix starts its k6
+	// load, set once all of them are staged (see ConditionBurnStaged), so
+	// the templates' burns line up like their targets do. Cleared while
+	// archived or not Burn.
+	// +optional
+	BurnStartAt *metav1.Time `json:"burnStartAt,omitempty"`
+
 	// rows is one entry per template, in spec order.
 	// +optional
 	Rows []TestMatrixRow `json:"rows,omitempty"`

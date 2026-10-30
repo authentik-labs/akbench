@@ -226,6 +226,9 @@ export interface TestMatrixRow {
     cells?: { variant: string; deployment: string; phase?: string }[];
 }
 
+/** TestCase label naming the TestMatrix that created it (LabelTestMatrix). */
+export const MATRIX_LABEL = "bench.goauthentik.io/testmatrix";
+
 /** TestMatrix crosses authentik builds (variants) with test case templates. */
 export interface TestMatrix {
     metadata: ObjectMeta;
@@ -233,6 +236,8 @@ export interface TestMatrix {
     status?: {
         conditions?: Condition[];
         phase?: string;
+        // When every test case of a Burn matrix starts, all at once.
+        burnStartAt?: string;
         rows?: TestMatrixRow[];
     };
 }

@@ -21,6 +21,10 @@ const (
 	// ConditionScriptReady is True once a TestCase's k6 script has been
 	// resolved and mirrored to the runner cluster.
 	ConditionScriptReady = "ScriptReady"
+	// ConditionBurnStaged is True once every target of a Burn TestCase is
+	// Ready and its k6 pod is up, waiting at the start gate. A TestMatrix
+	// opens its TestCases' shared start gate once all of them report it.
+	ConditionBurnStaged = "BurnStaged"
 )
 
 // Condition reasons shared across bench.goauthentik.io kinds.

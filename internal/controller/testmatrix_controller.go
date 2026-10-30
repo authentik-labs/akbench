@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -169,6 +171,7 @@ func (r *TestMatrixReconciler) updateStatus(ctx context.Context, m *benchv1alpha
 	}
 
 	m.Status.Rows = nil
+	staged := true
 	for _, template := range m.Spec.Templates {
 		var tc benchv1alpha1.TestCase
 		tc.Name = m.TestCaseName(template)
@@ -176,6 +179,7 @@ func (r *TestMatrixReconciler) updateStatus(ctx context.Context, m *benchv1alpha
 		if err != nil {
 			return err
 		}
+		staged = staged && meta.IsStatusConditionTrue(tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
 		row := benchv1alpha1.TestMatrixRow{Template: template, TestCase: tc.Name, Phase: phase}
 		for _, v := range m.Spec.Variants {
 			var ad benchv1alpha1.AuthentikDeployment
@@ -187,6 +191,17 @@ func (r *TestMatrixReconciler) updateStatus(ctx context.Context, m *benchv1alpha
 			row.Cells = append(row.Cells, benchv1alpha1.TestMatrixCell{Variant: v.Name, Deployment: ad.Name, Phase: phase})
 		}
 		m.Status.Rows = append(m.Status.Rows, row)
+	}
+
+	// Like a TestCase does for its targets (openBurnStartGate), but across
+	// the templates' TestCases: they all start burnStartLead after the last
+	// of them is staged. One added later starts right away.
+	switch {
+	case m.Spec.TestCase.Archived || m.Spec.TestCase.Profile != benchv1alpha1.ProfileBurn:
+		m.Status.BurnStartAt = nil
+	case m.Status.BurnStartAt == nil && staged:
+		m.Status.BurnStartAt = &metav1.Time{Time: time.Now().Add(burnStartLead).Truncate(time.Second)}
+		logf.FromContext(ctx).Info("Scheduled burn start", "startAt", m.Status.BurnStartAt.Time)
 	}
 
 	switch {

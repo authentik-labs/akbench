@@ -7,7 +7,7 @@ import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets"
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
 import { PULL_REQUEST_LABEL } from "../github";
-import { RangePoint, TestMatrix, testRunDeployment } from "../types";
+import { MATRIX_LABEL, RangePoint, TestMatrix, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
 
 import { Link } from "react-router";
@@ -23,8 +23,6 @@ const DAY_MS = 86400 * 1000;
 // (render.ObservabilityNamespace). An alert there means the numbers on this
 // page may be wrong, so it's raised as a banner rather than just counted.
 const OBSERVABILITY_NAMESPACE = "bench-system";
-// TestCase label naming the TestMatrix that created it (LabelTestMatrix).
-const MATRIX_LABEL = "bench.goauthentik.io/testmatrix";
 
 export function DashboardPage() {
     const deployments = useResource(() => api.deployments(), [], 15000);

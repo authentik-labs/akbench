@@ -66,6 +66,7 @@ type TestCaseReconciler struct {
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=authentikdeployments,verbs=get;list;watch
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testcasetemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=workloadclusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testmatrices,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update
@@ -145,7 +146,10 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	for _, st := range tc.Status.Deployments {
 		previous[st.Name] = st
 	}
-	startAt := burnStartAt(&tc)
+	startAt, matrixGated, err := r.burnStart(ctx, &tc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	burnStaged := true
 
 	for _, ref := range refs {
@@ -179,27 +183,14 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// set: running it per target would delete every later target's Burn
 	// Deployment on a shared runner cluster, only for the next iteration to
 	// recreate it.
-	for _, prev := range previous {
-		cluster := prev.RunnerCluster
-		if _, ok := runnerClients[cluster]; ok {
-			continue
-		}
-		rc, _, err := resolveRunnerClient(ctx, r.Tracker, r.Client, tc.Namespace, nil, corev1.LocalObjectReference{Name: cluster})
-		if err != nil {
-			log.Info("Skipped stale burn cleanup on unreachable runner cluster", "cluster", cluster, "error", err.Error())
-			continue
-		}
-		runnerClients[cluster] = rc
-	}
-	for cluster, rc := range runnerClients {
-		if err := r.cleanupStaleBurnDeployments(ctx, rc, &tc, keepBurnNames); err != nil {
-			return ctrl.Result{}, fmt.Errorf("clean up stale burn deployments on runner cluster %q: %w", cluster, err)
-		}
+	if err := r.cleanupStaleBurnsEverywhere(ctx, &tc, previous, runnerClients, keepBurnNames); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	tc.Status.Deployments = statuses
 	if !allReady {
 		reason := benchv1alpha1.ReasonDependencyNotReady
+		setBurnStaged(r.Recorder, &tc, false)
 		setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionFalse,
 			reason, strings.Join(notReadyMessages, "; "))
 		setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
@@ -213,7 +204,8 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, nil
 	}
-	result := openBurnStartGate(ctx, &tc, startAt, burnStaged)
+	setBurnStaged(r.Recorder, &tc, burnStaged)
+	result := openBurnStartGate(ctx, &tc, startAt, burnStaged, matrixGated)
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionTrue,
 		benchv1alpha1.ReasonReady, "every deployment is Ready")
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionTrue,
@@ -228,6 +220,30 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	log.Info("reconciled TestCase", "profile", tc.Spec.Profile, "deployments", len(refs))
 	return result, nil
+}
+
+// cleanupStaleBurnsEverywhere runs cleanupStaleBurnDeployments on every
+// runner cluster visited this pass (runnerClients) plus every one a target
+// last ran on (previous), skipping the unreachable ones.
+func (r *TestCaseReconciler) cleanupStaleBurnsEverywhere(ctx context.Context, tc *benchv1alpha1.TestCase, previous map[string]benchv1alpha1.TestCaseDeploymentStatus, runnerClients map[string]client.Client, keep map[string]bool) error {
+	for _, prev := range previous {
+		cluster := prev.RunnerCluster
+		if _, ok := runnerClients[cluster]; ok {
+			continue
+		}
+		rc, _, err := resolveRunnerClient(ctx, r.Tracker, r.Client, tc.Namespace, nil, corev1.LocalObjectReference{Name: cluster})
+		if err != nil {
+			logf.FromContext(ctx).Info("Skipped stale burn cleanup on unreachable runner cluster", "cluster", cluster, "error", err.Error())
+			continue
+		}
+		runnerClients[cluster] = rc
+	}
+	for cluster, rc := range runnerClients {
+		if err := r.cleanupStaleBurnDeployments(ctx, rc, tc, keep); err != nil {
+			return fmt.Errorf("clean up stale burn deployments on runner cluster %q: %w", cluster, err)
+		}
+	}
+	return nil
 }
 
 // burnStartLead is how far ahead of now a burn's start gate opens. A
@@ -250,11 +266,48 @@ func burnStartAt(tc *benchv1alpha1.TestCase) *metav1.Time {
 	return startAt
 }
 
+// burnStart is burnStartAt, falling back to the start time the TestMatrix
+// that created tc set for all its TestCases. matrixGated reports whether
+// that matrix, not tc, opens tc's start gate.
+func (r *TestCaseReconciler) burnStart(ctx context.Context, tc *benchv1alpha1.TestCase) (startAt *metav1.Time, matrixGated bool, err error) {
+	startAt = burnStartAt(tc)
+	name := tc.Labels[benchv1alpha1.LabelTestMatrix]
+	if name == "" || tc.Spec.Profile != benchv1alpha1.ProfileBurn {
+		return startAt, false, nil
+	}
+	var m benchv1alpha1.TestMatrix
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: tc.Namespace}, &m); err != nil {
+		// A TestCase outliving its matrix starts on its own.
+		return startAt, false, client.IgnoreNotFound(err)
+	}
+	if startAt == nil {
+		startAt = m.Status.BurnStartAt
+	}
+	return startAt, true, nil
+}
+
+// setBurnStaged records whether a Burn TestCase is staged (see
+// ConditionBurnStaged), and drops the condition from any other.
+func setBurnStaged(recorder record.EventRecorder, tc *benchv1alpha1.TestCase, staged bool) {
+	switch {
+	case tc.Spec.Profile != benchv1alpha1.ProfileBurn:
+		meta.RemoveStatusCondition(&tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
+	case staged:
+		setCondition(recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionBurnStaged, metav1.ConditionTrue,
+			benchv1alpha1.ReasonReady, "every k6 pod is waiting at the start gate")
+	default:
+		setCondition(recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionBurnStaged, metav1.ConditionFalse,
+			benchv1alpha1.ReasonDependencyNotReady, "waiting for every target and its k6 pod to be ready")
+	}
+}
+
 // openBurnStartGate records when a Burn TestCase whose AuthentikDeployments
 // are all Ready starts burning. The first time every k6 pod is up too
 // (staged), that's burnStartLead from now, so the start time reaches all of
-// them before it passes. The returned result polls until then.
-func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt *metav1.Time, staged bool) ctrl.Result {
+// them before it passes - unless matrixGated, where its TestMatrix picks
+// that time for all its TestCases at once (see burnStart). The
+// returned result polls until then.
+func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt *metav1.Time, staged, matrixGated bool) ctrl.Result {
 	var result ctrl.Result
 	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
 		return result
@@ -262,6 +315,10 @@ func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt 
 	if startAt == nil {
 		if !staged {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}
+		}
+		if matrixGated {
+			// The TestMatrix watch wakes this up once it sets the time.
+			return result
 		}
 		startAt = &metav1.Time{Time: time.Now().Add(burnStartLead).Truncate(time.Second)}
 		logf.FromContext(ctx).Info("Scheduled burn start", "startAt", startAt.Time)
@@ -502,6 +559,7 @@ func (r *TestCaseReconciler) reconcileArchived(ctx context.Context, tc *benchv1a
 			}
 		}
 	}
+	meta.RemoveStatusCondition(&tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
 	setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 		benchv1alpha1.ReasonArchived, "test case is archived")
 	tc.Status.Phase = benchv1alpha1.PhaseFor(tc.Status.Conditions)
@@ -812,6 +870,8 @@ func (r *TestCaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// anything on its own, so the stale condition can sit for a long
 		// time even though the real dependency is satisfied.
 		Watches(&benchv1alpha1.AuthentikDeployment{}, handler.EnqueueRequestsFromMapFunc(r.testCasesForDeployment)).
+		// A TestMatrix opening its burn start gate releases its TestCases.
+		Watches(&benchv1alpha1.TestMatrix{}, handler.EnqueueRequestsFromMapFunc(r.testCasesForMatrix)).
 		Named("testcase").
 		Complete(r)
 }
@@ -830,6 +890,19 @@ func (r *TestCaseReconciler) testCasesForDeployment(ctx context.Context, topo cl
 		if slices.ContainsFunc(tc.Deployments(), func(ref corev1.LocalObjectReference) bool { return ref.Name == topo.GetName() }) {
 			reqs = append(reqs, reconcile.Request{Name: tc.Name, Namespace: tc.Namespace})
 		}
+	}
+	return reqs
+}
+
+// testCasesForMatrix maps a TestMatrix change to the TestCases it created.
+func (r *TestCaseReconciler) testCasesForMatrix(ctx context.Context, m client.Object) []reconcile.Request {
+	var list benchv1alpha1.TestCaseList
+	if err := r.List(ctx, &list, client.InNamespace(m.GetNamespace()), client.MatchingLabels{benchv1alpha1.LabelTestMatrix: m.GetName()}); err != nil {
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for _, tc := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&tc)})
 	}
 	return reqs
 }

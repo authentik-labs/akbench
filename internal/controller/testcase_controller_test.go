@@ -112,6 +112,46 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(cm.Data[render.StartAtFileName]).To(Equal(strconv.FormatInt(burningSince.Unix(), 10)))
 		})
 
+		It("waits for its TestMatrix to start the burn", func() {
+			ctx := context.Background()
+			m := &benchv1alpha1.TestMatrix{
+				Name: "gate-matrix", Namespace: "default",
+				Spec: benchv1alpha1.TestMatrixSpec{
+					Variants:   []benchv1alpha1.TestMatrixVariant{{Name: "a", Tag: "x"}},
+					Templates:  []string{"login"},
+					Deployment: benchv1alpha1.AuthentikDeploymentSpec{ClusterRef: corev1.LocalObjectReference{Name: testClusterName}},
+					TestCase:   benchv1alpha1.TestCaseSpec{Profile: benchv1alpha1.ProfileBurn},
+				},
+			}
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+			DeferCleanup(forceDelete, ctx, m)
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &tc)).To(Succeed())
+			tc.Labels = map[string]string{benchv1alpha1.LabelTestMatrix: m.Name}
+			Expect(k8sClient.Update(ctx, &tc)).To(Succeed())
+
+			r := &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			markBurnDeploymentStaged(render.BurnDeploymentName(resourceName, topo.Name))
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &tc)).To(Succeed())
+			Expect(meta.IsStatusConditionTrue(tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)).To(BeTrue())
+			Expect(findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince).To(BeNil())
+
+			startAt := metav1.NewTime(time.Now().Add(time.Minute).Truncate(time.Second))
+			m.Status.BurnStartAt = &startAt
+			Expect(k8sClient.Status().Update(ctx, m)).To(Succeed())
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &tc)).To(Succeed())
+			Expect(findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince.Equal(&startAt)).To(BeTrue())
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "k6-script-" + resourceName, Namespace: "default"}, &cm)).To(Succeed())
+			Expect(cm.Data[render.StartAtFileName]).To(Equal(strconv.FormatInt(startAt.Unix(), 10)))
+		})
+
 		It("stops its burn Deployment when archived but keeps the TestCase", func() {
 			r := &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}
 			_, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})

@@ -765,6 +765,14 @@ spec:
           status:
             description: TestMatrixStatus defines the observed state of TestMatrix.
             properties:
+              burnStartAt:
+                description: |-
+                  burnStartAt is when every TestCase of a Burn matrix starts its k6
+                  load, set once all of them are staged (see ConditionBurnStaged), so
+                  the templates' burns line up like their targets do. Cleared while
+                  archived or not Burn.
+                format: date-time
+                type: string
               conditions:
                 description: |-
                   conditions report Ready: every TestCase and AuthentikDeployment is
