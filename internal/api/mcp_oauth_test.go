@@ -32,6 +32,19 @@ func TestMCPOAuthChallengesWithResourceMetadata(t *testing.T) {
 		!strings.Contains(challenge, `scope="openid profile email offline_access"`) {
 		t.Fatalf("challenge = %q", challenge)
 	}
+	if strings.Contains(challenge, "invalid_token") {
+		t.Fatalf("challenge without a token = %q", challenge)
+	}
+
+	// A rejected (e.g. expired) token is flagged, so the client refreshes.
+	req = httptest.NewRequest(http.MethodPost, "http://bench.example/api/v1/mcp", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer expired.jwt")
+	rec = httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, req)
+	requireStatus(t, rec, http.StatusUnauthorized)
+	if got := rec.Header().Get("WWW-Authenticate"); !strings.Contains(got, `, error="invalid_token"`) {
+		t.Fatalf("challenge for a rejected token = %q", got)
+	}
 
 	// The rest of the API keeps its plain challenge.
 	rec = requestWithBearer(t, s, "/api/v1/deployments", "")

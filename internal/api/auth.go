@@ -56,14 +56,19 @@ func (s *Server) authenticated(next http.Handler, challenge func(*http.Request) 
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, "unauthenticated")))
 			return
 		}
+		header := challenge(r)
 		if presented, ok := bearerToken(r); ok {
 			if who, ok := s.authenticate(r, presented); ok {
 				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, who)))
 				return
 			}
+			// RFC 6750 3.1: tells an OAuth client its (likely expired)
+			// token was rejected, so it refreshes instead of signing in
+			// from scratch.
+			header += `, error="invalid_token"`
 		}
 		auditLog(r).Info("Rejected unauthenticated request", requestKeysAndValues(r)...)
-		w.Header().Set("WWW-Authenticate", challenge(r))
+		w.Header().Set("WWW-Authenticate", header)
 		writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
 	})
 }
