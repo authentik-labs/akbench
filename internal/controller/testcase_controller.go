@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -143,19 +145,16 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	for _, st := range tc.Status.Deployments {
 		previous[st.Name] = st
 	}
+	startAt := burnStartAt(&tc)
+	burnStaged := true
 
 	for _, ref := range refs {
-		result, err := r.reconcileTarget(ctx, &tc, tmpl, ref)
+		result, err := r.reconcileTarget(ctx, &tc, tmpl, ref, startAt)
 		if err != nil {
 			return requeueWhileWarmingUp(err)
 		}
-		if result.runnerClient == nil {
-			// The target couldn't be resolved this pass (its deployment is
-			// gone or not Ready, or its cluster is unreachable) - remember
-			// where it and its k6 workload last ran, so a later delete still
-			// finds the workload and its telemetry can still be shown.
-			keepRecordedPlacement(&result.status, previous[ref.Name])
-		}
+		keepRecordedStatus(&tc, &result, previous[ref.Name])
+		burnStaged = burnStaged && result.burnStaged
 		statuses = append(statuses, result.status)
 		if result.runnerClient != nil {
 			runnerClients[result.runnerCluster] = result.runnerClient
@@ -214,6 +213,7 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, nil
 	}
+	result := openBurnStartGate(ctx, &tc, startAt, burnStaged)
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionTrue,
 		benchv1alpha1.ReasonReady, "every deployment is Ready")
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionTrue,
@@ -227,7 +227,82 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 	log.Info("reconciled TestCase", "profile", tc.Spec.Profile, "deployments", len(refs))
-	return ctrl.Result{}, nil
+	return result, nil
+}
+
+// burnStartLead is how far ahead of now a burn's start gate opens. A
+// ConfigMap change reaches a mounted volume on the kubelet's next pod
+// resync, up to about 90s later.
+const burnStartLead = 2 * time.Minute
+
+// burnStartAt is when a Burn TestCase's start gate opened (its earliest
+// running target's burningSince), or nil while it is still closed.
+func burnStartAt(tc *benchv1alpha1.TestCase) *metav1.Time {
+	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
+		return nil
+	}
+	var startAt *metav1.Time
+	for _, st := range tc.Status.Deployments {
+		if st.BurningSince != nil && st.BurnStoppedAt == nil && (startAt == nil || st.BurningSince.Before(startAt)) {
+			startAt = st.BurningSince
+		}
+	}
+	return startAt
+}
+
+// openBurnStartGate records when a Burn TestCase whose AuthentikDeployments
+// are all Ready starts burning. The first time every k6 pod is up too
+// (staged), that's burnStartLead from now, so the start time reaches all of
+// them before it passes. The returned result polls until then.
+func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt *metav1.Time, staged bool) ctrl.Result {
+	var result ctrl.Result
+	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
+		return result
+	}
+	if startAt == nil {
+		if !staged {
+			return ctrl.Result{RequeueAfter: 5 * time.Second}
+		}
+		startAt = &metav1.Time{Time: time.Now().Add(burnStartLead).Truncate(time.Second)}
+		logf.FromContext(ctx).Info("Scheduled burn start", "startAt", startAt.Time)
+		// The next reconcile writes it into the script ConfigMaps.
+		result.RequeueAfter = time.Second
+	}
+	now := metav1.Now()
+	for i := range tc.Status.Deployments {
+		st := &tc.Status.Deployments[i]
+		if st.BurningSince == nil && st.BurnWorkloadRef != nil {
+			// A target added once the burn already started starts now.
+			st.BurningSince = startAt.DeepCopy()
+			if startAt.Before(&now) {
+				st.BurningSince = &now
+			}
+		}
+	}
+	return result
+}
+
+// burnDeploymentStaged reports whether dep's k6 pod is fully rolled out
+// and running, i.e. waiting at the start gate.
+func burnDeploymentStaged(dep *appsv1.Deployment) bool {
+	want := ptr.Deref(dep.Spec.Replicas, 1)
+	return dep.Status.ObservedGeneration == dep.Generation &&
+		dep.Status.Replicas == want && dep.Status.UpdatedReplicas == want && dep.Status.ReadyReplicas == want
+}
+
+// keepRecordedStatus carries over what a target's freshly computed status
+// can't know by itself from prev: when its burn started, and, if the target
+// couldn't be resolved this pass (its deployment is gone or not Ready, or
+// its cluster is unreachable), where it and its k6 workload last ran, so a
+// later delete still finds the workload and its telemetry can still be
+// shown.
+func keepRecordedStatus(tc *benchv1alpha1.TestCase, result *targetResult, prev benchv1alpha1.TestCaseDeploymentStatus) {
+	if result.runnerClient == nil {
+		keepRecordedPlacement(&result.status, prev)
+	}
+	if tc.Spec.Profile == benchv1alpha1.ProfileBurn && prev.BurnStoppedAt == nil {
+		result.status.BurningSince = prev.BurningSince
+	}
 }
 
 // keepRecordedPlacement carries prev's runner cluster over to st, and where
@@ -282,6 +357,9 @@ type targetResult struct {
 	ready         bool
 	requeue       bool
 	notReadyMsg   string
+	// burnStaged is true unless this target's burn Deployment exists and
+	// its pod isn't up yet.
+	burnStaged bool
 }
 
 // reconcileTarget resolves and reconciles everything one target deployment
@@ -291,8 +369,8 @@ type targetResult struct {
 // the whole TestCase reconcile; a not-ready target instead reports itself
 // via the returned result so its siblings still get their own chance to
 // reconcile.
-func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alpha1.TestCase, tmpl *benchv1alpha1.TestCaseTemplate, ref corev1.LocalObjectReference) (targetResult, error) {
-	result := targetResult{status: benchv1alpha1.TestCaseDeploymentStatus{Name: ref.Name}}
+func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alpha1.TestCase, tmpl *benchv1alpha1.TestCaseTemplate, ref corev1.LocalObjectReference, startAt *metav1.Time) (targetResult, error) {
+	result := targetResult{status: benchv1alpha1.TestCaseDeploymentStatus{Name: ref.Name}, burnStaged: true}
 
 	topo, targetName, host, port, err := resolveReadyDeployment(ctx, r.Client, tc.Namespace, ref.Name)
 	if err != nil {
@@ -327,7 +405,7 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 		}
 	}
 
-	scriptCM, err := r.ensureScriptConfigMap(ctx, rc, remote, tc, tmpl)
+	scriptCM, err := r.ensureScriptConfigMap(ctx, rc, remote, tc, tmpl, startAt)
 	if err != nil {
 		return targetResult{}, fmt.Errorf("ensure script configmap for %q: %w", ref.Name, err)
 	}
@@ -377,7 +455,7 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 			return targetResult{}, fmt.Errorf("reconcile burn deployment for %q: %w", ref.Name, err)
 		}
 		result.status.BurnWorkloadRef = &corev1.LocalObjectReference{Name: dep.Name}
-		result.status.BurningSince = dep.CreationTimestamp.DeepCopy()
+		result.burnStaged = burnDeploymentStaged(dep)
 	}
 	// Quick: execution is a TestRun's job, nothing to reconcile continuously
 	// here. An unrecognized profile is likewise a no-op - Reconcile checks
@@ -641,8 +719,9 @@ func (r *TestCaseReconciler) reconcileBurn(ctx context.Context, rc client.Client
 // rc, returning its name. A user-supplied scriptConfigMapRef (BYO) is
 // mounted as is next to it, so only the library goes here then. tmpl is nil
 // when scriptConfigMapRef or inline already won upstream (see Reconcile's
-// usingTemplate).
-func (r *TestCaseReconciler) ensureScriptConfigMap(ctx context.Context, rc client.Client, remote bool, tc *benchv1alpha1.TestCase, tmpl *benchv1alpha1.TestCaseTemplate) (string, error) {
+// usingTemplate). startAt, once a burn's start gate opened, releases its
+// waiting k6 pods (render.StartAtFileName).
+func (r *TestCaseReconciler) ensureScriptConfigMap(ctx context.Context, rc client.Client, remote bool, tc *benchv1alpha1.TestCase, tmpl *benchv1alpha1.TestCaseTemplate, startAt *metav1.Time) (string, error) {
 	lib, ok := k6scripts.Get(render.LibFileName)
 	if !ok {
 		return "", fmt.Errorf("embedded k6 library %q is missing", render.LibFileName)
@@ -656,6 +735,9 @@ func (r *TestCaseReconciler) ensureScriptConfigMap(ctx context.Context, rc clien
 		return "", fmt.Errorf("TestCaseTemplate %q has an empty script", tmpl.Name)
 	default:
 		data["script.ts"] = tmpl.Spec.Script
+	}
+	if startAt != nil {
+		data[render.StartAtFileName] = strconv.FormatInt(startAt.Unix(), 10)
 	}
 
 	name := "k6-script-" + tc.Name

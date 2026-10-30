@@ -173,8 +173,10 @@ type TestCaseDeploymentStatus struct {
 	// +optional
 	BurnWorkloadRef *corev1.LocalObjectReference `json:"burnWorkloadRef,omitempty"`
 
-	// burningSince is the burn Deployment's creationTimestamp - when this
-	// target started burning, unaffected by operator restarts or Ready flaps.
+	// burningSince is when this target started burning: the moment k6
+	// starts on every target at once, set once all of them and their k6
+	// pods are ready (a target added later starts right away). Unaffected
+	// by operator restarts or Ready flaps.
 	// Kept once the TestCase is archived, alongside burnStoppedAt, so its
 	// metrics can still be shown for exactly the time it burned.
 	// +optional

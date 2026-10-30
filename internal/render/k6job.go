@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
@@ -201,6 +202,23 @@ const scriptFileName = "script.ts"
 // every script, which imports it as "./bench.ts".
 const LibFileName = "bench.ts"
 
+// StartAtFileName is the script ConfigMap key holding the unix time a Burn
+// TestCase's k6 pods start their load at. The operator only writes it once
+// every target's k6 pod is up, so all targets start at the same moment
+// regardless of when each pod got scheduled (see burnGateScript).
+const StartAtFileName = "start-at"
+
+// burnGateScript holds k6 until StartAtFileName shows up in the (live
+// updating) script volume, then sleeps until that time. A restarted or
+// replaced pod sees a time in the past and starts right away.
+const burnGateScript = `f=` + ScriptVolumeMountPath + "/" + StartAtFileName + `
+echo "Waiting for start time in $f"
+until [ -s "$f" ]; do sleep 1; done
+d=$(( $(cat "$f") - $(date +%s) ))
+if [ "$d" -gt 0 ]; then sleep "$d"; fi
+exec k6 "$@"
+`
+
 // Args builds the k6 command line, matching the --tag scheme every Grafana
 // dashboard splits on: testid, target, profile, plus any extraTags.
 func (p K6WorkloadParams) Args() []string {
@@ -233,7 +251,13 @@ func (p K6WorkloadParams) volumes() ([]corev1.Volume, []corev1.VolumeMount) {
 		ConfigMap: &corev1.ConfigMapProjection{Name: p.ScriptConfigMapName},
 	}}
 	if p.UserScriptConfigMapName != "" {
-		sources[0].ConfigMap.Items = []corev1.KeyToPath{{Key: LibFileName, Path: LibFileName}}
+		// Optional, since StartAtFileName only exists once a burn's start
+		// gate opened.
+		sources[0].ConfigMap.Items = []corev1.KeyToPath{
+			{Key: LibFileName, Path: LibFileName},
+			{Key: StartAtFileName, Path: StartAtFileName},
+		}
+		sources[0].ConfigMap.Optional = ptr.To(true)
 		sources = append(sources, corev1.VolumeProjection{
 			ConfigMap: &corev1.ConfigMapProjection{Name: p.UserScriptConfigMapName},
 		})
@@ -368,6 +392,8 @@ func BurnDeployment(name, namespace string, p K6WorkloadParams) *appsv1.Deployme
 	replicas := int32(1)
 	tmpl := p.PodTemplate()
 	tmpl.Spec.RestartPolicy = corev1.RestartPolicyAlways
+	// Args stay k6's own; sh passes them through as "$@" ($0 is "k6").
+	tmpl.Spec.Containers[0].Command = []string{"sh", "-c", burnGateScript, "k6"}
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{
 		benchv1alpha1.LabelTestCase:   p.TestCase.Name,
 		benchv1alpha1.LabelDeployment: p.DeploymentName,

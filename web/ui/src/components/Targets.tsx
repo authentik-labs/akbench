@@ -69,17 +69,27 @@ export function buildTargetRows(
 }
 
 /**
- * burningFor is how long a Burn test has been running - since its oldest
- * target's burn Deployment was created, so operator restarts don't reset it.
+ * burnStatus describes where a running Burn test is: waiting until every
+ * target and its k6 pod is ready (the operator then starts them all at
+ * once), counting down to that shared start, or how long it has been
+ * burning since - so operator restarts don't reset it. Undefined for a
+ * Quick or archived test.
  */
-export function burningFor(tc: TestCase, now = Date.now()): string | undefined {
+export function burnStatus(tc: TestCase, now = Date.now()): string | undefined {
+    if (tc.spec.profile !== "Burn" || tc.spec.archived) {
+        return undefined;
+    }
     const since = (tc.status?.deployments ?? []).flatMap((d) =>
         d.burningSince && !d.burnStoppedAt ? [Date.parse(d.burningSince)] : [],
     );
     if (since.length === 0) {
-        return undefined;
+        return "waiting for every target to be ready, to start them together";
     }
-    return formatDuration((now - Math.min(...since)) / 1000);
+    const start = Math.min(...since);
+    if (start > now) {
+        return `starting on all targets in ${formatDuration((start - now) / 1000)}`;
+    }
+    return `burning for ${formatDuration((now - start) / 1000)}`;
 }
 
 /**

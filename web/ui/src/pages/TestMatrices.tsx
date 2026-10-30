@@ -6,7 +6,7 @@ import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { PullRequestLink } from "../components/PullRequestLink";
 import { ConditionList, StatusBadge } from "../components/Status";
-import { burningFor, TARGET_METRICS } from "../components/Targets";
+import { burnStatus, TARGET_METRICS } from "../components/Targets";
 import {
     Alert,
     confirmAndRun,
@@ -258,7 +258,7 @@ export function TestMatrixViewPage() {
     );
     const metrics = (comparison.data?.metrics ?? []).filter((x) => TARGET_METRICS.includes(x.key));
     const metric = metrics.find((x) => x.key === metricKey);
-    const since = rowTestCases.map((tc) => burningFor(tc)).find((d) => d !== undefined);
+    const burn = rowTestCases.map((tc) => burnStatus(tc)).find((d) => d !== undefined);
     const burnedFor =
         burnStart !== undefined && burnEnd !== undefined
             ? formatDuration(burnEnd - 60 - burnStart)
@@ -274,7 +274,7 @@ export function TestMatrixViewPage() {
                         {m.spec.templates.length === 1 ? "template" : "templates"} ×{" "}
                         {m.spec.variants.map((v) => v.name).join(" vs ")} · {m.spec.testCase.vus}{" "}
                         VUs each
-                        {since && ` · burning for ${since}`}
+                        {burn && ` · ${burn}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
                         {m.metadata.labels?.[PULL_REQUEST_LABEL] && (
                             <>

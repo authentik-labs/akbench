@@ -8,7 +8,7 @@ import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
 import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
-import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
+import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets";
 import { toast } from "../components/Toast";
 import { TraceBreakdownSection } from "../components/TraceBreakdown";
 import {
@@ -281,7 +281,7 @@ const PROFILES: { value: TestProfile; title: string; description: string }[] = [
         value: "Burn",
         title: "Burn",
         description:
-            "Keeps every target under steady load until you stop it. Change a deployment while it runs and watch the difference live.",
+            "Keeps every target under steady load until you stop it, starting all of them at the same moment once each is ready. Change a deployment while it runs and watch the difference live.",
     },
     {
         value: "Quick",
@@ -700,7 +700,7 @@ export function TestCaseViewPage() {
             toast.error(errorMessage(err));
         }
     }
-    const since = tc && profile === "Burn" ? burningFor(tc) : undefined;
+    const burn = tc && profile === "Burn" ? burnStatus(tc) : undefined;
     const burnedFor =
         archivedWindow?.start !== undefined
             ? formatDuration(archivedWindow.end - archivedWindow.start)
@@ -772,7 +772,7 @@ export function TestCaseViewPage() {
                         {tc.spec.inline !== undefined
                             ? "inline script"
                             : `template ${tc.spec.template ?? "login"}`}
-                        {since && ` · burning for ${since}`}
+                        {burn && ` · ${burn}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
                         {tc.metadata.labels?.[PULL_REQUEST_LABEL] && (
                             <>

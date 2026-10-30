@@ -575,8 +575,9 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     <legend>Burn test</legend>
                     <p className="muted">
                         Keeps both deployments under the same steady load until stopped, each tagged
-                        with its own k6 target. Pick several templates for a matrix: each gets its
-                        own pair of deployments and test case.
+                        with its own k6 target. The load starts on both at the same moment, once
+                        both deployments and their k6 runners are ready. Pick several templates for
+                        a matrix: each gets its own pair of deployments and test case.
                     </p>
                     <div className="fields">
                         <div className="field wide">

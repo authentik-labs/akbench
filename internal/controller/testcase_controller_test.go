@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -79,16 +81,43 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(depStatus.Ready).To(BeTrue())
 			Expect(depStatus.BurnWorkloadRef).NotTo(BeNil())
 			Expect(depStatus.BurnWorkloadRef.Name).To(Equal(depName))
-			Expect(depStatus.BurningSince).NotTo(BeNil())
-			Expect(depStatus.BurningSince.Equal(&dep.CreationTimestamp)).To(BeTrue())
 			ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
 		})
 
+		It("starts k6 only once its pod is up, and records that as burningSince", func() {
+			r := &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}
+			res, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.RequeueAfter).NotTo(BeZero())
+
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			Expect(findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince).To(BeNil())
+
+			markBurnDeploymentStaged(render.BurnDeploymentName(resourceName, topo.Name))
+			_, err = r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			burningSince := findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince
+			Expect(burningSince).NotTo(BeNil())
+			Expect(burningSince.After(time.Now())).To(BeTrue())
+
+			// The next pass releases the waiting pod.
+			_, err = r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: "k6-script-" + resourceName, Namespace: "default"}, &cm)).To(Succeed())
+			Expect(cm.Data[render.StartAtFileName]).To(Equal(strconv.FormatInt(burningSince.Unix(), 10)))
+		})
+
 		It("stops its burn Deployment when archived but keeps the TestCase", func() {
 			r := &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}
 			_, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			markBurnDeploymentStaged(render.BurnDeploymentName(resourceName, topo.Name))
+			_, err = r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
 			var tc benchv1alpha1.TestCase
@@ -110,7 +139,6 @@ var _ = Describe("TestCase Controller", func() {
 			// shown for the time it ran.
 			Expect(archived.BurningSince).NotTo(BeNil())
 			Expect(archived.BurnStoppedAt).NotTo(BeNil())
-			Expect(archived.BurnStoppedAt.Before(archived.BurningSince)).To(BeFalse())
 			// So does where the deployment ran, to find its telemetry once
 			// it's deleted.
 			Expect(archived.Namespace).To(Equal(topo.Spec.Namespace))
@@ -424,4 +452,14 @@ func findDeploymentStatus(deployments []benchv1alpha1.TestCaseDeploymentStatus, 
 		}
 	}
 	return nil
+}
+
+// markBurnDeploymentStaged fakes the Deployment controller envtest lacks:
+// the named burn Deployment's k6 pod is up, waiting at the start gate.
+func markBurnDeploymentStaged(name string) {
+	var dep appsv1.Deployment
+	Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: name, Namespace: "default"}, &dep)).To(Succeed())
+	dep.Status.ObservedGeneration = dep.Generation
+	dep.Status.Replicas, dep.Status.UpdatedReplicas, dep.Status.ReadyReplicas = 1, 1, 1
+	Expect(k8sClient.Status().Update(context.Background(), &dep)).To(Succeed())
 }

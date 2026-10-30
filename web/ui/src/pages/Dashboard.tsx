@@ -3,7 +3,7 @@ import { MatrixGrid } from "../components/Matrix";
 import { NodePlacement } from "../components/Placement";
 import { PullRequestLink } from "../components/PullRequestLink";
 import { Badge } from "../components/Status";
-import { buildTargetRows, burningFor, TargetTable } from "../components/Targets";
+import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets";
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
 import { PULL_REQUEST_LABEL } from "../github";
@@ -193,7 +193,7 @@ export function DashboardPage() {
                 groups
                     .filter(({ tc }) => !burnMatrices.some((m) => matrixBurnTests(m).includes(tc)))
                     .map(({ tc, rows, sparklines }) => {
-                        const since = burningFor(tc);
+                        const burn = burnStatus(tc);
                         const degraded = rows.filter((r) => r.ready === false).length;
                         return (
                             <div className="group" key={tc.metadata.name}>
@@ -209,7 +209,7 @@ export function DashboardPage() {
                                             · {rows.length}{" "}
                                             {rows.length === 1 ? "target" : "targets"} ·{" "}
                                             {tc.spec.vus} VUs each
-                                            {since && ` · burning for ${since}`}
+                                            {burn && ` · ${burn}`}
                                             {tc.metadata.labels?.[PULL_REQUEST_LABEL] && (
                                                 <>
                                                     {" · "}
@@ -237,8 +237,8 @@ export function DashboardPage() {
             )}
 
             {burnMatrices.map((m) => {
-                const since = matrixBurnTests(m)
-                    .map((tc) => burningFor(tc))
+                const burn = matrixBurnTests(m)
+                    .map((tc) => burnStatus(tc))
                     .find((d) => d !== undefined);
                 return (
                     <div className="group" key={m.metadata.name}>
@@ -250,7 +250,7 @@ export function DashboardPage() {
                                 <span className="muted">
                                     · {m.spec.variants.map((v) => v.name).join(" vs ")} ·{" "}
                                     {m.spec.testCase.vus} VUs each
-                                    {since && ` · burning for ${since}`}
+                                    {burn && ` · ${burn}`}
                                     {m.metadata.labels?.[PULL_REQUEST_LABEL] && (
                                         <>
                                             {" · "}
