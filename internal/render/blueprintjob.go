@@ -49,9 +49,29 @@ func authentikConfigSecretName(t *benchv1alpha1.AuthentikDeployment) string {
 // deployment name + label + hash comfortably exceeds that for realistic
 // names (e.g. a longer TestCase name), and the create call fails outright
 // ("must be no more than 63 bytes") rather than silently truncating.
+//
+// The image is hashed in too, so a Job stuck on an image that can't be
+// pulled is replaced once the image changes, instead of blocking forever.
 func BlueprintJobName(t *benchv1alpha1.AuthentikDeployment, label, content string) string {
-	sum := sha256.Sum256(fmt.Appendf(nil, "%s/%s/%s", t.Name, label, content))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s/%s/%s/%s", t.Name, label, content, blueprintImage(t)))
 	return BlueprintJobNamePrefix + hex.EncodeToString(sum[:])[:16]
+}
+
+// blueprintImage is the authentik image the deployment runs. With no tag
+// set, the chart uses its own appVersion, which matches the chart version
+// (there is no :latest tag), so this falls back to the installed chart
+// version. Blueprint Jobs are only created once the HelmRelease is Ready,
+// by which point status.chartVersion is recorded.
+func blueprintImage(t *benchv1alpha1.AuthentikDeployment) string {
+	image := t.Spec.Authentik.Image
+	if image == "" {
+		image = "ghcr.io/goauthentik/server"
+	}
+	tag := t.Spec.Authentik.Tag
+	if tag == "" {
+		tag = ChartVersion(t)
+	}
+	return image + ":" + tag
 }
 
 // BlueprintJobNamePrefix starts every BlueprintJobName, which is how a
@@ -80,16 +100,6 @@ const BlueprintJobNamePrefix = "blueprint-"
 func BlueprintJob(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.WorkloadCluster, name, sourceConfigMapName, sourceConfigMapKey string) *batchv1.Job {
 	targetPath := BlueprintMountPath + "/" + BlueprintFileName
 	sourcePath := blueprintSourceMountPath + "/" + sourceConfigMapKey
-	image := t.Spec.Authentik.Image
-	if image == "" {
-		image = "ghcr.io/goauthentik/server"
-	}
-	tag := t.Spec.Authentik.Tag
-	if tag == "" {
-		// The authentik chart itself falls back to .Chart.AppVersion here -
-		// a Job rendered outside Helm has no equivalent to fall back to.
-		tag = "latest"
-	}
 
 	nodeSelector, tolerations := AuthentikPoolPlacement(wc)
 	return &batchv1.Job{
@@ -113,7 +123,7 @@ func BlueprintJob(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Worklo
 					SecurityContext: &corev1.PodSecurityContext{FSGroup: new(int64(1000))},
 					Containers: []corev1.Container{{
 						Name:    "apply-blueprint",
-						Image:   fmt.Sprintf("%s:%s", image, tag),
+						Image:   blueprintImage(t),
 						Command: []string{"sh", "-c", fmt.Sprintf("cp %s %s && ak apply_blueprint %s", sourcePath, targetPath, targetPath)},
 						EnvFrom: []corev1.EnvFromSource{
 							{SecretRef: &corev1.SecretEnvSource{Name: authentikConfigSecretName(t)}},

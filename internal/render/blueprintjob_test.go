@@ -115,3 +115,20 @@ func TestBlueprintJobMountsConfigMapAndPVCNotDeployment(t *testing.T) {
 		t.Errorf("container command = %v, want it to run ak apply_blueprint against %s", container.Command, BlueprintMountPath)
 	}
 }
+
+// TestBlueprintJobImageFallsBackToChartVersion: with no tag set, the Job
+// runs the installed chart's version (its appVersion), never :latest, and
+// a changed image gets a new Job.
+func TestBlueprintJobImageFallsBackToChartVersion(t *testing.T) {
+	topo := exampleBlueprintDeployment()
+	tagged := BlueprintJobName(topo, "fixtures", "content")
+	topo.Spec.Authentik.Tag = ""
+	topo.Status.ChartVersion = "2026.8.5"
+	job := BlueprintJob(topo, nil, "job", "cm", "key")
+	if got := job.Spec.Template.Spec.Containers[0].Image; got != "ghcr.io/goauthentik/server:2026.8.5" {
+		t.Errorf("image = %q, want the chart version as tag", got)
+	}
+	if BlueprintJobName(topo, "fixtures", "content") == tagged {
+		t.Error("BlueprintJobName didn't change with the image")
+	}
+}
