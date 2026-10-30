@@ -40,6 +40,9 @@ type TestCaseValidator struct {
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type TestCase.
 func (v *TestCaseValidator) ValidateCreate(ctx context.Context, obj *benchv1alpha1.TestCase) (admission.Warnings, error) {
+	if errs := nameErrors(obj.Name, maxTestCaseNameLength); len(errs) > 0 {
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: benchv1alpha1.GroupVersion.Group, Kind: "TestCase"}, obj.Name, errs)
+	}
 	return v.validate(ctx, nil, obj)
 }
 

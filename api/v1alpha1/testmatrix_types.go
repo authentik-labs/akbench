@@ -110,12 +110,6 @@ type TestMatrixStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 
 // TestMatrix is the Schema for the testmatrices API
-//
-// The name is a label value on everything it creates and part of their
-// Service names, so it must be a DNS label of at most 63 characters. Checked
-// on create only, so existing objects can still be updated and deleted.
-// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 63",message="name must be no more than 63 characters",optionalOldSelf=true
-// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="name must consist of lowercase alphanumeric characters or '-' (no dots)",optionalOldSelf=true
 type TestMatrix struct {
 	metav1.TypeMeta `json:",inline"`
 

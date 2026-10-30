@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -29,6 +31,14 @@ var _ = Describe("TestCase Webhook", func() {
 	})
 
 	Context("When creating or updating TestCase under Validating Webhook", func() {
+		It("rejects a name with dots or past the label value limit on create only", func() {
+			obj.Name = "compat-2026.8.5"
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(MatchError(ContainSubstring("metadata.name")))
+			obj.Name = "a" + strings.Repeat("-b", 32)
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(MatchError(ContainSubstring("63")))
+			Expect(validator.ValidateUpdate(ctx, obj, obj)).Error().NotTo(HaveOccurred())
+		})
+
 		// TODO (user): Add logic for validating webhooks
 		// Example:
 		// It("Should deny creation if a required field is missing", func() {

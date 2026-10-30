@@ -47,6 +47,16 @@ var _ = Describe("AuthentikDeployment Webhook", func() {
 		validator = AuthentikDeploymentValidator{Images: tags}
 	})
 
+	Context("name", func() {
+		It("rejects dots and names past Helm's release name limit on create only", func() {
+			obj.Name = "compat-2026.8.5"
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(MatchError(ContainSubstring("metadata.name")))
+			obj.Name = "2026-10-29-main-2026-8-5-oauth-token-exchange-and-then-some"
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(MatchError(ContainSubstring("53")))
+			Expect(validator.ValidateUpdate(ctx, obj, obj)).Error().NotTo(HaveOccurred())
+		})
+	})
+
 	Context("image tag", func() {
 		It("admits a tag that exists", func() {
 			Expect(validator.ValidateCreate(ctx, obj)).To(BeEmpty())

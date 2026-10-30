@@ -60,6 +60,9 @@ type AuthentikDeploymentValidator struct {
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type AuthentikDeployment.
 func (v *AuthentikDeploymentValidator) ValidateCreate(ctx context.Context, obj *benchv1alpha1.AuthentikDeployment) (admission.Warnings, error) {
+	if errs := nameErrors(obj.Name, maxDeploymentNameLength); len(errs) > 0 {
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: benchv1alpha1.GroupVersion.Group, Kind: "AuthentikDeployment"}, obj.Name, errs)
+	}
 	return v.validate(ctx, nil, obj)
 }
 
