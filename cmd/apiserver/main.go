@@ -88,7 +88,7 @@ func run() error {
 	flag.StringVar(&oidcCfg.ClientID, "oidc-client-id", os.Getenv("BENCH_OIDC_CLIENT_ID"),
 		"OIDC client ID of the web UI (a public client); also the audience accepted tokens must carry.")
 	flag.StringVar(&oidcScopes, "oidc-scopes", os.Getenv("BENCH_OIDC_SCOPES"),
-		"Comma-separated scopes the web UI requests. Defaults to openid,profile,email.")
+		"Comma- or space-separated scopes the web UI requests. Defaults to openid,profile,email.")
 	flag.StringVar(&oidcCfg.RequiredGroup, "oidc-required-group", os.Getenv("BENCH_OIDC_REQUIRED_GROUP"),
 		"If set, OIDC tokens must list this group in their groups claim.")
 	flag.StringVar(&mcpAuth.Resource, "mcp-resource-url", os.Getenv("BENCH_MCP_RESOURCE_URL"),
@@ -103,7 +103,7 @@ func run() error {
 	flag.StringVar(&mcpAuth.ClientID, "mcp-client-id", os.Getenv("BENCH_MCP_CLIENT_ID"),
 		"Client ID of the MCP client at akbench's token endpoint; its secret is read from BENCH_MCP_CLIENT_SECRET.")
 	flag.StringVar(&mcpScopes, "mcp-scopes", os.Getenv("BENCH_MCP_SCOPES"),
-		"Comma-separated scopes MCP access tokens must carry. Optional.")
+		"Comma- or space-separated scopes MCP access tokens must carry. Optional.")
 	flag.StringVar(&shellBinary, "shell", envOr("BENCH_SHELL", "/bin/bash"),
 		"Shell the in-browser kubectl shell runs.")
 	flag.StringVar(&shellKubeconfig, "shell-kubeconfig", os.Getenv("BENCH_SHELL_KUBECONFIG"),
@@ -139,7 +139,7 @@ func run() error {
 	var verifier api.TokenVerifier
 	if oidcCfg.Issuer != "" {
 		if oidcScopes != "" {
-			oidcCfg.Scopes = strings.Split(oidcScopes, ",")
+			oidcCfg.Scopes = splitScopes(oidcScopes)
 		}
 		if verifier, err = api.NewOIDCVerifier(oidcCfg); err != nil {
 			return err
@@ -157,7 +157,7 @@ func run() error {
 	if mcpAuth.IdPIssuer != "" {
 		mcpAuth.ClientSecret = os.Getenv("BENCH_MCP_CLIENT_SECRET")
 		if mcpScopes != "" {
-			mcpAuth.Scopes = strings.Split(mcpScopes, ",")
+			mcpAuth.Scopes = splitScopes(mcpScopes)
 		}
 		if err := mcpAuth.Validate(); err != nil {
 			return err
@@ -366,4 +366,10 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// splitScopes splits a scope list on commas or spaces, so both
+// "openid,profile" and OAuth's own "openid profile" work.
+func splitScopes(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' })
 }
