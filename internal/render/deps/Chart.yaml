@@ -28,7 +28,7 @@ dependencies:
     version: 3.14.0
     repository: https://kubernetes-sigs.github.io/metrics-server
   - name: kube-prometheus-stack
-    version: 92.14.1
+    version: 92.16.0
     repository: https://prometheus-community.github.io/helm-charts
   # grafana, tempo and loki moved to grafana-community (the grafana/helm-charts
   # copies are deprecated); pyroscope and alloy are still in grafana.
