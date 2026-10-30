@@ -38,6 +38,7 @@ const (
 	metricMemory = "memory"
 	unitCores    = "cores"
 	unitBytes    = "bytes"
+	unitRatio    = "ratio"
 	byPod        = "pod"
 	byPVC        = "persistentvolumeclaim"
 )

@@ -959,11 +959,22 @@ const WORKER_ACTOR_LIMIT = 10;
 const formatCount = (n: number | undefined) =>
     n === undefined ? "-" : Math.round(n).toLocaleString();
 
-/** MonitoringCharts is a workload cluster's observability stack: CPU, memory and disk. */
+/**
+ * MonitoringCharts is a workload cluster's observability stack (CPU, memory,
+ * disk) and its nodes' CPU, memory, disk IO and CPU steal.
+ */
 export function MonitoringCharts({ cluster }: { cluster: string }) {
-    const metrics: MonitoringMetric[] = ["cpu", "memory", "disk"];
+    const metrics: MonitoringMetric[] = [
+        "cpu",
+        "memory",
+        "disk",
+        "node-cpu",
+        "node-memory",
+        "node-io",
+        "node-steal",
+    ];
     return (
-        <div className="grid2">
+        <div className="grid2 wide">
             {metrics.map((metric) => (
                 <DeploymentChart
                     key={metric}
@@ -972,6 +983,7 @@ export function MonitoringCharts({ cluster }: { cluster: string }) {
                     fetch={(start, end, step) =>
                         api.monitoringMetrics(cluster, metric, start, end, step)
                     }
+                    height={360}
                 />
             ))}
         </div>

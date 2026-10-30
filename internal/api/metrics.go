@@ -114,7 +114,7 @@ var compareMetrics = []CompareMetric{
 		Recorded: `histogram_quantile(0.95, sum by (target) (sum_over_time(` + render.RecordedIterationDuration + `{%s}[%s])))`,
 	},
 	{
-		Key: "http_req_failed", Label: "Failed requests", Unit: "ratio", Better: betterLower,
+		Key: "http_req_failed", Label: "Failed requests", Unit: unitRatio, Better: betterLower,
 		// From the counter, not k6_http_req_failed_rate: that gauge is k6's
 		// cumulative ratio since the pod started, so on a long Burn it
 		// barely moves no matter what the window holds. Same expression the
@@ -129,7 +129,7 @@ var compareMetrics = []CompareMetric{
 			` / sum by (target) (sum_over_time(` + render.RecordedHTTPReqs + `{%[1]s}[%[2]s]))`,
 	},
 	{
-		Key: "checks", Label: "Passing checks", Unit: "ratio", Better: betterHigher,
+		Key: "checks", Label: "Passing checks", Unit: unitRatio, Better: betterHigher,
 		Query: `avg by (target) (k6_checks_rate{%s})`,
 	},
 	{
