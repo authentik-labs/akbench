@@ -134,6 +134,9 @@ export interface BuildInfo {
 export interface UpdateInfo {
     managed: boolean;
     current: string;
+    operator?: string;
+    operatorError?: string;
+    appliance?: string;
     target?: string;
     latest?: string;
     latestError?: string;

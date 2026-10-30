@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -41,9 +42,19 @@ func TestUpdatePinsLatest(t *testing.T) {
 		Appliance: true, ApplianceImage: "ghcr.io/authentik-labs/akbench-apiserver", ApplianceVersion: "1.0.0",
 	})
 	s.imageRegistry = newLatestRegistry(t, "0.0.0-main.abc1234").URL
+	operator := &appsv1.Deployment{
+		Name: "authentik-bench-operator-controller-manager", Namespace: "authentik-bench", Labels: operatorLabels,
+		Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{
+			{Name: "manager", Image: "ghcr.io/authentik-labs/akbench:0.0.0-main.1f2a183"},
+		}}}},
+	}
+	if err := k8s.Create(t.Context(), operator); err != nil {
+		t.Fatal(err)
+	}
 
 	view := decodeBody[updateView](t, do(t, s, http.MethodGet, "/api/v1/infrastructure/update", nil))
-	if view.Target != "1.0.0" || view.Latest != "0.0.0-main.abc1234" || view.LatestError != "" {
+	if view.Target != "1.0.0" || view.Latest != "0.0.0-main.abc1234" || view.LatestError != "" ||
+		view.Operator != "0.0.0-main.1f2a183" || view.Appliance != "1.0.0" {
 		t.Fatalf("view = %+v", view)
 	}
 

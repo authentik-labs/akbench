@@ -50,6 +50,9 @@ function UpdateSection() {
     }
     const rollingOut = info.target && info.target !== info.current;
     const available = info.latest && info.latest !== info.target;
+    // Flux upgrades the operator; a failed upgrade rolls it back and leaves
+    // it behind the target while the web UI is already updated.
+    const operatorBehind = info.operator && info.target && info.operator !== info.target;
     return (
         <>
             <h2>akbench</h2>
@@ -67,6 +70,45 @@ function UpdateSection() {
                     <span className="muted"> - up to date</span>
                 )}
             </p>
+            <Table
+                rows={[
+                    { component: "Web UI / API server", version: info.current },
+                    {
+                        component: "Operator",
+                        version: info.operator,
+                        note: operatorBehind ? (
+                            <span className="badge warn">Not on {info.target}</span>
+                        ) : (
+                            info.operatorError && (
+                                <span className="muted">{info.operatorError}</span>
+                            )
+                        ),
+                    },
+                    { component: "Appliance", version: info.appliance },
+                ]}
+                rowKey={(r) => r.component}
+                empty=""
+                columns={[
+                    { label: "Component", render: (r) => r.component },
+                    {
+                        label: "Version",
+                        render: (r) =>
+                            r.version ? (
+                                <code>{r.version}</code>
+                            ) : (
+                                <span className="muted">unknown</span>
+                            ),
+                    },
+                    { label: "", render: (r) => r.note },
+                ]}
+            />
+            {operatorBehind && !rollingOut && (
+                <Alert>
+                    The operator is still on {info.operator}. Its Flux HelmRelease
+                    (flux-system/authentik-bench-operator) has likely failed to upgrade; check its
+                    status.
+                </Alert>
+            )}
             {available && (
                 <button
                     className="primary"

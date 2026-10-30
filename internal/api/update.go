@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/authentik-labs/akbench/internal/appliance"
@@ -29,6 +32,12 @@ type updateView struct {
 	Managed bool `json:"managed"`
 	// Current is the running apiserver's version.
 	Current string `json:"current"`
+	// Operator is the operator Deployment's image tag: Flux upgrades it,
+	// and a failed upgrade leaves it behind Target.
+	Operator      string `json:"operator,omitempty"`
+	OperatorError string `json:"operatorError,omitempty"`
+	// Appliance is the appliance image's own version.
+	Appliance string `json:"appliance,omitempty"`
 	// Target is the version the appliance is rolling out (or running).
 	Target string `json:"target,omitempty"`
 	// Latest is the newest published build; LatestError why it's unknown.
@@ -57,10 +66,35 @@ func (s *Server) getUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view.Target = appliance.EffectiveVersion(s.cfg.ApplianceVersion, pin.Data)
+	view.Appliance = s.cfg.ApplianceVersion
+	if view.Operator, err = s.operatorVersion(r.Context()); err != nil {
+		view.OperatorError = err.Error()
+	}
 	if view.Latest, err = s.latestVersion(r.Context()); err != nil {
 		view.LatestError = err.Error()
 	}
 	writeJSON(w, r, http.StatusOK, view)
+}
+
+// operatorLabels select the operator chart's manager Deployment.
+var operatorLabels = client.MatchingLabels{"control-plane": "controller-manager", "app.kubernetes.io/name": "authentik-bench-operator"}
+
+// operatorVersion is the image tag of the operator's manager container.
+func (s *Server) operatorVersion(ctx context.Context) (string, error) {
+	var list appsv1.DeploymentList
+	if err := s.client.List(ctx, &list, operatorLabels); err != nil {
+		return "", err
+	}
+	for _, d := range list.Items {
+		for _, c := range d.Spec.Template.Spec.Containers {
+			if c.Name != "manager" {
+				continue
+			}
+			_, tag, _ := strings.Cut(c.Image[strings.LastIndex(c.Image, "/")+1:], ":")
+			return tag, nil
+		}
+	}
+	return "", fmt.Errorf("no operator Deployment found")
 }
 
 // applyUpdate pins the latest published build. Resolved here rather than
