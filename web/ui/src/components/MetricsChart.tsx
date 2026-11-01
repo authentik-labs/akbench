@@ -572,6 +572,130 @@ export function ResourceCharts({
     );
 }
 
+const TREND_SLICES = 6;
+
+const TREND_METRICS = ["http_reqs", "iterations", "http_req_duration_p95", "http_req_duration_p99"];
+
+/**
+ * TrendTable splits the window into TREND_SLICES equal slices and shows each
+ * metric per slice, plus the change from the first slice to the last - how a
+ * long Burn drifts, which a chart squeezed over days hides. Each value is
+ * Prometheus' own aggregate over its slice (window = step = slice length), so
+ * a p99 is the slice's real p99, not an average of per-minute ones. Memory is
+ * a gauge and reads as of the slice's end.
+ */
+export function TrendTable({
+    testids,
+    endSeconds,
+    rangeSeconds = 900,
+    refreshMs = 60000,
+}: {
+    testids: string[];
+    endSeconds?: number;
+    rangeSeconds?: number;
+    refreshMs?: number;
+}) {
+    const { data, error } = useResource(
+        () => {
+            if (testids.length === 0) {
+                return Promise.resolve(undefined);
+            }
+            const end = endSeconds ?? Math.floor(Date.now() / 1000);
+            const slice = Math.max(60, Math.floor(rangeSeconds / TREND_SLICES));
+            // One point per slice, stamped at the slice's end.
+            const first = end - (TREND_SLICES - 1) * slice;
+            const step = `${slice}s`;
+            return Promise.all([
+                ...TREND_METRICS.map((m) =>
+                    api
+                        .metricsRange(testids, m, first, end, step, step)
+                        .then((r) => ({ response: r, better: r.metric.better, component: "" })),
+                ),
+                ...RESOURCE_CHARTS.map(({ resource, component }) =>
+                    api
+                        .resourceRange(testids, resource, first, end, step, component, step)
+                        .then((r) => ({ response: r, better: "lower" as const, component })),
+                ),
+            ]).then((responses) => ({ responses, first, slice }));
+        },
+        [testids.join(","), rangeSeconds, endSeconds],
+        endSeconds !== undefined ? 0 : refreshMs,
+    );
+    if (!data) {
+        return error ? <div className="alert error">{error}</div> : null;
+    }
+    const { responses, first, slice } = data;
+    const withDate = rangeSeconds > 86400;
+    const multi =
+        new Set(responses.flatMap((r) => r.response.series.map((s) => s.target))).size > 1;
+    const rows = responses.flatMap(({ response, better, component }) =>
+        response.series.map((s) => {
+            const values: (number | undefined)[] = Array(TREND_SLICES).fill(undefined);
+            for (const p of s.points) {
+                const i = Math.round((p.time - first) / slice);
+                if (i >= 0 && i < TREND_SLICES) {
+                    values[i] = p.value;
+                }
+            }
+            return {
+                key: `${response.metric.key}${component}::${s.testid}::${s.target}`,
+                label: component
+                    ? `${response.metric.label} · ${component}`
+                    : response.metric.label,
+                target: s.target,
+                unit: response.metric.unit,
+                better,
+                values,
+            };
+        }),
+    );
+    return (
+        <div
+            className="panel table-scroll"
+            style={{ marginBottom: "var(--ak-global--spacer--md)" }}
+        >
+            <h3>Trend over the window</h3>
+            {error && <div className="alert error">{error}</div>}
+            <table className="table">
+                <thead>
+                    <tr>
+                        <th />
+                        {multi && <th>Target</th>}
+                        {Array.from({ length: TREND_SLICES }, (_, i) => (
+                            <th key={i} className="num" title="Slice start">
+                                {formatTime(first + (i - 1) * slice, withDate)}
+                            </th>
+                        ))}
+                        <th className="num">Δ first → last</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.key}>
+                            <td>{row.label}</td>
+                            {multi && <td>{row.target}</td>}
+                            {row.values.map((v, i) => (
+                                <td key={i} className="mono num">
+                                    {formatMetricValue(v, row.unit)}
+                                </td>
+                            ))}
+                            <td className="mono num">
+                                <Delta
+                                    value={relativeDelta(
+                                        row.values.at(-1),
+                                        row.values.find((v) => v !== undefined),
+                                    )}
+                                    better={row.better}
+                                />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 /** deploymentDatasets is one line per series, labeled by its target. */
 function deploymentDatasets(data: RangeResponse | undefined, dark: boolean) {
     return (data?.series ?? []).map((s, i) => ({

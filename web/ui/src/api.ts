@@ -301,10 +301,13 @@ export const api = {
         startSeconds: number,
         endSeconds: number,
         step: string,
+        // The rate()/quantile range each point aggregates over (server default 1m).
+        window?: string,
     ) =>
         request<RangeResponse>(
             `/api/v1/metrics/range?testids=${seg(testids.join(","))}` +
-                `&metric=${seg(metric)}&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}`,
+                `&metric=${seg(metric)}&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}` +
+                (window ? `&window=${seg(window)}` : ""),
         ),
     // CPU/memory for each testid's own deployment, summed across its pods -
     // scoped by namespace, not by a testid label the way metricsRange's
@@ -319,11 +322,13 @@ export const api = {
         // Only that authentik process's pods; omitted, every non-Job pod in
         // the namespace (postgres included).
         component?: "server" | "worker",
+        window?: string,
     ) =>
         request<RangeResponse>(
             `/api/v1/metrics/resources?testids=${seg(testids.join(","))}` +
                 `&resource=${seg(resource)}&start=${startSeconds}&end=${endSeconds}&step=${seg(step)}` +
-                (component ? `&component=${seg(component)}` : ""),
+                (component ? `&component=${seg(component)}` : "") +
+                (window ? `&window=${seg(window)}` : ""),
         ),
     // A deployment's own postgres over time, independent of any test: one
     // line per postgres pod (or data PVC, for disk). Same RangeResponse

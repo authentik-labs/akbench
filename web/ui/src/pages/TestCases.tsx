@@ -6,6 +6,7 @@ import {
     MetricsGrid,
     PostgresCharts,
     ResourceCharts,
+    TrendTable,
     WorkerCharts,
 } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
@@ -953,6 +954,13 @@ export function TestCaseViewPage() {
                     <Alert kind="info">
                         Latest run is still in progress - metrics will show once it completes.
                     </Alert>
+                )}
+                {profile === "Burn" && (
+                    <TrendTable
+                        testids={[name]}
+                        endSeconds={metricsEnd}
+                        rangeSeconds={timelineRange}
+                    />
                 )}
                 <MetricsGrid
                     testids={[name]}
