@@ -1237,3 +1237,52 @@ dialog.report canvas {
 dialog.report canvas.loading {
     opacity: 0.5;
 }
+
+/* -- test case wizard */
+.wizard-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ak-global--spacer--sm);
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--ak-global--spacer--md);
+}
+.wizard-steps button {
+    display: flex;
+    align-items: center;
+    gap: var(--ak-global--spacer--sm);
+    border-color: transparent;
+    background: none;
+    color: var(--muted);
+}
+.wizard-steps button.on {
+    color: var(--text);
+    font-weight: var(--ak-global--font-weight--bold);
+}
+.wizard-steps .num {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+}
+.wizard-steps button.on .num {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+dl.summary {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--ak-global--spacer--xs) var(--ak-global--spacer--md);
+    max-width: 860px;
+    margin: var(--ak-global--spacer--lg) 0 0;
+}
+dl.summary dt {
+    color: var(--muted);
+}
+dl.summary dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}

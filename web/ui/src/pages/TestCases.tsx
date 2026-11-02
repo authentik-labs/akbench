@@ -59,7 +59,7 @@ import {
 import { useResource } from "../useResource";
 import { ParentFields, parentDeployments, TestCaseParentView } from "./TestCaseParent";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 /**
@@ -350,6 +350,9 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
     const [spec, setSpec] = useState<TestCaseSpec>(existing?.spec ?? emptySpec());
     const [error, setError] = useState<string>();
     const [saving, setSaving] = useState(false);
+    const [step, setStep] = useState(0);
+    // Furthest step a new test case got to; the indicator only jumps back.
+    const [reached, setReached] = useState(0);
     // A parent is only created by the comparison pages, but edited here.
     const parent = existing !== undefined && isParent(existing);
 
@@ -379,18 +382,40 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
     // hatch deliberately not offered here - it survives a save untouched.
     const scriptChoice = spec.inline !== undefined ? INLINE_TEMPLATE : (spec.template ?? "login");
 
+    // Checks the browser cannot do: native required/min only cover the step
+    // on screen, so they run as each step is left.
+    function stepError(index: number): string | undefined {
+        if (steps[index].label === "Targets" && !parent && selectedDeployments.length === 0) {
+            return "Select at least one deployment to drive";
+        }
+        if (steps[index].label === "Script" && parent && !spec.templates?.length) {
+            return "Pick at least one template";
+        }
+        return undefined;
+    }
+
     async function submit(event: FormEvent) {
         event.preventDefault();
-        if (parent && !spec.templates?.length) {
-            setError("Pick at least one template");
+        const invalid = stepError(step);
+        if (invalid) {
+            setError(invalid);
             return;
         }
-        if (!parent && selectedDeployments.length === 0) {
-            setError("Select at least one deployment to drive");
+        setError(undefined);
+        if (step < steps.length - 1 && !existing) {
+            setStep(step + 1);
+            setReached((r) => Math.max(r, step + 1));
             return;
+        }
+        for (let i = 0; i < steps.length; i++) {
+            const failed = stepError(i);
+            if (failed) {
+                setStep(i);
+                setError(failed);
+                return;
+            }
         }
         setSaving(true);
-        setError(undefined);
         try {
             const savedName = existing?.metadata.name ?? name;
             if (existing) {
@@ -407,136 +432,129 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
         }
     }
 
-    return (
-        <Page title={existing ? `Edit ${existing.metadata.name}` : "New test case"}>
-            <form onSubmit={submit}>
-                <Alert>{error}</Alert>
-                <fieldset>
-                    <legend>Identity</legend>
+    const steps: { label: string; body: ReactNode }[] = [
+        {
+            label: "Targets",
+            body: (
+                <div className="fields">
+                    <Field label="Name" help="Also the k6 testid every metric is split on">
+                        <input
+                            required
+                            value={name}
+                            disabled={Boolean(existing)}
+                            onChange={(e) => setName(k8sNameInput(e.target.value))}
+                        />
+                    </Field>
+                    {!parent && (
+                        <div className="field wide">
+                            <span id="targets-label">Target deployments</span>
+                            <div className="checklist" role="group" aria-labelledby="targets-label">
+                                {(deployments.data ?? []).map((d) => (
+                                    <label key={d.metadata.name}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedDeployments.includes(d.metadata.name)}
+                                            onChange={() => toggleDeployment(d.metadata.name)}
+                                        />
+                                        <span className="mono" title={d.metadata.name}>
+                                            {d.metadata.name}
+                                        </span>
+                                        <span className="meta" title={d.spec.authentik?.tag}>
+                                            {d.spec.authentik?.tag
+                                                ? shortTag(d.spec.authentik.tag)
+                                                : "chart default"}
+                                        </span>
+                                    </label>
+                                ))}
+                                {deployments.data?.length === 0 && (
+                                    <span className="muted">No deployments yet.</span>
+                                )}
+                            </div>
+                            <span className="help">
+                                Same script and load against each, tagged with its own k6 target.
+                                Pick two or more to compare versions or setups side by side; Run now
+                                starts one test run per target.
+                            </span>
+                        </div>
+                    )}
+                    {!parent && selectedDeployments.length > 1 && (
+                        <Field label="Baseline" help="The target the others are compared against">
+                            <select
+                                value={baselineChoice}
+                                onChange={(e) => patch({ baselineRef: { name: e.target.value } })}
+                            >
+                                {selectedDeployments.map((n) => (
+                                    <option key={n} value={n}>
+                                        {n}
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
+                </div>
+            ),
+        },
+        {
+            label: "Script",
+            body: parent ? (
+                <ParentFields spec={spec} patch={patch} />
+            ) : (
+                <>
                     <div className="fields">
-                        <Field label="Name" help="Also the k6 testid every metric is split on">
+                        <Field
+                            label="Template"
+                            help={<Link to="/testcasetemplates">Manage test case templates</Link>}
+                        >
+                            <select
+                                value={scriptChoice}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === INLINE_TEMPLATE) {
+                                        patch({
+                                            inline: spec.inline ?? "",
+                                            template: undefined,
+                                        });
+                                    } else {
+                                        patch({ template: value, inline: undefined });
+                                    }
+                                }}
+                            >
+                                {(templates.data ?? []).map((t) => (
+                                    <option key={t.metadata.name} value={t.metadata.name}>
+                                        {t.metadata.name}
+                                        {t.spec.description ? ` - ${t.spec.description}` : ""}
+                                    </option>
+                                ))}
+                                <option value={INLINE_TEMPLATE}>Custom - inline k6 script</option>
+                            </select>
+                        </Field>
+                        <Field label="Flow slug">
                             <input
-                                required
-                                value={name}
-                                disabled={Boolean(existing)}
-                                onChange={(e) => setName(k8sNameInput(e.target.value))}
+                                value={spec.flow ?? ""}
+                                placeholder="default-authentication-flow"
+                                onChange={(e) => patch({ flow: e.target.value })}
                             />
                         </Field>
-                        {!parent && (
-                            <div className="field wide">
-                                <span id="targets-label">Target deployments</span>
-                                <div
-                                    className="checklist"
-                                    role="group"
-                                    aria-labelledby="targets-label"
-                                >
-                                    {(deployments.data ?? []).map((d) => (
-                                        <label key={d.metadata.name}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedDeployments.includes(
-                                                    d.metadata.name,
-                                                )}
-                                                onChange={() => toggleDeployment(d.metadata.name)}
-                                            />
-                                            <span className="mono" title={d.metadata.name}>
-                                                {d.metadata.name}
-                                            </span>
-                                            <span className="meta" title={d.spec.authentik?.tag}>
-                                                {d.spec.authentik?.tag
-                                                    ? shortTag(d.spec.authentik.tag)
-                                                    : "chart default"}
-                                            </span>
-                                        </label>
-                                    ))}
-                                    {deployments.data?.length === 0 && (
-                                        <span className="muted">No deployments yet.</span>
-                                    )}
-                                </div>
-                                <span className="help">
-                                    Same script and load against each, tagged with its own k6
-                                    target. Pick two or more to compare versions or setups side by
-                                    side; Run now starts one test run per target.
-                                </span>
-                            </div>
-                        )}
-                        {!parent && selectedDeployments.length > 1 && (
-                            <Field
-                                label="Baseline"
-                                help="The target the others are compared against"
-                            >
-                                <select
-                                    value={baselineChoice}
-                                    onChange={(e) =>
-                                        patch({ baselineRef: { name: e.target.value } })
-                                    }
-                                >
-                                    {selectedDeployments.map((n) => (
-                                        <option key={n} value={n}>
-                                            {n}
-                                        </option>
-                                    ))}
-                                </select>
-                            </Field>
-                        )}
                     </div>
-                </fieldset>
-
-                {parent ? (
-                    <ParentFields spec={spec} patch={patch} />
-                ) : (
-                    <fieldset>
-                        <legend>Test template</legend>
-                        <div className="fields">
-                            <Field
-                                label="Template"
-                                help={
-                                    <Link to="/testcasetemplates">Manage test case templates</Link>
-                                }
-                            >
-                                <select
-                                    value={scriptChoice}
-                                    onChange={(e) => {
-                                        const value = e.target.value;
-                                        if (value === INLINE_TEMPLATE) {
-                                            patch({
-                                                inline: spec.inline ?? "",
-                                                template: undefined,
-                                            });
-                                        } else {
-                                            patch({ template: value, inline: undefined });
-                                        }
-                                    }}
-                                >
-                                    {(templates.data ?? []).map((t) => (
-                                        <option key={t.metadata.name} value={t.metadata.name}>
-                                            {t.metadata.name}
-                                            {t.spec.description ? ` - ${t.spec.description}` : ""}
-                                        </option>
-                                    ))}
-                                    <option value={INLINE_TEMPLATE}>
-                                        Custom - inline k6 script
-                                    </option>
-                                </select>
-                            </Field>
-                        </div>
-                        {scriptChoice === INLINE_TEMPLATE && (
-                            <>
-                                <p className="muted">
-                                    Inline k6 script (TypeScript), stored on this TestCase.
-                                </p>
-                                <CodeEditor
-                                    language="typescript"
-                                    value={spec.inline ?? ""}
-                                    onChange={(v) => patch({ inline: v })}
-                                />
-                            </>
-                        )}
-                    </fieldset>
-                )}
-
-                <fieldset>
-                    <legend>Load</legend>
+                    {scriptChoice === INLINE_TEMPLATE && (
+                        <>
+                            <p className="muted">
+                                Inline k6 script (TypeScript), stored on this TestCase.
+                            </p>
+                            <CodeEditor
+                                language="typescript"
+                                value={spec.inline ?? ""}
+                                onChange={(v) => patch({ inline: v })}
+                            />
+                        </>
+                    )}
+                </>
+            ),
+        },
+        {
+            label: "Load",
+            body: (
+                <>
                     <div className="choice-cards" role="radiogroup" aria-label="Profile">
                         {PROFILES.map((p) => (
                             <label className="choice-card" key={p.value}>
@@ -595,13 +613,15 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
                                 />
                             </Field>
                         )}
-                        <Field label="Flow slug">
-                            <input
-                                value={spec.flow ?? ""}
-                                placeholder="default-authentication-flow"
-                                onChange={(e) => patch({ flow: e.target.value })}
-                            />
-                        </Field>
+                    </div>
+                </>
+            ),
+        },
+        {
+            label: existing ? "Options" : "Review",
+            body: (
+                <>
+                    <div className="fields">
                         <Field label="Trace sample rate">
                             <input
                                 value={spec.traceSampleRate ?? ""}
@@ -630,12 +650,87 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
                             />
                         </Field>
                     </div>
+                    {!existing && (
+                        <dl className="summary">
+                            <dt>Name</dt>
+                            <dd className="mono">{name || "-"}</dd>
+                            <dt>Targets</dt>
+                            <dd className="mono">
+                                {selectedDeployments.join(", ") || "-"}
+                                {selectedDeployments.length > 1 && ` (baseline ${baselineChoice})`}
+                            </dd>
+                            <dt>Script</dt>
+                            <dd className="mono">
+                                {scriptChoice === INLINE_TEMPLATE
+                                    ? "inline k6 script"
+                                    : scriptChoice}
+                                {spec.flow && ` · ${spec.flow}`}
+                            </dd>
+                            <dt>Load</dt>
+                            <dd>
+                                {spec.profile} · {spec.vus} virtual users
+                                {spec.profile === "Quick"
+                                    ? ` · ${spec.iterations ?? 1000} logins each, up to ${spec.quickDuration || "150s"}`
+                                    : ` · up to ${spec.burnDuration || "8760h"}`}
+                            </dd>
+                        </dl>
+                    )}
+                </>
+            ),
+        },
+    ];
+    const last = step === steps.length - 1;
+
+    return (
+        <Page title={existing ? `Edit ${existing.metadata.name}` : "New test case"}>
+            <form onSubmit={submit}>
+                <ol className="wizard-steps">
+                    {steps.map((s, i) => (
+                        <li key={s.label}>
+                            <button
+                                type="button"
+                                className={i === step ? "on" : undefined}
+                                aria-current={i === step ? "step" : undefined}
+                                disabled={!existing && i > reached}
+                                onClick={() => {
+                                    setError(undefined);
+                                    setStep(i);
+                                }}
+                            >
+                                <span className="num">{i + 1}</span>
+                                {s.label}
+                            </button>
+                        </li>
+                    ))}
+                </ol>
+                <Alert>{error}</Alert>
+                <fieldset>
+                    <legend>{steps[step].label}</legend>
+                    {steps[step].body}
                 </fieldset>
 
                 <div className="form-actions">
-                    <button type="submit" className="primary" disabled={saving}>
-                        {saving ? "Saving…" : existing ? "Save changes" : "Create test case"}
-                    </button>
+                    {step > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setError(undefined);
+                                setStep(step - 1);
+                            }}
+                        >
+                            Back
+                        </button>
+                    )}
+                    {!last && !existing && (
+                        <button type="submit" className="primary">
+                            Next
+                        </button>
+                    )}
+                    {(last || existing) && (
+                        <button type="submit" className="primary" disabled={saving}>
+                            {saving ? "Saving…" : existing ? "Save changes" : "Create test case"}
+                        </button>
+                    )}
                     <button type="button" onClick={() => navigate(-1)}>
                         Cancel
                     </button>
