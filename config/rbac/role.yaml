@@ -101,22 +101,12 @@ rules:
   - authentikdeployments/status
   - testcases/status
   - testcasetemplates/status
-  - testmatrices/status
   - testruns/status
   - workloadclusters/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - bench.goauthentik.io
-  resources:
-  - testmatrices
-  verbs:
-  - delete
-  - get
-  - list
-  - watch
 - apiGroups:
   - bootstrap.cluster.x-k8s.io
   resources:
