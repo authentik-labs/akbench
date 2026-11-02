@@ -11,6 +11,7 @@ import {
     Alert,
     confirmAndRun,
     Empty,
+    Field,
     Loading,
     Page,
     Section,
@@ -25,12 +26,157 @@ import {
     SINCE_START,
     timeRangeSeconds,
 } from "../format";
-import { PULL_REQUEST_LABEL } from "../github";
-import { TestCase } from "../types";
+import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
+import { AuthentikDeploymentSpec, TestCase, TestCaseSpec } from "../types";
 import { useResource } from "../useResource";
+import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 
 import { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+
+/**
+ * ParentFields edits what a parent test case adds to a leaf's spec: which
+ * templates become children, the variants each runs on, and the deployment
+ * spec they all share. Renaming or removing a variant or template replaces
+ * its deployments and child test case.
+ */
+export function ParentFields({
+    spec,
+    patch,
+}: {
+    spec: TestCaseSpec;
+    patch: (changes: Partial<TestCaseSpec>) => void;
+}) {
+    const templates = useResource(() => api.testCaseTemplates(), [], 0);
+    const deployment = spec.deployment ?? emptySpec();
+    const variants = spec.variants ?? [];
+    const selected = spec.templates ?? [];
+    const patchDeployment = (changes: Partial<AuthentikDeploymentSpec>) =>
+        patch({ deployment: { ...deployment, ...changes } });
+    const patchVariant = (i: number, changes: Partial<(typeof variants)[number]>) =>
+        patch({ variants: variants.map((v, j) => (j === i ? { ...v, ...changes } : v)) });
+
+    return (
+        <>
+            <fieldset>
+                <legend>Templates</legend>
+                <p className="muted">
+                    Each runs as its own child test case, on its own deployment per variant.
+                </p>
+                <div className="checklist" role="group" aria-label="Templates">
+                    {(templates.data ?? []).map((t) => (
+                        <label key={t.metadata.name}>
+                            <input
+                                type="checkbox"
+                                checked={selected.includes(t.metadata.name)}
+                                onChange={() =>
+                                    patch({
+                                        templates: selected.includes(t.metadata.name)
+                                            ? selected.filter((n) => n !== t.metadata.name)
+                                            : [...selected, t.metadata.name],
+                                    })
+                                }
+                            />
+                            <span className="mono">{t.metadata.name}</span>
+                            {t.spec.description && (
+                                <span className="meta">{t.spec.description}</span>
+                            )}
+                        </label>
+                    ))}
+                </div>
+                <Link to="/testcasetemplates">Manage test case templates</Link>
+            </fieldset>
+
+            <fieldset>
+                <legend>Variants</legend>
+                <p className="muted">
+                    The authentik builds compared against each other. A variant's name is part of
+                    its deployments' names, so renaming one replaces them.
+                </p>
+                {variants.map((v, i) => (
+                    <div className="pool" key={i}>
+                        <div className="fields">
+                            <Field label="Name">
+                                <input
+                                    required
+                                    maxLength={24}
+                                    value={v.name}
+                                    onChange={(e) =>
+                                        patchVariant(i, { name: k8sNameInput(e.target.value) })
+                                    }
+                                />
+                            </Field>
+                            <Field label="Image">
+                                <input
+                                    value={v.image ?? ""}
+                                    placeholder={deployment.authentik?.image ?? "chart default"}
+                                    onChange={(e) =>
+                                        patchVariant(i, { image: e.target.value || undefined })
+                                    }
+                                />
+                            </Field>
+                            <Field label="Tag">
+                                <input
+                                    required
+                                    value={v.tag}
+                                    onChange={(e) => patchVariant(i, { tag: e.target.value })}
+                                />
+                            </Field>
+                        </div>
+                        <div className="pool-footer">
+                            <label className="check">
+                                <input
+                                    type="radio"
+                                    name="baselineVariant"
+                                    checked={baselineOf({ spec } as TestCase) === v.name}
+                                    onChange={() => patch({ baselineVariant: v.name })}
+                                />
+                                Baseline
+                            </label>
+                            <button
+                                type="button"
+                                className="small danger"
+                                disabled={variants.length <= 1}
+                                onClick={() =>
+                                    patch({ variants: variants.filter((_, j) => j !== i) })
+                                }
+                            >
+                                Remove variant
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                <button
+                    type="button"
+                    onClick={() => patch({ variants: [...variants, { name: "", tag: "" }] })}
+                >
+                    Add variant
+                </button>
+            </fieldset>
+
+            <fieldset>
+                <legend>Deployments</legend>
+                <div className="fields">
+                    <Field label="Cluster">
+                        <ClusterSelect
+                            value={deployment.clusterRef?.name}
+                            onChange={(cluster) =>
+                                patchDeployment({ clusterRef: { name: cluster } })
+                            }
+                        />
+                    </Field>
+                </div>
+            </fieldset>
+            <DeploymentSpecFields
+                spec={deployment}
+                patch={patchDeployment}
+                extraValuesYAML={spec.extraValues ?? ""}
+                onExtraValuesChange={(v) => patch({ extraValues: v })}
+                showImage={false}
+            />
+        </>
+    );
+}
 
 function deleteParent(name: string, then: () => void) {
     return confirmAndRun(
@@ -204,6 +350,9 @@ export function TestCaseParentView({
                         >
                             {m.spec.archived ? "Unarchive" : "Archive"}
                         </button>
+                        <Link className="button" to={`/testcases/${name}/edit`}>
+                            Edit
+                        </Link>
                         <button onClick={() => setReportOpen(true)}>Report</button>
                         <button
                             className="danger"

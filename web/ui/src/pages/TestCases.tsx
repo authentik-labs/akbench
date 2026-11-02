@@ -57,7 +57,7 @@ import {
     testRunDeployment,
 } from "../types";
 import { useResource } from "../useResource";
-import { parentDeployments, TestCaseParentView } from "./TestCaseParent";
+import { ParentFields, parentDeployments, TestCaseParentView } from "./TestCaseParent";
 
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
@@ -245,14 +245,12 @@ export function TestCasesPage() {
                                             Run now
                                         </button>
                                     )}
-                                {!isParent(tc) && (
-                                    <Link
-                                        className="button small"
-                                        to={`/testcases/${tc.metadata.name}/edit`}
-                                    >
-                                        Edit
-                                    </Link>
-                                )}
+                                <Link
+                                    className="button small"
+                                    to={`/testcases/${tc.metadata.name}/edit`}
+                                >
+                                    Edit
+                                </Link>
                                 <button
                                     className="small"
                                     onClick={() =>
@@ -352,6 +350,8 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
     const [spec, setSpec] = useState<TestCaseSpec>(existing?.spec ?? emptySpec());
     const [error, setError] = useState<string>();
     const [saving, setSaving] = useState(false);
+    // A parent is only created by the comparison pages, but edited here.
+    const parent = existing !== undefined && isParent(existing);
 
     const patch = (changes: Partial<TestCaseSpec>) =>
         setSpec((current) => ({ ...current, ...changes }));
@@ -381,7 +381,11 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
 
     async function submit(event: FormEvent) {
         event.preventDefault();
-        if (selectedDeployments.length === 0) {
+        if (parent && !spec.templates?.length) {
+            setError("Pick at least one template");
+            return;
+        }
+        if (!parent && selectedDeployments.length === 0) {
             setError("Select at least one deployment to drive");
             return;
         }
@@ -418,37 +422,45 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
                                 onChange={(e) => setName(k8sNameInput(e.target.value))}
                             />
                         </Field>
-                        <div className="field wide">
-                            <span id="targets-label">Target deployments</span>
-                            <div className="checklist" role="group" aria-labelledby="targets-label">
-                                {(deployments.data ?? []).map((d) => (
-                                    <label key={d.metadata.name}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedDeployments.includes(d.metadata.name)}
-                                            onChange={() => toggleDeployment(d.metadata.name)}
-                                        />
-                                        <span className="mono" title={d.metadata.name}>
-                                            {d.metadata.name}
-                                        </span>
-                                        <span className="meta" title={d.spec.authentik?.tag}>
-                                            {d.spec.authentik?.tag
-                                                ? shortTag(d.spec.authentik.tag)
-                                                : "chart default"}
-                                        </span>
-                                    </label>
-                                ))}
-                                {deployments.data?.length === 0 && (
-                                    <span className="muted">No deployments yet.</span>
-                                )}
+                        {!parent && (
+                            <div className="field wide">
+                                <span id="targets-label">Target deployments</span>
+                                <div
+                                    className="checklist"
+                                    role="group"
+                                    aria-labelledby="targets-label"
+                                >
+                                    {(deployments.data ?? []).map((d) => (
+                                        <label key={d.metadata.name}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedDeployments.includes(
+                                                    d.metadata.name,
+                                                )}
+                                                onChange={() => toggleDeployment(d.metadata.name)}
+                                            />
+                                            <span className="mono" title={d.metadata.name}>
+                                                {d.metadata.name}
+                                            </span>
+                                            <span className="meta" title={d.spec.authentik?.tag}>
+                                                {d.spec.authentik?.tag
+                                                    ? shortTag(d.spec.authentik.tag)
+                                                    : "chart default"}
+                                            </span>
+                                        </label>
+                                    ))}
+                                    {deployments.data?.length === 0 && (
+                                        <span className="muted">No deployments yet.</span>
+                                    )}
+                                </div>
+                                <span className="help">
+                                    Same script and load against each, tagged with its own k6
+                                    target. Pick two or more to compare versions or setups side by
+                                    side; Run now starts one test run per target.
+                                </span>
                             </div>
-                            <span className="help">
-                                Same script and load against each, tagged with its own k6 target.
-                                Pick two or more to compare versions or setups side by side; Run now
-                                starts one test run per target.
-                            </span>
-                        </div>
-                        {selectedDeployments.length > 1 && (
+                        )}
+                        {!parent && selectedDeployments.length > 1 && (
                             <Field
                                 label="Baseline"
                                 help="The target the others are compared against"
@@ -470,47 +482,58 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
                     </div>
                 </fieldset>
 
-                <fieldset>
-                    <legend>Test template</legend>
-                    <div className="fields">
-                        <Field
-                            label="Template"
-                            help={<Link to="/testcasetemplates">Manage test case templates</Link>}
-                        >
-                            <select
-                                value={scriptChoice}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === INLINE_TEMPLATE) {
-                                        patch({ inline: spec.inline ?? "", template: undefined });
-                                    } else {
-                                        patch({ template: value, inline: undefined });
-                                    }
-                                }}
+                {parent ? (
+                    <ParentFields spec={spec} patch={patch} />
+                ) : (
+                    <fieldset>
+                        <legend>Test template</legend>
+                        <div className="fields">
+                            <Field
+                                label="Template"
+                                help={
+                                    <Link to="/testcasetemplates">Manage test case templates</Link>
+                                }
                             >
-                                {(templates.data ?? []).map((t) => (
-                                    <option key={t.metadata.name} value={t.metadata.name}>
-                                        {t.metadata.name}
-                                        {t.spec.description ? ` - ${t.spec.description}` : ""}
+                                <select
+                                    value={scriptChoice}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value === INLINE_TEMPLATE) {
+                                            patch({
+                                                inline: spec.inline ?? "",
+                                                template: undefined,
+                                            });
+                                        } else {
+                                            patch({ template: value, inline: undefined });
+                                        }
+                                    }}
+                                >
+                                    {(templates.data ?? []).map((t) => (
+                                        <option key={t.metadata.name} value={t.metadata.name}>
+                                            {t.metadata.name}
+                                            {t.spec.description ? ` - ${t.spec.description}` : ""}
+                                        </option>
+                                    ))}
+                                    <option value={INLINE_TEMPLATE}>
+                                        Custom - inline k6 script
                                     </option>
-                                ))}
-                                <option value={INLINE_TEMPLATE}>Custom - inline k6 script</option>
-                            </select>
-                        </Field>
-                    </div>
-                    {scriptChoice === INLINE_TEMPLATE && (
-                        <>
-                            <p className="muted">
-                                Inline k6 script (TypeScript), stored on this TestCase.
-                            </p>
-                            <CodeEditor
-                                language="typescript"
-                                value={spec.inline ?? ""}
-                                onChange={(v) => patch({ inline: v })}
-                            />
-                        </>
-                    )}
-                </fieldset>
+                                </select>
+                            </Field>
+                        </div>
+                        {scriptChoice === INLINE_TEMPLATE && (
+                            <>
+                                <p className="muted">
+                                    Inline k6 script (TypeScript), stored on this TestCase.
+                                </p>
+                                <CodeEditor
+                                    language="typescript"
+                                    value={spec.inline ?? ""}
+                                    onChange={(v) => patch({ inline: v })}
+                                />
+                            </>
+                        )}
+                    </fieldset>
+                )}
 
                 <fieldset>
                     <legend>Load</legend>
