@@ -1,6 +1,6 @@
 import { api } from "../api";
 import { toast } from "../components/Toast";
-import { Alert, errorMessage, Field, Page } from "../components/ui";
+import { Alert, errorMessage, Field, Page, Wizard, WizardStep } from "../components/ui";
 import {
     DEV_IMAGE,
     devImageTag,
@@ -18,7 +18,7 @@ import { AuthentikDeploymentSpec, TestCaseSpec } from "../types";
 import { useResource } from "../useResource";
 import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 // The branch comparison's equivalent, with the branch as a name segment.
@@ -83,20 +83,21 @@ function ImageStatus({ state }: { state?: ImageState }) {
     }
 }
 
-/** BranchComparisonPage compares a branch's build (main by default) against a release. */
-export function BranchComparisonPage() {
-    return <PullRequestComparisonPage mode="branch" />;
-}
-
 /**
- * PullRequestComparisonPage sets up a side-by-side Burn test of an authentik pull request's CI
+ * ComparisonForm sets up a side-by-side Burn test of an authentik pull request's CI
  * build against its base branch or a release: two deployments sharing every setting but the image,
  * and one TestCase driving both with the same load. In branch mode the PR is replaced by a branch
  * and the baseline is always a release. It creates those objects directly, unless several templates
  * are picked: then a single parent TestCase owning one such pair of deployments plus a child
  * TestCase per template, so the templates' provisioning and load don't interfere with each other.
  */
-export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "branch" }) {
+export function ComparisonForm({
+    mode,
+    kindStep,
+}: {
+    mode: "pr" | "branch";
+    kindStep: WizardStep;
+}) {
     const isBranch = mode === "branch";
     const navigate = useNavigate();
     const templates = useResource(() => api.testCaseTemplates(), [], 0);
@@ -226,8 +227,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
         .filter((n) => n.length > MAX_DEPLOYMENT_NAME_LENGTH);
     const asParent = rows.length > 1;
 
-    async function submit(event: FormEvent) {
-        event.preventDefault();
+    async function submit() {
         if (!effectivePrefix || !baselineSuffix) {
             setError(`Enter a ${isBranch ? "branch" : "pull request"} and a baseline first`);
             return;
@@ -315,136 +315,137 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
         }
     }
 
-    return (
-        <Page
-            title={isBranch ? "Compare a branch" : "Compare a pull request"}
-            subtitle={
-                isBranch
-                    ? "Burn-test an authentik branch build, e.g. main, against a stable release, side by side."
-                    : "Burn-test an authentik PR build against its base branch or a release, side by side."
-            }
-        >
-            <form onSubmit={submit}>
-                <Alert>{error}</Alert>
-
-                {isBranch ? (
-                    <fieldset>
-                        <legend>Branch</legend>
-                        <div className="fields">
-                            <Field label="Branch" help="On goauthentik/authentik">
-                                <input
-                                    required
-                                    value={branch}
-                                    placeholder="main"
-                                    onChange={(e) => {
-                                        setBranch(e.target.value);
-                                        setBranchSha(undefined);
-                                    }}
-                                />
-                            </Field>
-                            <Field
-                                label="Branch image tag"
-                                help={
-                                    <>
-                                        On {DEV_IMAGE}; pin it to the branch&apos;s head commit so a
-                                        restart doesn&apos;t pick up a newer build.{" "}
-                                        <ImageStatus state={prImage} />
-                                    </>
-                                }
-                            >
-                                <input
-                                    required
-                                    value={prTag}
-                                    placeholder="gh-<commit sha>"
-                                    onChange={(e) => setPrTag(e.target.value)}
-                                />
-                            </Field>
-                        </div>
-                        <div className="row">
-                            <button
-                                type="button"
-                                disabled={lookingUp || !branch.trim()}
-                                onClick={() => void lookUpBranch()}
-                            >
-                                {lookingUp ? "Looking up…" : "Pin to head commit"}
-                            </button>
-                            {branchSha && (
-                                <span className="muted">
-                                    <code>{branch}</code> is at{" "}
-                                    <code>{branchSha.slice(0, 12)}</code>
-                                </span>
+    const steps: WizardStep[] = [
+        kindStep,
+        {
+            label: isBranch ? "Branch" : "Pull request",
+            validate: () =>
+                !isBranch && prNumber === undefined
+                    ? "Enter a pull request number or a github.com/goauthentik/authentik/pull/... URL"
+                    : undefined,
+            body: (
+                <>
+                    {isBranch ? (
+                        <>
+                            <div className="fields">
+                                <Field label="Branch" help="On goauthentik/authentik">
+                                    <input
+                                        required
+                                        value={branch}
+                                        placeholder="main"
+                                        onChange={(e) => {
+                                            setBranch(e.target.value);
+                                            setBranchSha(undefined);
+                                        }}
+                                    />
+                                </Field>
+                                <Field
+                                    label="Branch image tag"
+                                    help={
+                                        <>
+                                            On {DEV_IMAGE}; pin it to the branch&apos;s head commit
+                                            so a restart doesn&apos;t pick up a newer build.{" "}
+                                            <ImageStatus state={prImage} />
+                                        </>
+                                    }
+                                >
+                                    <input
+                                        required
+                                        value={prTag}
+                                        placeholder="gh-<commit sha>"
+                                        onChange={(e) => setPrTag(e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+                            <div className="row">
+                                <button
+                                    type="button"
+                                    disabled={lookingUp || !branch.trim()}
+                                    onClick={() => void lookUpBranch()}
+                                >
+                                    {lookingUp ? "Looking up…" : "Pin to head commit"}
+                                </button>
+                                {branchSha && (
+                                    <span className="muted">
+                                        <code>{branch}</code> is at{" "}
+                                        <code>{branchSha.slice(0, 12)}</code>
+                                    </span>
+                                )}
+                            </div>
+                            <Alert>{lookupError}</Alert>
+                        </>
+                    ) : (
+                        <>
+                            <div className="fields">
+                                <Field
+                                    label="Pull request"
+                                    help="Number or URL on goauthentik/authentik"
+                                >
+                                    <input
+                                        required
+                                        value={prInput}
+                                        placeholder="https://github.com/goauthentik/authentik/pull/12345"
+                                        onChange={(e) => setPrInput(e.target.value)}
+                                        onBlur={() => {
+                                            if (prNumber !== undefined && prNumber !== pr?.number) {
+                                                void lookUp();
+                                            }
+                                        }}
+                                    />
+                                </Field>
+                                <Field
+                                    label="PR image tag"
+                                    help={
+                                        <>
+                                            On {DEV_IMAGE}; defaults to the PR&apos;s head commit.{" "}
+                                            <ImageStatus state={prImage} />
+                                        </>
+                                    }
+                                >
+                                    <input
+                                        required
+                                        value={prTag}
+                                        placeholder="gh-<commit sha>"
+                                        onChange={(e) => setPrTag(e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+                            <div className="row">
+                                <button
+                                    type="button"
+                                    disabled={lookingUp || prNumber === undefined}
+                                    onClick={() => void lookUp()}
+                                >
+                                    {lookingUp ? "Looking up…" : "Look up on GitHub"}
+                                </button>
+                                {pr && (
+                                    <span className="muted">
+                                        <a href={pr.url} target="_blank" rel="noreferrer">
+                                            #{pr.number}
+                                        </a>{" "}
+                                        {pr.title} ({pr.state}, <code>{pr.headRef}</code> into{" "}
+                                        <code>{pr.baseRef}</code>)
+                                    </span>
+                                )}
+                            </div>
+                            <Alert>{lookupError}</Alert>
+                            {pr && !pr.sameRepo && (
+                                <Alert kind="info">
+                                    This PR comes from a fork - authentik&apos;s CI doesn&apos;t
+                                    publish images for those, so the PR image tag likely
+                                    doesn&apos;t exist. Enter the tag of an image you built
+                                    yourself.
+                                </Alert>
                             )}
-                        </div>
-                        <Alert>{lookupError}</Alert>
-                    </fieldset>
-                ) : (
-                    <fieldset>
-                        <legend>Pull request</legend>
-                        <div className="fields">
-                            <Field
-                                label="Pull request"
-                                help="Number or URL on goauthentik/authentik"
-                            >
-                                <input
-                                    required
-                                    value={prInput}
-                                    placeholder="https://github.com/goauthentik/authentik/pull/12345"
-                                    onChange={(e) => setPrInput(e.target.value)}
-                                    onBlur={() => {
-                                        if (prNumber !== undefined && prNumber !== pr?.number) {
-                                            void lookUp();
-                                        }
-                                    }}
-                                />
-                            </Field>
-                            <Field
-                                label="PR image tag"
-                                help={
-                                    <>
-                                        On {DEV_IMAGE}; defaults to the PR&apos;s head commit.{" "}
-                                        <ImageStatus state={prImage} />
-                                    </>
-                                }
-                            >
-                                <input
-                                    required
-                                    value={prTag}
-                                    placeholder="gh-<commit sha>"
-                                    onChange={(e) => setPrTag(e.target.value)}
-                                />
-                            </Field>
-                        </div>
-                        <div className="row">
-                            <button
-                                type="button"
-                                disabled={lookingUp || prNumber === undefined}
-                                onClick={() => void lookUp()}
-                            >
-                                {lookingUp ? "Looking up…" : "Look up on GitHub"}
-                            </button>
-                            {pr && (
-                                <span className="muted">
-                                    <a href={pr.url} target="_blank" rel="noreferrer">
-                                        #{pr.number}
-                                    </a>{" "}
-                                    {pr.title} ({pr.state}, <code>{pr.headRef}</code> into{" "}
-                                    <code>{pr.baseRef}</code>)
-                                </span>
-                            )}
-                        </div>
-                        <Alert>{lookupError}</Alert>
-                        {pr && !pr.sameRepo && (
-                            <Alert kind="info">
-                                This PR comes from a fork - authentik&apos;s CI doesn&apos;t publish
-                                images for those, so the PR image tag likely doesn&apos;t exist.
-                                Enter the tag of an image you built yourself.
-                            </Alert>
-                        )}
-                    </fieldset>
-                )}
-
-                <fieldset>
-                    <legend>Baseline</legend>
+                        </>
+                    )}
+                </>
+            ),
+        },
+        {
+            label: "Baseline",
+            body: (
+                <>
                     {!isBranch && (
                         <div className="choice-cards" role="radiogroup" aria-label="Baseline">
                             <label className="choice-card">
@@ -528,10 +529,17 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                             </Field>
                         )}
                     </div>
-                </fieldset>
-
-                <fieldset>
-                    <legend>Deployments</legend>
+                </>
+            ),
+        },
+        {
+            label: "Deployments",
+            validate: () =>
+                tooLong.length > 0
+                    ? `${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the name.`
+                    : undefined,
+            body: (
+                <>
                     <p className="muted">
                         Every deployment gets the settings below; only the image differs.
                     </p>
@@ -557,18 +565,55 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                             />
                         </Field>
                     </div>
-                </fieldset>
-
-                <DeploymentSpecFields
-                    spec={spec}
-                    patch={patch}
-                    extraValuesYAML={extraValuesYAML}
-                    onExtraValuesChange={setExtraValuesYAML}
-                    showImage={false}
-                />
-
-                <fieldset>
-                    <legend>Burn test</legend>
+                    <DeploymentSpecFields
+                        spec={spec}
+                        patch={patch}
+                        extraValuesYAML={extraValuesYAML}
+                        onExtraValuesChange={setExtraValuesYAML}
+                        showImage={false}
+                    />
+                </>
+            ),
+        },
+        {
+            label: "Script",
+            validate: () =>
+                selectedTemplates.length === 0 ? "Pick at least one template" : undefined,
+            body: (
+                <div className="fields">
+                    <div className="field wide">
+                        <span id="templates-label">Templates</span>
+                        <div className="checklist" role="group" aria-labelledby="templates-label">
+                            {(templates.data ?? []).map((t) => (
+                                <label key={t.metadata.name}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedTemplates.includes(t.metadata.name)}
+                                        onChange={() => toggleTemplate(t.metadata.name)}
+                                    />
+                                    <span className="mono">{t.metadata.name}</span>
+                                    {t.spec.description && (
+                                        <span className="meta">{t.spec.description}</span>
+                                    )}
+                                </label>
+                            ))}
+                        </div>
+                        <Link to="/testcasetemplates">Manage test case templates</Link>
+                    </div>
+                    <Field label="Flow slug">
+                        <input
+                            value={flow}
+                            placeholder="default-authentication-flow"
+                            onChange={(e) => setFlow(e.target.value)}
+                        />
+                    </Field>
+                </div>
+            ),
+        },
+        {
+            label: "Load",
+            body: (
+                <>
                     <p className="muted">
                         Keeps both deployments under the same steady load until stopped, each tagged
                         with its own k6 target. The load starts on both at the same moment, once
@@ -576,29 +621,6 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                         run them side by side: each gets its own pair of deployments and test case.
                     </p>
                     <div className="fields">
-                        <div className="field wide">
-                            <span id="templates-label">Templates</span>
-                            <div
-                                className="checklist"
-                                role="group"
-                                aria-labelledby="templates-label"
-                            >
-                                {(templates.data ?? []).map((t) => (
-                                    <label key={t.metadata.name}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedTemplates.includes(t.metadata.name)}
-                                            onChange={() => toggleTemplate(t.metadata.name)}
-                                        />
-                                        <span className="mono">{t.metadata.name}</span>
-                                        {t.spec.description && (
-                                            <span className="meta">{t.spec.description}</span>
-                                        )}
-                                    </label>
-                                ))}
-                            </div>
-                            <Link to="/testcasetemplates">Manage test case templates</Link>
-                        </div>
                         <Field label="Virtual users" help="Per deployment">
                             <input
                                 type="number"
@@ -614,13 +636,15 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                                 onChange={(e) => setBurnDuration(e.target.value)}
                             />
                         </Field>
-                        <Field label="Flow slug">
-                            <input
-                                value={flow}
-                                placeholder="default-authentication-flow"
-                                onChange={(e) => setFlow(e.target.value)}
-                            />
-                        </Field>
+                    </div>
+                </>
+            ),
+        },
+        {
+            label: "Review",
+            body: (
+                <>
+                    <div className="fields">
                         <Field label="Trace sample rate">
                             <input
                                 value={traceSampleRate}
@@ -629,10 +653,6 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                             />
                         </Field>
                     </div>
-                </fieldset>
-
-                <fieldset>
-                    <legend>Creates</legend>
                     {asParent && (
                         <p className="muted">
                             One test case <code>{effectivePrefix || "…"}</code>, which creates and
@@ -658,22 +678,27 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                             </li>
                         ))}
                     </ul>
-                    {tooLong.length > 0 && (
-                        <Alert>
-                            {`${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the name.`}
-                        </Alert>
-                    )}
-                </fieldset>
+                </>
+            ),
+        },
+    ];
 
-                <div className="form-actions">
-                    <button type="submit" className="primary" disabled={saving}>
-                        {saving ? "Creating…" : "Create comparison"}
-                    </button>
-                    <button type="button" onClick={() => navigate(-1)}>
-                        Cancel
-                    </button>
-                </div>
-            </form>
+    return (
+        <Page
+            title="New test case"
+            subtitle={
+                isBranch
+                    ? "Burn-test an authentik branch build, e.g. main, against a stable release, side by side."
+                    : "Burn-test an authentik PR build against its base branch or a release, side by side."
+            }
+        >
+            <Wizard
+                steps={steps}
+                saving={saving}
+                submitLabel="Create comparison"
+                error={error}
+                onSubmit={() => void submit()}
+            />
         </Page>
     );
 }

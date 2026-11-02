@@ -30,6 +30,8 @@ import {
     SectionNav,
     Table,
     TimeRangeSelect,
+    Wizard,
+    WizardStep,
 } from "../components/ui";
 import {
     archivedBurnWindow,
@@ -57,9 +59,10 @@ import {
     testRunDeployment,
 } from "../types";
 import { useResource } from "../useResource";
+import { ComparisonForm } from "./PullRequestComparison";
 import { ParentFields, parentDeployments, TestCaseParentView } from "./TestCaseParent";
 
-import { FormEvent, ReactNode, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 /**
@@ -281,12 +284,6 @@ export function TestCasesPage() {
             subtitle="k6 load tests against one or more deployments. Burn runs until stopped; Quick runs once per test run."
             actions={
                 <>
-                    <Link className="button" to="/pull-requests/new">
-                        Compare a PR
-                    </Link>
-                    <Link className="button" to="/branches/new">
-                        Compare a branch
-                    </Link>
                     <Link className="button primary" to="/testcases/new">
                         New test case
                     </Link>
@@ -342,7 +339,7 @@ function emptySpec(): TestCaseSpec {
     };
 }
 
-function TestCaseForm({ existing }: { existing?: TestCase }) {
+function TestCaseForm({ existing, kindStep }: { existing?: TestCase; kindStep?: WizardStep }) {
     const navigate = useNavigate();
     const deployments = useResource(() => api.deployments(), [], 0);
     const templates = useResource(() => api.testCaseTemplates(), [], 0);
@@ -350,9 +347,6 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
     const [spec, setSpec] = useState<TestCaseSpec>(existing?.spec ?? emptySpec());
     const [error, setError] = useState<string>();
     const [saving, setSaving] = useState(false);
-    const [step, setStep] = useState(0);
-    // Furthest step a new test case got to; the indicator only jumps back.
-    const [reached, setReached] = useState(0);
     // A parent is only created by the comparison pages, but edited here.
     const parent = existing !== undefined && isParent(existing);
 
@@ -382,40 +376,9 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
     // hatch deliberately not offered here - it survives a save untouched.
     const scriptChoice = spec.inline !== undefined ? INLINE_TEMPLATE : (spec.template ?? "login");
 
-    // Checks the browser cannot do: native required/min only cover the step
-    // on screen, so they run as each step is left.
-    function stepError(index: number): string | undefined {
-        if (steps[index].label === "Targets" && !parent && selectedDeployments.length === 0) {
-            return "Select at least one deployment to drive";
-        }
-        if (steps[index].label === "Script" && parent && !spec.templates?.length) {
-            return "Pick at least one template";
-        }
-        return undefined;
-    }
-
-    async function submit(event: FormEvent) {
-        event.preventDefault();
-        const invalid = stepError(step);
-        if (invalid) {
-            setError(invalid);
-            return;
-        }
-        setError(undefined);
-        if (step < steps.length - 1 && !existing) {
-            setStep(step + 1);
-            setReached((r) => Math.max(r, step + 1));
-            return;
-        }
-        for (let i = 0; i < steps.length; i++) {
-            const failed = stepError(i);
-            if (failed) {
-                setStep(i);
-                setError(failed);
-                return;
-            }
-        }
+    async function save() {
         setSaving(true);
+        setError(undefined);
         try {
             const savedName = existing?.metadata.name ?? name;
             if (existing) {
@@ -432,9 +395,14 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
         }
     }
 
-    const steps: { label: string; body: ReactNode }[] = [
+    const steps: WizardStep[] = [
+        ...(kindStep ? [kindStep] : []),
         {
             label: "Targets",
+            validate: () =>
+                !parent && selectedDeployments.length === 0
+                    ? "Select at least one deployment to drive"
+                    : undefined,
             body: (
                 <div className="fields">
                     <Field label="Name" help="Also the k6 testid every metric is split on">
@@ -496,6 +464,8 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
         },
         {
             label: "Script",
+            validate: () =>
+                parent && !spec.templates?.length ? "Pick at least one template" : undefined,
             body: parent ? (
                 <ParentFields spec={spec} patch={patch} />
             ) : (
@@ -679,70 +649,74 @@ function TestCaseForm({ existing }: { existing?: TestCase }) {
             ),
         },
     ];
-    const last = step === steps.length - 1;
-
     return (
         <Page title={existing ? `Edit ${existing.metadata.name}` : "New test case"}>
-            <form onSubmit={submit}>
-                <ol className="wizard-steps">
-                    {steps.map((s, i) => (
-                        <li key={s.label}>
-                            <button
-                                type="button"
-                                className={i === step ? "on" : undefined}
-                                aria-current={i === step ? "step" : undefined}
-                                disabled={!existing && i > reached}
-                                onClick={() => {
-                                    setError(undefined);
-                                    setStep(i);
-                                }}
-                            >
-                                <span className="num">{i + 1}</span>
-                                {s.label}
-                            </button>
-                        </li>
-                    ))}
-                </ol>
-                <Alert>{error}</Alert>
-                <fieldset>
-                    <legend>{steps[step].label}</legend>
-                    {steps[step].body}
-                </fieldset>
-
-                <div className="form-actions">
-                    {step > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setError(undefined);
-                                setStep(step - 1);
-                            }}
-                        >
-                            Back
-                        </button>
-                    )}
-                    {!last && !existing && (
-                        <button type="submit" className="primary">
-                            Next
-                        </button>
-                    )}
-                    {(last || existing) && (
-                        <button type="submit" className="primary" disabled={saving}>
-                            {saving ? "Saving…" : existing ? "Save changes" : "Create test case"}
-                        </button>
-                    )}
-                    <button type="button" onClick={() => navigate(-1)}>
-                        Cancel
-                    </button>
-                </div>
-            </form>
+            <Wizard
+                steps={steps}
+                editing={Boolean(existing)}
+                saving={saving}
+                submitLabel={existing ? "Save changes" : "Create test case"}
+                error={error}
+                onSubmit={() => void save()}
+            />
         </Page>
     );
 }
 
-export function TestCaseCreatePage() {
-    return <TestCaseForm />;
+type CreateKind = "deployments" | "pr" | "branch";
+
+const KINDS: { value: CreateKind; title: string; description: string }[] = [
+    {
+        value: "deployments",
+        title: "Existing deployments",
+        description: "Drive one or more deployments you already have with a Burn or Quick test.",
+    },
+    {
+        value: "pr",
+        title: "Compare a pull request",
+        description:
+            "Burn-test an authentik PR build against its base branch or a release, side by side, on deployments created for it.",
+    },
+    {
+        value: "branch",
+        title: "Compare a branch",
+        description:
+            "Burn-test an authentik branch build, e.g. main, against a stable release, side by side, on deployments created for it.",
+    },
+];
+
+export function TestCaseCreatePage({ initialKind = "deployments" }: { initialKind?: CreateKind }) {
+    const [kind, setKind] = useState(initialKind);
+    const kindStep: WizardStep = {
+        label: "Kind",
+        body: (
+            <div className="choice-cards" role="radiogroup" aria-label="Kind">
+                {KINDS.map((k) => (
+                    <label className="choice-card" key={k.value}>
+                        <input
+                            type="radio"
+                            name="kind"
+                            checked={kind === k.value}
+                            onChange={() => setKind(k.value)}
+                        />
+                        <span>
+                            <strong>{k.title}</strong>
+                            <span className="muted">{k.description}</span>
+                        </span>
+                    </label>
+                ))}
+            </div>
+        ),
+    };
+    return kind === "deployments" ? (
+        <TestCaseForm kindStep={kindStep} />
+    ) : (
+        <ComparisonForm key={kind} mode={kind} kindStep={kindStep} />
+    );
 }
+
+export const PullRequestCreatePage = () => <TestCaseCreatePage initialKind="pr" />;
+export const BranchCreatePage = () => <TestCaseCreatePage initialKind="branch" />;
 
 export function TestCaseEditPage() {
     const { name = "" } = useParams();

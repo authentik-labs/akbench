@@ -3,7 +3,8 @@ import { confirm, type ConfirmOptions } from "./Confirm";
 import { toast } from "./Toast";
 
 // The handful of layout/feedback primitives every page shares.
-import { ReactNode } from "react";
+import { FormEvent, ReactNode, useState } from "react";
+import { useNavigate } from "react-router";
 
 export function Page({
     title,
@@ -222,6 +223,111 @@ export function Field({
             {children}
             {help && <span className="help">{help}</span>}
         </label>
+    );
+}
+
+export interface WizardStep {
+    label: string;
+    body: ReactNode;
+    /** Checks the browser can't: native required/min only see the step on screen. */
+    validate?: () => string | undefined;
+}
+
+/**
+ * Wizard is a form split into steps, each validated as it is left. editing
+ * (an existing object) unlocks every step and saving from any of them.
+ */
+export function Wizard({
+    steps,
+    editing = false,
+    saving,
+    submitLabel,
+    error,
+    onSubmit,
+}: {
+    steps: WizardStep[];
+    editing?: boolean;
+    saving: boolean;
+    submitLabel: string;
+    error?: string;
+    onSubmit: () => void;
+}) {
+    const navigate = useNavigate();
+    const [step, setStep] = useState(0);
+    // Furthest step reached; the indicator only jumps back from there.
+    const [reached, setReached] = useState(0);
+    const [invalid, setInvalid] = useState<string>();
+    const last = step === steps.length - 1;
+    const go = (index: number) => {
+        setInvalid(undefined);
+        setStep(index);
+    };
+
+    function submit(event: FormEvent) {
+        event.preventDefault();
+        const own = steps[step].validate?.();
+        if (own) {
+            setInvalid(own);
+            return;
+        }
+        if (!last && !editing) {
+            go(step + 1);
+            setReached((r) => Math.max(r, step + 1));
+            return;
+        }
+        const failed = steps.findIndex((s) => s.validate?.());
+        if (failed >= 0) {
+            setStep(failed);
+            setInvalid(steps[failed].validate?.());
+            return;
+        }
+        setInvalid(undefined);
+        onSubmit();
+    }
+
+    return (
+        <form onSubmit={submit}>
+            <ol className="wizard-steps">
+                {steps.map((s, i) => (
+                    <li key={s.label}>
+                        <button
+                            type="button"
+                            className={i === step ? "on" : undefined}
+                            aria-current={i === step ? "step" : undefined}
+                            disabled={!editing && i > reached}
+                            onClick={() => go(i)}
+                        >
+                            <span className="num">{i + 1}</span>
+                            {s.label}
+                        </button>
+                    </li>
+                ))}
+            </ol>
+            <Alert>{invalid ?? error}</Alert>
+            <fieldset>
+                <legend>{steps[step].label}</legend>
+                {steps[step].body}
+            </fieldset>
+            <div className="form-actions">
+                {step > 0 && (
+                    <button type="button" onClick={() => go(step - 1)}>
+                        Back
+                    </button>
+                )}
+                {last || editing ? (
+                    <button type="submit" className="primary" disabled={saving}>
+                        {saving ? "Saving…" : submitLabel}
+                    </button>
+                ) : (
+                    <button type="submit" className="primary">
+                        Next
+                    </button>
+                )}
+                <button type="button" onClick={() => navigate(-1)}>
+                    Cancel
+                </button>
+            </div>
+        </form>
     );
 }
 
