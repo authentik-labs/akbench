@@ -232,6 +232,29 @@ export function isParent(tc: TestCase): boolean {
     return (tc.spec.templates?.length ?? 0) > 0;
 }
 
+/**
+ * nestChildren orders rows so each parent's children follow it, with their
+ * nesting depth. A child whose parent isn't among rows stays top level.
+ */
+export function nestChildren(rows: TestCase[]): { tc: TestCase; depth: number }[] {
+    const names = new Set(rows.map((tc) => tc.metadata.name));
+    const parentOf = (tc: TestCase) => {
+        const parent = tc.metadata.labels?.[PARENT_LABEL];
+        return parent && names.has(parent) ? parent : undefined;
+    };
+    const out: { tc: TestCase; depth: number }[] = [];
+    const visit = (tc: TestCase, depth: number) => {
+        out.push({ tc, depth });
+        for (const child of rows.filter((c) => parentOf(c) === tc.metadata.name)) {
+            visit(child, depth + 1);
+        }
+    };
+    for (const tc of rows.filter((tc) => !parentOf(tc))) {
+        visit(tc, 0);
+    }
+    return out;
+}
+
 /** Label naming the parent TestCase that created a test case or deployment (LabelParent). */
 export const PARENT_LABEL = "bench.goauthentik.io/parent";
 

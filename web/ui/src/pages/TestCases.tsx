@@ -47,6 +47,7 @@ import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import {
     isParent,
+    nestChildren,
     PARENT_LABEL,
     TestCase,
     TestCaseSpec,
@@ -158,23 +159,29 @@ export function TestCasesPage() {
     }
 
     function table(rows: TestCase[] | undefined, empty: string) {
+        const nested = rows && nestChildren(rows);
         return (
             <Table
-                rows={rows}
-                rowKey={(tc) => tc.metadata.name}
+                rows={nested}
+                rowKey={({ tc }) => tc.metadata.name}
                 empty={empty}
                 columns={[
                     {
                         label: "Name",
-                        render: (tc) => (
-                            <Link to={`/testcases/${tc.metadata.name}`}>{tc.metadata.name}</Link>
+                        render: ({ tc, depth }) => (
+                            <span style={{ paddingLeft: `${depth * 1.5}rem` }}>
+                                {depth > 0 && <span className="muted">↳ </span>}
+                                <Link to={`/testcases/${tc.metadata.name}`}>
+                                    {tc.metadata.name}
+                                </Link>
+                            </span>
                         ),
                     },
                     {
                         label: "Deployment",
-                        render: (tc) =>
+                        render: ({ tc }) =>
                             isParent(tc) ? (
-                                (tc.spec.variants ?? []).map((v) => v.name).join(" vs ")
+                                "-"
                             ) : (
                                 <span className="row" style={{ gap: 4 }}>
                                     {testCaseDeployments(tc.spec).map((ref, i) => (
@@ -188,7 +195,7 @@ export function TestCasesPage() {
                     },
                     {
                         label: "Template",
-                        render: (tc) =>
+                        render: ({ tc }) =>
                             isParent(tc) ? (
                                 (tc.spec.templates ?? []).join(", ")
                             ) : tc.spec.inline !== undefined ? (
@@ -197,16 +204,16 @@ export function TestCasesPage() {
                                 (tc.spec.template ?? "-")
                             ),
                     },
-                    { label: "Profile", render: (tc) => <Badge value={tc.spec.profile} /> },
-                    { label: "VUs", render: (tc) => tc.spec.vus },
-                    { label: "Created by", render: (tc) => createdBy(tc.metadata) },
+                    { label: "Profile", render: ({ tc }) => <Badge value={tc.spec.profile} /> },
+                    { label: "VUs", render: ({ tc }) => tc.spec.vus },
+                    { label: "Created by", render: ({ tc }) => createdBy(tc.metadata) },
                     {
                         label: "Pull request",
-                        render: (tc) => <PullRequestLink labels={tc.metadata.labels} />,
+                        render: ({ tc }) => <PullRequestLink labels={tc.metadata.labels} />,
                     },
                     {
                         label: "Status",
-                        render: (tc) => (
+                        render: ({ tc }) => (
                             <StatusBadge
                                 kind="testcase"
                                 name={tc.metadata.name}
@@ -219,7 +226,7 @@ export function TestCasesPage() {
                     {
                         label: "",
                         className: "actions",
-                        render: (tc) => (
+                        render: ({ tc }) => (
                             <span className="row" style={{ justifyContent: "flex-end" }}>
                                 {tc.spec.profile === "Quick" &&
                                     !tc.spec.archived &&
