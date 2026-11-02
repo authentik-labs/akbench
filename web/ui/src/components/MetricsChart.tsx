@@ -654,44 +654,48 @@ export function TrendTable({
             className="panel table-scroll"
             style={{ marginBottom: "var(--ak-global--spacer--md)" }}
         >
-            <h3>Trend over the window</h3>
-            {error && <div className="alert error">{error}</div>}
-            <table className="table">
-                <thead>
-                    <tr>
-                        <th />
-                        {multi && <th>Target</th>}
-                        {Array.from({ length: TREND_SLICES }, (_, i) => (
-                            <th key={i} className="num" title="Slice start">
-                                {formatTime(first + (i - 1) * slice, withDate)}
-                            </th>
-                        ))}
-                        <th className="num">Δ first → last</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((row) => (
-                        <tr key={row.key}>
-                            <td>{row.label}</td>
-                            {multi && <td>{row.target}</td>}
-                            {row.values.map((v, i) => (
-                                <td key={i} className="mono num">
-                                    {formatMetricValue(v, row.unit)}
-                                </td>
+            <details>
+                <summary style={{ margin: 0 }}>
+                    <h3 style={{ display: "inline" }}>Trend over the window</h3>
+                </summary>
+                {error && <div className="alert error">{error}</div>}
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th />
+                            {multi && <th>Target</th>}
+                            {Array.from({ length: TREND_SLICES }, (_, i) => (
+                                <th key={i} className="num" title="Slice start">
+                                    {formatTime(first + (i - 1) * slice, withDate)}
+                                </th>
                             ))}
-                            <td className="mono num">
-                                <Delta
-                                    value={relativeDelta(
-                                        row.values.at(-1),
-                                        row.values.find((v) => v !== undefined),
-                                    )}
-                                    better={row.better}
-                                />
-                            </td>
+                            <th className="num">Δ first → last</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {rows.map((row) => (
+                            <tr key={row.key}>
+                                <td>{row.label}</td>
+                                {multi && <td>{row.target}</td>}
+                                {row.values.map((v, i) => (
+                                    <td key={i} className="mono num">
+                                        {formatMetricValue(v, row.unit)}
+                                    </td>
+                                ))}
+                                <td className="mono num">
+                                    <Delta
+                                        value={relativeDelta(
+                                            row.values.at(-1),
+                                            row.values.find((v) => v !== undefined),
+                                        )}
+                                        better={row.better}
+                                    />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </details>
         </div>
     );
 }
