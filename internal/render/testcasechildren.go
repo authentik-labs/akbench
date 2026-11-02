@@ -11,8 +11,8 @@ import (
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
 
-// TestMatrixObjects is everything a TestMatrix creates.
-type TestMatrixObjects struct {
+// TestCaseChildObjects is everything a parent TestCase creates.
+type TestCaseChildObjects struct {
 	Deployments []*benchv1alpha1.AuthentikDeployment
 	TestCases   []*benchv1alpha1.TestCase
 	// ExtraValues is nil when spec.extraValues is empty.
@@ -22,20 +22,24 @@ type TestMatrixObjects struct {
 // maxDeploymentNameLength mirrors AuthentikDeployment's CEL name limit.
 const maxDeploymentNameLength = 53
 
-// TestMatrix builds one TestCase per template, each driving its own
-// AuthentikDeployment per variant. Every object carries the matrix's own
-// labels plus LabelTestMatrix, so stale ones can be found and removed.
-func TestMatrix(m *benchv1alpha1.TestMatrix) (TestMatrixObjects, error) {
+// TestCaseChildren builds a parent TestCase's child TestCase per template,
+// each driving its own AuthentikDeployment per variant. Every object carries
+// the parent's own labels plus LabelParent, so stale ones can be found and
+// removed.
+func TestCaseChildren(m *benchv1alpha1.TestCase) (TestCaseChildObjects, error) {
+	if m.Spec.Deployment == nil || len(m.Spec.Variants) == 0 {
+		return TestCaseChildObjects{}, fmt.Errorf("spec.templates needs spec.variants and spec.deployment")
+	}
 	labels := maps.Clone(m.Labels)
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	labels[benchv1alpha1.LabelTestMatrix] = m.Name
+	labels[benchv1alpha1.LabelParent] = m.Name
 	meta := func(name string) metav1.ObjectMeta {
 		return metav1.ObjectMeta{Name: name, Namespace: m.Namespace, Labels: maps.Clone(labels)}
 	}
 
-	var out TestMatrixObjects
+	var out TestCaseChildObjects
 	var extraValuesRef *corev1.LocalObjectReference
 	if m.Spec.ExtraValues != "" {
 		// Named after its content: the AuthentikDeployment controller doesn't
@@ -51,23 +55,24 @@ func TestMatrix(m *benchv1alpha1.TestMatrix) (TestMatrixObjects, error) {
 		extraValuesRef = &corev1.LocalObjectReference{Name: out.ExtraValues.Name}
 	}
 
-	baseline := m.BaselineVariant()
+	baseline := m.BaselineVariantName()
 	for _, template := range m.Spec.Templates {
-		if name := m.TestCaseName(template); len(name) > maxNameLength {
-			return TestMatrixObjects{}, fmt.Errorf("test case name %q is longer than %d characters; shorten the matrix or template name",
+		if name := m.ChildName(template); len(name) > maxNameLength {
+			return TestCaseChildObjects{}, fmt.Errorf("test case name %q is longer than %d characters; shorten the test case or template name",
 				name, maxNameLength)
 		}
 		tc := &benchv1alpha1.TestCase{
 			Kind: "TestCase", APIVersion: benchv1alpha1.SchemeGroupVersion.String(),
-			ObjectMeta: meta(m.TestCaseName(template)),
-			Spec:       *m.Spec.TestCase.DeepCopy(),
+			ObjectMeta: meta(m.ChildName(template)),
+			Spec:       *m.Spec.DeepCopy(),
 		}
+		tc.Spec.Templates, tc.Spec.Variants, tc.Spec.BaselineVariant, tc.Spec.Deployment, tc.Spec.ExtraValues = nil, nil, "", nil, ""
 		tc.Spec.Template = template
 		tc.Spec.DeploymentRefs = nil
 		for _, v := range m.Spec.Variants {
-			name := m.DeploymentName(template, v.Name)
+			name := m.ChildDeploymentName(template, v.Name)
 			if len(name) > maxDeploymentNameLength {
-				return TestMatrixObjects{}, fmt.Errorf("deployment name %q is longer than %d characters; shorten the matrix, variant or template name",
+				return TestCaseChildObjects{}, fmt.Errorf("deployment name %q is longer than %d characters; shorten the test case, variant or template name",
 					name, maxDeploymentNameLength)
 			}
 			ad := &benchv1alpha1.AuthentikDeployment{

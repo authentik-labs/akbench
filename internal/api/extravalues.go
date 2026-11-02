@@ -32,16 +32,16 @@ type extraValuesBody struct {
 	ValuesYAML string `json:"valuesYAML"`
 }
 
-// owningMatrix returns the TestMatrix controlling topo, or nil. The matrix
-// re-applies its deployments' whole spec, so a per-deployment extraValuesRef
-// would be reverted: its extra values live in the matrix's spec.extraValues
-// instead, shared by every variant.
-func (s *Server) owningMatrix(r *http.Request, topo *benchv1alpha1.AuthentikDeployment) (*benchv1alpha1.TestMatrix, error) {
+// owningParent returns the parent TestCase controlling topo, or nil. The
+// parent re-applies its deployments' whole spec, so a per-deployment
+// extraValuesRef would be reverted: its extra values live in the parent's
+// spec.extraValues instead, shared by every variant.
+func (s *Server) owningParent(r *http.Request, topo *benchv1alpha1.AuthentikDeployment) (*benchv1alpha1.TestCase, error) {
 	owner := metav1.GetControllerOf(topo)
-	if owner == nil || owner.Kind != "TestMatrix" {
+	if owner == nil || owner.Kind != "TestCase" {
 		return nil, nil
 	}
-	var m benchv1alpha1.TestMatrix
+	var m benchv1alpha1.TestCase
 	if err := s.client.Get(r.Context(), types.NamespacedName{Name: owner.Name, Namespace: topo.Namespace}, &m); err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *Server) getExtraValues(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var topo benchv1alpha1.AuthentikDeployment
 	if err := s.client.Get(r.Context(), types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}, &topo); err == nil {
-		m, err := s.owningMatrix(r, &topo)
+		m, err := s.owningParent(r, &topo)
 		if err != nil {
 			writeAPIError(w, r, err)
 			return
@@ -106,7 +106,7 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, err)
 		return
 	}
-	m, err := s.owningMatrix(r, &topo)
+	m, err := s.owningParent(r, &topo)
 	if err != nil {
 		writeAPIError(w, r, err)
 		return

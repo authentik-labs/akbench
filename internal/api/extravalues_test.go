@@ -109,11 +109,11 @@ func TestGetHelmValues(t *testing.T) {
 	}
 }
 
-func TestPutExtraValuesOnMatrixDeploymentUpdatesMatrix(t *testing.T) {
-	m := &benchv1alpha1.TestMatrix{Name: "pr-1", Namespace: testNamespace, UID: "matrix-uid"}
+func TestPutExtraValuesOnChildDeploymentUpdatesParent(t *testing.T) {
+	m := &benchv1alpha1.TestCase{Name: "pr-1", Namespace: testNamespace, UID: "parent-uid"}
 	topo := sampleDeployment("pr-1-head-login")
 	topo.OwnerReferences = []metav1.OwnerReference{{
-		APIVersion: benchv1alpha1.GroupVersion.String(), Kind: "TestMatrix",
+		APIVersion: benchv1alpha1.GroupVersion.String(), Kind: "TestCase",
 		Name: m.Name, UID: m.UID, Controller: ptr.To(true),
 	}}
 	s, k8s := newServer(t, Config{}, m, topo)
@@ -123,10 +123,10 @@ func TestPutExtraValuesOnMatrixDeploymentUpdatesMatrix(t *testing.T) {
 	requireStatus(t, rec, http.StatusOK)
 
 	if err := k8s.Get(t.Context(), types.NamespacedName{Name: m.Name, Namespace: testNamespace}, m); err != nil {
-		t.Fatalf("get matrix: %v", err)
+		t.Fatalf("get parent: %v", err)
 	}
 	if m.Spec.ExtraValues != yamlBody {
-		t.Fatalf("matrix extraValues = %q, want %q", m.Spec.ExtraValues, yamlBody)
+		t.Fatalf("parent extraValues = %q, want %q", m.Spec.ExtraValues, yamlBody)
 	}
 	rec = do(t, s, http.MethodGet, "/api/v1/deployments/pr-1-head-login/extra-values", nil)
 	requireStatus(t, rec, http.StatusOK)

@@ -112,22 +112,22 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(cm.Data[render.StartAtFileName]).To(Equal(strconv.FormatInt(burningSince.Unix(), 10)))
 		})
 
-		It("waits for its TestMatrix to start the burn", func() {
+		It("waits for its parent to start the burn", func() {
 			ctx := context.Background()
-			m := &benchv1alpha1.TestMatrix{
-				Name: "gate-matrix", Namespace: "default",
-				Spec: benchv1alpha1.TestMatrixSpec{
-					Variants:   []benchv1alpha1.TestMatrixVariant{{Name: "a", Tag: "x"}},
+			m := &benchv1alpha1.TestCase{
+				Name: "gate-parent", Namespace: "default",
+				Spec: benchv1alpha1.TestCaseSpec{
+					Variants:   []benchv1alpha1.TestCaseVariant{{Name: "a", Tag: "x"}},
 					Templates:  []string{"login"},
-					Deployment: benchv1alpha1.AuthentikDeploymentSpec{ClusterRef: corev1.LocalObjectReference{Name: testClusterName}},
-					TestCase:   benchv1alpha1.TestCaseSpec{Profile: benchv1alpha1.ProfileBurn},
+					Deployment: &benchv1alpha1.AuthentikDeploymentSpec{ClusterRef: corev1.LocalObjectReference{Name: testClusterName}},
+					Profile:    benchv1alpha1.ProfileBurn,
 				},
 			}
 			Expect(k8sClient.Create(ctx, m)).To(Succeed())
 			DeferCleanup(forceDelete, ctx, m)
 			var tc benchv1alpha1.TestCase
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &tc)).To(Succeed())
-			tc.Labels = map[string]string{benchv1alpha1.LabelTestMatrix: m.Name}
+			tc.Labels = map[string]string{benchv1alpha1.LabelParent: m.Name}
 			Expect(k8sClient.Update(ctx, &tc)).To(Succeed())
 
 			r := &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}

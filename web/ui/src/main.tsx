@@ -10,7 +10,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-import { createBrowserRouter, Link, RouterProvider } from "react-router";
+import { createBrowserRouter, Link, Navigate, RouterProvider, useParams } from "react-router";
 
 // @goauthentik/theme keys its dark-mode values off html[data-theme="dark"],
 // not a prefers-color-scheme media query - bridge the two so this app still
@@ -52,6 +52,11 @@ function NotFound() {
             </p>
         </div>
     );
+}
+
+function TestMatrixRedirect() {
+    const { name = "" } = useParams();
+    return <Navigate to={`/testcases/${name}`} replace />;
 }
 
 const router = createBrowserRouter([
@@ -172,16 +177,9 @@ const router = createBrowserRouter([
                 handle: t((p) => `Test run ${p.name}`),
                 element: page(testRuns, "TestRunViewPage"),
             },
-            {
-                path: "testmatrices",
-                handle: t("Test matrices"),
-                element: page(() => import("./pages/TestMatrices"), "TestMatricesPage"),
-            },
-            {
-                path: "testmatrices/:name",
-                handle: t((p) => `Test matrix ${p.name}`),
-                element: page(() => import("./pages/TestMatrices"), "TestMatrixViewPage"),
-            },
+            // Test matrices became parent test cases of the same name.
+            { path: "testmatrices", element: <Navigate to="/testcases" replace /> },
+            { path: "testmatrices/:name", element: <TestMatrixRedirect /> },
             {
                 path: "pull-requests/new",
                 handle: t("Compare a PR"),

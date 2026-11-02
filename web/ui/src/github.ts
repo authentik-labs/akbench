@@ -9,8 +9,8 @@
 export const AUTHENTIK_REPO = "goauthentik/authentik";
 
 /**
- * Set by the pull-request comparison on its TestMatrix (and copied by the
- * operator onto the test cases and deployments it creates) to the PR number.
+ * Set by the pull-request comparison on its test case (and copied by the
+ * operator onto the child test cases and deployments a parent creates) to the PR number.
  */
 export const PULL_REQUEST_LABEL = "bench.goauthentik.io/pull-request";
 

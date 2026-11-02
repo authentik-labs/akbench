@@ -8,7 +8,7 @@ import {
     parseTimeRange,
     timeRangeSeconds,
 } from "../format";
-import { CompareResponse } from "../types";
+import { CompareResponse, isParent } from "../types";
 import { useResource } from "../useResource";
 
 // Side-by-side comparison of test cases: an instant-query summary table
@@ -53,7 +53,12 @@ function best(response: CompareResponse, key: string, better: string): string | 
 }
 
 export function ComparePage() {
-    const testCases = useResource(() => api.testCases(), [], 0);
+    // A parent has no metrics of its own - its children do.
+    const testCases = useResource(
+        () => api.testCases().then((all) => all.filter((tc) => !isParent(tc))),
+        [],
+        0,
+    );
     const testRuns = useResource(() => api.testRuns(), [], 15000);
     // The whole comparison - which tests, the summary window, the chart range -
     // lives in the URL, so it can be shared/bookmarked exactly as configured

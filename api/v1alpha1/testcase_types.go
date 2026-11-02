@@ -135,9 +135,83 @@ type TestCaseSpec struct {
 
 	// archived stops the test case without deleting it: a Burn test case's
 	// k6 Deployments are removed and no new TestRuns are started, while the
-	// object (and its past TestRuns) stays around for comparison.
+	// object (and its past TestRuns) stays around for comparison. Archiving
+	// a parent archives its children and leaves their deployments alone.
 	// +optional
 	Archived bool `json:"archived,omitempty"`
+
+	// templates turns this TestCase into a parent that drives nested
+	// TestCases instead of deployments: one child TestCase per template
+	// (named <name>-<template>), each driving its own AuthentikDeployment
+	// per variant (<name>-<variant>-<template>), so the templates'
+	// provisioning and load never share a deployment. The child inherits
+	// every other field of this spec; deploymentRefs, baselineRef and
+	// template are set per child. Requires variants and deployment.
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +listType=set
+	// +optional
+	Templates []string `json:"templates,omitempty"`
+
+	// variants are the authentik builds a parent compares against each
+	// other, one deployment each per child.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Variants []TestCaseVariant `json:"variants,omitempty"`
+
+	// baselineVariant names the variant the others are compared against.
+	// Defaults to the first variant.
+	// +optional
+	BaselineVariant string `json:"baselineVariant,omitempty"`
+
+	// deployment is shared by every AuthentikDeployment a parent creates.
+	// namespace is ignored (each deployment gets its own, named after it),
+	// as are authentik.tag, and authentik.image wherever a variant sets one.
+	// +optional
+	Deployment *AuthentikDeploymentSpec `json:"deployment,omitempty"`
+
+	// extraValues is raw Helm values YAML merged over every deployment a
+	// parent creates (see AuthentikSpec.extraValuesRef).
+	// +optional
+	ExtraValues string `json:"extraValues,omitempty"`
+}
+
+// TestCaseVariant is one authentik build under test - one column of a
+// parent TestCase's grid.
+type TestCaseVariant struct {
+	// name identifies the variant in the deployments' names and in views,
+	// e.g. "pr" or "2026-6-0".
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=24
+	Name string `json:"name"`
+
+	// image overrides deployment.authentik.image for this variant.
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// tag is the image tag this variant runs.
+	// +kubebuilder:validation:MinLength=1
+	Tag string `json:"tag"`
+}
+
+// TestCaseChildCell is one variant's AuthentikDeployment within a child's
+// row.
+type TestCaseChildCell struct {
+	Variant    string `json:"variant"`
+	Deployment string `json:"deployment"`
+	// +optional
+	Phase ReconcilePhase `json:"phase,omitempty"`
+}
+
+// TestCaseChildStatus is one template's child TestCase and the deployments
+// it drives.
+type TestCaseChildStatus struct {
+	Template string `json:"template"`
+	TestCase string `json:"testCase"`
+	// +optional
+	Phase ReconcilePhase `json:"phase,omitempty"`
+	// +optional
+	Cells []TestCaseChildCell `json:"cells,omitempty"`
 }
 
 // TestCaseDeploymentStatus is one targeted deployment's own status within a
@@ -208,6 +282,18 @@ type TestCaseStatus struct {
 	// +optional
 	Deployments []TestCaseDeploymentStatus `json:"deployments,omitempty"`
 
+	// children is one entry per spec.templates entry of a parent, in spec
+	// order.
+	// +optional
+	Children []TestCaseChildStatus `json:"children,omitempty"`
+
+	// burnStartAt is when every child of a Burn parent starts its k6 load,
+	// set once all of them are staged (see ConditionBurnStaged), so the
+	// children's burns line up like their targets do. Cleared while
+	// archived or not Burn.
+	// +optional
+	BurnStartAt *metav1.Time `json:"burnStartAt,omitempty"`
+
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
@@ -215,6 +301,7 @@ type TestCaseStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Deployment",type=string,JSONPath=`.spec.deploymentRefs[*].name`
+// +kubebuilder:printcolumn:name="Templates",type=string,JSONPath=`.spec.templates`
 // +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
 // +kubebuilder:printcolumn:name="Archived",type=boolean,JSONPath=`.spec.archived`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
@@ -256,6 +343,37 @@ func (s *TestCaseSpec) Deployments() []corev1.LocalObjectReference {
 		return []corev1.LocalObjectReference{s.DeploymentRef}
 	}
 	return nil
+}
+
+// IsParent reports whether tc drives child TestCases (spec.templates)
+// rather than deployments.
+func (tc *TestCase) IsParent() bool {
+	return len(tc.Spec.Templates) > 0
+}
+
+// BaselineVariantName returns spec.baselineVariant, or the first variant's
+// name when it is unset or names no variant.
+func (tc *TestCase) BaselineVariantName() string {
+	for _, v := range tc.Spec.Variants {
+		if v.Name == tc.Spec.BaselineVariant {
+			return v.Name
+		}
+	}
+	if len(tc.Spec.Variants) == 0 {
+		return ""
+	}
+	return tc.Spec.Variants[0].Name
+}
+
+// ChildName is the TestCase a template runs as under this parent.
+func (tc *TestCase) ChildName(template string) string {
+	return tc.Name + "-" + template
+}
+
+// ChildDeploymentName is the AuthentikDeployment a variant runs as in a
+// template's child.
+func (tc *TestCase) ChildDeploymentName(template, variant string) string {
+	return tc.Name + "-" + variant + "-" + template
 }
 
 // Seed returns spec.seed if set, otherwise a stable 32-bit FNV-1a hash of

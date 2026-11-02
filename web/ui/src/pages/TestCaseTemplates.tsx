@@ -7,6 +7,7 @@ import { toast } from "../components/Toast";
 import { Alert, confirmAndRun, Empty, errorMessage, Field, Page, Table } from "../components/ui";
 import { k8sNameInput } from "../github";
 import {
+    isParent,
     TestCaseDependency,
     testCaseDependencies,
     TestCaseTemplate,
@@ -228,7 +229,7 @@ export function TestCaseTemplateViewPage() {
     const testCases = useResource(() => api.testCases(), [], 15000, "TestCase");
     // The one cross-reference the object itself can't show: a TestCase names
     // its template, not the other way round.
-    const users = (testCases.data ?? []).filter((tc) => tc.spec.template === name);
+    const users = (testCases.data ?? []).filter((tc) => !isParent(tc) && tc.spec.template === name);
     const t = template.data;
 
     return (

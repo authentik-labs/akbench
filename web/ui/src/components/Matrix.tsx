@@ -1,29 +1,28 @@
 import { formatMetricValue, relativeDelta, shortTag } from "../format";
-import { CompareMetric, CompareResponse, TestMatrix } from "../types";
+import { CompareMetric, CompareResponse, TestCase } from "../types";
 import { Badge } from "./Status";
 import { Delta } from "./Targets";
 
 import { Link } from "react-router";
 
-/** baselineOf mirrors TestMatrix.BaselineVariant (api/v1alpha1/testmatrix_types.go). */
-export function baselineOf(m: TestMatrix): string | undefined {
-    return (
-        m.spec.variants.find((v) => v.name === m.spec.baseline)?.name ?? m.spec.variants[0]?.name
-    );
+/** baselineOf mirrors TestCase.BaselineVariantName (api/v1alpha1/testcase_types.go). */
+export function baselineOf(tc: TestCase): string | undefined {
+    const variants = tc.spec.variants ?? [];
+    return variants.find((v) => v.name === tc.spec.baselineVariant)?.name ?? variants[0]?.name;
 }
 
 /**
- * MatrixGrid is a matrix's row per template (its TestCase) and column per
- * variant (that row's deployment running it), each cell's value of one
- * metric against the baseline variant's.
+ * MatrixGrid is a parent test case's row per template (its child TestCase)
+ * and column per variant (that row's deployment running it), each cell's
+ * value of one metric against the baseline variant's.
  */
 export function MatrixGrid({
-    matrix: m,
+    parent: m,
     results,
     metric,
     metricKey,
 }: {
-    matrix: TestMatrix;
+    parent: TestCase;
     results: CompareResponse["results"];
     metric?: CompareMetric;
     metricKey: string;
@@ -37,7 +36,7 @@ export function MatrixGrid({
                 <thead>
                     <tr>
                         <th>Template</th>
-                        {m.spec.variants.map((v) => (
+                        {(m.spec.variants ?? []).map((v) => (
                             <th key={v.name}>
                                 {v.name}
                                 {v.name === baseline && <span className="muted"> (baseline)</span>}
@@ -49,7 +48,7 @@ export function MatrixGrid({
                     </tr>
                 </thead>
                 <tbody>
-                    {(m.status?.rows ?? []).map((row) => {
+                    {(m.status?.children ?? []).map((row) => {
                         const baselineCell = row.cells?.find((c) => c.variant === baseline);
                         const baselineValue =
                             baselineCell && valueOf(row.testCase, baselineCell.deployment);

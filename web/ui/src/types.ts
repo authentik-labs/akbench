@@ -177,6 +177,30 @@ export interface TestCaseSpec {
     extraTags?: Record<string, string>;
     // Stopped but kept: no burn workload, no new runs.
     archived?: boolean;
+    // Set on a parent (isParent): one child test case per template, each
+    // driving its own deployment per variant. The child inherits every
+    // other field; deploymentRefs, baselineRef and template are set per child.
+    templates?: string[];
+    variants?: TestCaseVariant[];
+    // Defaults to the first variant.
+    baselineVariant?: string;
+    // Shared by every deployment; namespace and authentik.tag are set per cell.
+    deployment?: AuthentikDeploymentSpec;
+    extraValues?: string;
+}
+
+export interface TestCaseVariant {
+    name: string;
+    // Overrides deployment.authentik.image for this variant.
+    image?: string;
+    tag: string;
+}
+
+export interface TestCaseChildStatus {
+    template: string;
+    testCase: string;
+    phase?: string;
+    cells?: { variant: string; deployment: string; phase?: string }[];
 }
 
 export interface TestCaseDeploymentStatus {
@@ -196,51 +220,20 @@ export interface TestCase {
         phase?: string;
         observedGeneration?: number;
         deployments?: TestCaseDeploymentStatus[];
-    };
-}
-
-export interface TestMatrixVariant {
-    name: string;
-    // Overrides deployment.authentik.image for this variant.
-    image?: string;
-    tag: string;
-}
-
-export interface TestMatrixSpec {
-    variants: TestMatrixVariant[];
-    // Defaults to the first variant.
-    baseline?: string;
-    templates: string[];
-    // Shared by every deployment; namespace and authentik.tag are set per cell.
-    deployment: AuthentikDeploymentSpec;
-    extraValues?: string;
-    // Shared by every test case; deploymentRefs, baselineRef and template are
-    // set per row.
-    testCase: TestCaseSpec;
-}
-
-export interface TestMatrixRow {
-    template: string;
-    testCase: string;
-    phase?: string;
-    cells?: { variant: string; deployment: string; phase?: string }[];
-}
-
-/** TestCase label naming the TestMatrix that created it (LabelTestMatrix). */
-export const MATRIX_LABEL = "bench.goauthentik.io/testmatrix";
-
-/** TestMatrix crosses authentik builds (variants) with test case templates. */
-export interface TestMatrix {
-    metadata: ObjectMeta;
-    spec: TestMatrixSpec;
-    status?: {
-        conditions?: Condition[];
-        phase?: string;
-        // When every test case of a Burn matrix starts, all at once.
+        // A parent's children, one per template.
+        children?: TestCaseChildStatus[];
+        // When every child of a Burn parent starts, all at once.
         burnStartAt?: string;
-        rows?: TestMatrixRow[];
     };
 }
+
+/** isParent mirrors TestCase.IsParent: it drives child test cases, not deployments. */
+export function isParent(tc: TestCase): boolean {
+    return (tc.spec.templates?.length ?? 0) > 0;
+}
+
+/** Label naming the parent TestCase that created a test case or deployment (LabelParent). */
+export const PARENT_LABEL = "bench.goauthentik.io/parent";
 
 /**
  * testCaseDeployments mirrors TestCase.Deployments() (api/v1alpha1/testcase_types.go):

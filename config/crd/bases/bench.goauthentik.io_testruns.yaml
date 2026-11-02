@@ -207,7 +207,8 @@ spec:
                     description: |-
                       archived stops the test case without deleting it: a Burn test case's
                       k6 Deployments are removed and no new TestRuns are started, while the
-                      object (and its past TestRuns) stays around for comparison.
+                      object (and its past TestRuns) stays around for comparison. Archiving
+                      a parent archives its children and leaves their deployments alone.
                     type: boolean
                   baselineRef:
                     description: |-
@@ -227,11 +228,426 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
+                  baselineVariant:
+                    description: |-
+                      baselineVariant names the variant the others are compared against.
+                      Defaults to the first variant.
+                    type: string
                   burnDuration:
                     default: 8760h
                     description: burnDuration caps a Burn run - effectively unlimited
                       by default.
                     type: string
+                  deployment:
+                    description: |-
+                      deployment is shared by every AuthentikDeployment a parent creates.
+                      namespace is ignored (each deployment gets its own, named after it),
+                      as are authentik.tag, and authentik.image wherever a variant sets one.
+                    properties:
+                      authentik:
+                        description: AuthentikSpec configures the authentik chart
+                          install itself.
+                        properties:
+                          errorReporting:
+                            description: |-
+                              ErrorReportingSpec mirrors authentik's error_reporting config section, used
+                              both for Sentry (released images) and for OTLP export (the
+                              goauthentik/authentik#25412 branch). On by default.
+                            properties:
+                              enabled:
+                                default: true
+                                description: |-
+                                  enabled is a pointer so an explicit false survives omitempty; nil
+                                  (including a spec with no authentik/errorReporting at all, where the
+                                  CRD default never applies) means enabled.
+                                type: boolean
+                              sampleRate:
+                                default: "0.1"
+                                type: string
+                              tracingEndpoint:
+                                description: tracingEndpoint is the OTLP base endpoint
+                                  spans are exported to.
+                                type: string
+                            type: object
+                          extraValuesRef:
+                            description: |-
+                              extraValuesRef names a ConfigMap (a "values.yaml" key) merged over the
+                              generated Helm values last, as an escape hatch.
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          image:
+                            default: ghcr.io/goauthentik/server
+                            type: string
+                          logLevel:
+                            type: string
+                          pyroscopeHost:
+                            description: pyroscopeHost is where authentik sends continuous
+                              profiles.
+                            type: string
+                          tag:
+                            type: string
+                        type: object
+                      chart:
+                        description: |-
+                          ChartSpec pins the authentik Helm chart source used to install this
+                          deployment.
+                        properties:
+                          repo:
+                            default: https://charts.goauthentik.io
+                            type: string
+                          version:
+                            type: string
+                        type: object
+                      clusterRef:
+                        description: |-
+                          clusterRef names a cluster.x-k8s.io/v1beta1 Cluster this deployment is
+                          deployed onto. Deploying onto the management cluster itself is not
+                          allowed.
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                        x-kubernetes-validations:
+                        - message: clusterRef.name must name a workload cluster; deploying
+                            onto the management cluster is not allowed
+                          rule: has(self.name) && self.name != ''
+                      namespace:
+                        description: |-
+                          namespace is the namespace this deployment is installed into on the
+                          target cluster.
+                        type: string
+                      placement:
+                        description: |-
+                          PlacementSpec controls pod scheduling for an AuthentikDeployment's server and
+                          worker pods.
+                        properties:
+                          mode:
+                            default: Default
+                            description: mode selects Default (shared nodes) or Dedicated
+                              (one pod per node).
+                            enum:
+                            - Default
+                            - Dedicated
+                            - Packed
+                            type: string
+                          nodeSelector:
+                            additionalProperties:
+                              type: string
+                            description: nodeSelector is applied to server/worker
+                              pods in Dedicated mode.
+                            type: object
+                          tolerations:
+                            description: |-
+                              tolerations are applied to server/worker pods in Dedicated mode, so
+                              they can land on tainted, dedicated nodes.
+                            items:
+                              description: |-
+                                The pod this Toleration is attached to tolerates any taint that matches
+                                the triple <key,value,effect> using the matching operator <operator>.
+                              properties:
+                                effect:
+                                  description: |-
+                                    Effect indicates the taint effect to match. Empty means match all taint effects.
+                                    When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                                  type: string
+                                key:
+                                  description: |-
+                                    Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                    If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                                  type: string
+                                operator:
+                                  description: |-
+                                    Operator represents a key's relationship to the value.
+                                    Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                    Exists is equivalent to wildcard for value, so that a pod can
+                                    tolerate all taints of a particular category.
+                                    Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                                  type: string
+                                tolerationSeconds:
+                                  description: |-
+                                    TolerationSeconds represents the period of time the toleration (which must be
+                                    of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                    it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                    negative values will be treated as 0 (evict immediately) by the system.
+                                  format: int64
+                                  type: integer
+                                value:
+                                  description: |-
+                                    Value is the taint value the toleration matches to.
+                                    If the operator is Exists, the value should be empty, otherwise just a regular string.
+                                  type: string
+                              type: object
+                            type: array
+                          topologyKey:
+                            default: kubernetes.io/hostname
+                            description: topologyKey is the anti-affinity deployment
+                              key used in Dedicated mode.
+                            type: string
+                        type: object
+                      postgres:
+                        description: |-
+                          PostgresSpec selects and configures one of the three benchmarked Postgres
+                          backends.
+                        properties:
+                          cnpg:
+                            description: |-
+                              CNPGPostgresSpec configures a CloudNativePG Cluster provisioned for this
+                              deployment.
+                            properties:
+                              instances:
+                                default: 3
+                                description: instances is the number of CNPG cluster
+                                  instances (>1 for HA).
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              maxStorageSize:
+                                description: |-
+                                  maxStorageSize caps volume auto-growth: once the postgres volume is
+                                  more than 80% full, the operator grows it by half its size, up to this
+                                  limit (12Gi when unset). Needs a StorageClass with
+                                  allowVolumeExpansion.
+                                type: string
+                              storageClassName:
+                                type: string
+                              storageSize:
+                                type: string
+                            type: object
+                          embedded:
+                            description: |-
+                              EmbeddedPostgresSpec configures the authentik chart's bundled postgresql
+                              subchart.
+                            properties:
+                              maxStorageSize:
+                                description: |-
+                                  maxStorageSize caps volume auto-growth: once the postgres volume is
+                                  more than 80% full, the operator grows it by half its size, up to this
+                                  limit (12Gi when unset). Needs a StorageClass with
+                                  allowVolumeExpansion.
+                                type: string
+                              storageClassName:
+                                type: string
+                              storageSize:
+                                type: string
+                              tls:
+                                description: |-
+                                  tls serves the bundled postgresql over TLS with a self-signed,
+                                  chart-generated certificate, and has authentik connect with
+                                  sslmode=require.
+                                type: boolean
+                            type: object
+                          external:
+                            description: ExternalPostgresSpec points at an operator-unmanaged
+                              Postgres instance.
+                            properties:
+                              secretRef:
+                                description: |-
+                                  secretRef names a Secret on the target cluster with host/port/database/
+                                  username/password keys.
+                                properties:
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              sslMode:
+                                default: require
+                                type: string
+                            required:
+                            - secretRef
+                            type: object
+                          mode:
+                            default: Embedded
+                            description: |-
+                              PostgresMode selects which of the three benchmarked Postgres backends an
+                              AuthentikDeployment uses.
+                            enum:
+                            - Embedded
+                            - CNPG
+                            - External
+                            type: string
+                        type: object
+                      server:
+                        description: |-
+                          WorkloadSpec sizes one of the authentik chart's workloads (server or
+                          worker).
+                        properties:
+                          replicas:
+                            default: 1
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          resources:
+                            description: ResourceRequirements describes the compute
+                              resource requirements.
+                            properties:
+                              claims:
+                                description: |-
+                                  Claims lists the names of resources, defined in spec.resourceClaims,
+                                  that are used by this container.
+
+                                  This field depends on the
+                                  DynamicResourceAllocation feature gate.
+
+                                  This field is immutable. It can only be set for containers.
+                                items:
+                                  description: ResourceClaim references one entry
+                                    in PodSpec.ResourceClaims.
+                                  properties:
+                                    name:
+                                      description: |-
+                                        Name must match the name of one entry in pod.spec.resourceClaims of
+                                        the Pod where this field is used. It makes that resource available
+                                        inside a container.
+                                      type: string
+                                    request:
+                                      description: |-
+                                        Request is the name chosen for a request in the referenced claim.
+                                        If empty, everything from the claim is made available, otherwise
+                                        only the result of this request.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                              limits:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Limits describes the maximum amount of compute resources allowed.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                              requests:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Requests describes the minimum amount of compute resources required.
+                                  If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                  otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                            type: object
+                        type: object
+                      targetName:
+                        description: |-
+                          targetName is the identity this deployment is known by everywhere else:
+                          the `target` label Prometheus attaches to its metrics, and the `target`
+                          a TestCase names. Defaults to metadata.name.
+                        type: string
+                      worker:
+                        description: |-
+                          WorkloadSpec sizes one of the authentik chart's workloads (server or
+                          worker).
+                        properties:
+                          replicas:
+                            default: 1
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          resources:
+                            description: ResourceRequirements describes the compute
+                              resource requirements.
+                            properties:
+                              claims:
+                                description: |-
+                                  Claims lists the names of resources, defined in spec.resourceClaims,
+                                  that are used by this container.
+
+                                  This field depends on the
+                                  DynamicResourceAllocation feature gate.
+
+                                  This field is immutable. It can only be set for containers.
+                                items:
+                                  description: ResourceClaim references one entry
+                                    in PodSpec.ResourceClaims.
+                                  properties:
+                                    name:
+                                      description: |-
+                                        Name must match the name of one entry in pod.spec.resourceClaims of
+                                        the Pod where this field is used. It makes that resource available
+                                        inside a container.
+                                      type: string
+                                    request:
+                                      description: |-
+                                        Request is the name chosen for a request in the referenced claim.
+                                        If empty, everything from the claim is made available, otherwise
+                                        only the result of this request.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                              limits:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Limits describes the maximum amount of compute resources allowed.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                              requests:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Requests describes the minimum amount of compute resources required.
+                                  If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                  otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                            type: object
+                        type: object
+                    required:
+                    - clusterRef
+                    - namespace
+                    - postgres
+                    - server
+                    - worker
+                    type: object
                   deploymentRef:
                     description: |-
                       deploymentRef names the AuthentikDeployment this test drives.
@@ -285,6 +701,11 @@ spec:
                       extraTags are merged into the k6 --tag arguments alongside
                       testid/target/profile.
                     type: object
+                  extraValues:
+                    description: |-
+                      extraValues is raw Helm values YAML merged over every deployment a
+                      parent creates (see AuthentikSpec.extraValuesRef).
+                    type: string
                   flow:
                     default: default-authentication-flow
                     type: string
@@ -429,12 +850,58 @@ spec:
                       oidc-test-client and OAuth2 provider/application). Ignored when inline
                       or scriptConfigMapRef is set.
                     type: string
+                  templates:
+                    description: |-
+                      templates turns this TestCase into a parent that drives nested
+                      TestCases instead of deployments: one child TestCase per template
+                      (named <name>-<template>), each driving its own AuthentikDeployment
+                      per variant (<name>-<variant>-<template>), so the templates'
+                      provisioning and load never share a deployment. The child inherits
+                      every other field of this spec; deploymentRefs, baselineRef and
+                      template are set per child. Requires variants and deployment.
+                    items:
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
                   traceSampleRate:
                     default: "0.01"
                     description: |-
                       traceSampleRate is the share of login flows k6 marks as sampled in the
                       traceparent header it sends.
                     type: string
+                  variants:
+                    description: |-
+                      variants are the authentik builds a parent compares against each
+                      other, one deployment each per child.
+                    items:
+                      description: |-
+                        TestCaseVariant is one authentik build under test - one column of a
+                        parent TestCase's grid.
+                      properties:
+                        image:
+                          description: image overrides deployment.authentik.image
+                            for this variant.
+                          type: string
+                        name:
+                          description: |-
+                            name identifies the variant in the deployments' names and in views,
+                            e.g. "pr" or "2026-6-0".
+                          maxLength: 24
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        tag:
+                          description: tag is the image tag this variant runs.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - tag
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   vus:
                     default: 8
                     format: int32

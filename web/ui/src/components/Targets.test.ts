@@ -1,4 +1,4 @@
-import { Condition, MATRIX_LABEL, TestCase } from "../types";
+import { Condition, PARENT_LABEL, TestCase } from "../types";
 import { burnStatus } from "./Targets";
 
 import { describe, expect, it } from "vitest";
@@ -23,14 +23,14 @@ describe("burnStatus", () => {
         expect(burnStatus(burn(), now)).toMatch(/^waiting/);
     });
 
-    it("waits for the rest of its matrix once staged", () => {
+    it("waits for the rest of its parent once staged", () => {
         const tc = burn();
-        tc.metadata.labels = { [MATRIX_LABEL]: "m" };
+        tc.metadata.labels = { [PARENT_LABEL]: "m" };
         expect(burnStatus(tc, now)).toBe(
             "waiting for every target to be ready, to start them together",
         );
         tc.status!.conditions = [{ type: "BurnStaged", status: "True" } as Condition];
-        expect(burnStatus(tc, now)).toMatch(/^waiting for every test case of matrix m/);
+        expect(burnStatus(tc, now)).toMatch(/^waiting for every test case of m /);
     });
 
     it("counts down to a scheduled start", () => {

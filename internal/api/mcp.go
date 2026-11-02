@@ -74,7 +74,7 @@ func (s *Server) mcpHandler() http.Handler {
 // /api/v1/mcp's own requireToken, so it is unauthenticated itself.
 func (s *Server) mcpReadRouter() http.Handler {
 	r := chi.NewRouter()
-	for _, path := range []string{"deployments", "testcases", "testmatrices", "testruns", "workloadclusters"} {
+	for _, path := range []string{"deployments", "testcases", "testruns", "workloadclusters"} {
 		kind := resourceKinds[path]
 		r.Get("/"+path, s.listResource(kind))
 		r.Get("/"+path+"/{name}", s.getResource(kind))
@@ -268,13 +268,10 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 	mcp.AddTool(server, tool("get_deployment", "Get deployment", "Get one AuthentikDeployment by name."),
 		getObject("deployments"))
 	mcp.AddTool(server, tool("list_test_cases", "List test cases",
-		"List TestCases: the k6 load tests, their template, profile (Quick/Burn), load shape (vus, duration) and target deployments. A TestCase's name is its metrics testid."),
+		"List TestCases: the k6 load tests, their template, profile (Quick/Burn), load shape (vus, duration) and target deployments. A TestCase's name is its metrics testid. A parent TestCase (spec.templates) crosses authentik builds (spec.variants) with templates instead: each template runs as its own child TestCase driving one deployment per variant; status.children names them."),
 		listObjects("testcases"))
 	mcp.AddTool(server, tool("get_test_case", "Get test case", "Get one TestCase by name."),
 		getObject("testcases"))
-	mcp.AddTool(server, tool("list_test_matrices", "List test matrices",
-		"List TestMatrices: authentik builds (variants) crossed with test case templates. Each template runs as its own TestCase driving one deployment per variant; status.rows names them."),
-		listObjects("testmatrices"))
 	mcp.AddTool(server, tool("list_test_runs", "List test runs",
 		"List TestRuns (executions of Quick TestCases, one per target deployment) with their status: phase, start and completion times, and k6's end-of-test summary where available."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListTestRunsInput) (*mcp.CallToolResult, any, error) {

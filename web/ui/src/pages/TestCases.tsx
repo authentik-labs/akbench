@@ -46,7 +46,8 @@ import {
 import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
 import { shellLinkForCluster } from "../shell/links";
 import {
-    MATRIX_LABEL,
+    isParent,
+    PARENT_LABEL,
     TestCase,
     TestCaseSpec,
     TestProfile,
@@ -55,6 +56,7 @@ import {
     testRunDeployment,
 } from "../types";
 import { useResource } from "../useResource";
+import { parentDeployments, TestCaseParentView } from "./TestCaseParent";
 
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
@@ -62,18 +64,24 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 /**
  * deploymentsCheckbox offers to also delete the deployments only tc drives -
  * deleting one another test case drives would pull it out from under that
- * test case too. own is empty (and checkbox undefined) when there are none.
+ * test case too. A parent's own are the ones it created for its children.
+ * own is empty (and checkbox undefined) when there are none.
  */
 function deploymentsCheckbox(tc: TestCase, all: TestCase[]) {
+    const drives = isParent(tc)
+        ? parentDeployments(tc)
+        : testCaseDeployments(tc.spec).map((d) => d.name);
     const usedElsewhere = new Set(
         all
-            .filter((other) => other.metadata.name !== tc.metadata.name)
+            .filter(
+                (other) =>
+                    other.metadata.name !== tc.metadata.name &&
+                    other.metadata.labels?.[PARENT_LABEL] !== tc.metadata.name,
+            )
             .flatMap((other) => testCaseDeployments(other.spec).map((d) => d.name)),
     );
-    const own = testCaseDeployments(tc.spec)
-        .map((d) => d.name)
-        .filter((d) => !usedElsewhere.has(d));
-    const shared = testCaseDeployments(tc.spec).length - own.length;
+    const own = drives.filter((d) => !usedElsewhere.has(d));
+    const shared = drives.length - own.length;
     const checkbox =
         own.length > 0
             ? {
@@ -164,21 +172,26 @@ export function TestCasesPage() {
                     },
                     {
                         label: "Deployment",
-                        render: (tc) => (
-                            <span className="row" style={{ gap: 4 }}>
-                                {testCaseDeployments(tc.spec).map((ref, i) => (
-                                    <span key={ref.name}>
-                                        {i > 0 && ", "}
-                                        <Link to={`/deployments/${ref.name}`}>{ref.name}</Link>
-                                    </span>
-                                ))}
-                            </span>
-                        ),
+                        render: (tc) =>
+                            isParent(tc) ? (
+                                (tc.spec.variants ?? []).map((v) => v.name).join(" vs ")
+                            ) : (
+                                <span className="row" style={{ gap: 4 }}>
+                                    {testCaseDeployments(tc.spec).map((ref, i) => (
+                                        <span key={ref.name}>
+                                            {i > 0 && ", "}
+                                            <Link to={`/deployments/${ref.name}`}>{ref.name}</Link>
+                                        </span>
+                                    ))}
+                                </span>
+                            ),
                     },
                     {
                         label: "Template",
                         render: (tc) =>
-                            tc.spec.inline !== undefined ? (
+                            isParent(tc) ? (
+                                (tc.spec.templates ?? []).join(", ")
+                            ) : tc.spec.inline !== undefined ? (
                                 <em>inline</em>
                             ) : (
                                 (tc.spec.template ?? "-")
@@ -208,20 +221,24 @@ export function TestCasesPage() {
                         className: "actions",
                         render: (tc) => (
                             <span className="row" style={{ justifyContent: "flex-end" }}>
-                                {tc.spec.profile === "Quick" && !tc.spec.archived && (
-                                    <button
-                                        className="small"
-                                        onClick={() => void runNow(tc.metadata.name)}
+                                {tc.spec.profile === "Quick" &&
+                                    !tc.spec.archived &&
+                                    !isParent(tc) && (
+                                        <button
+                                            className="small"
+                                            onClick={() => void runNow(tc.metadata.name)}
+                                        >
+                                            Run now
+                                        </button>
+                                    )}
+                                {!isParent(tc) && (
+                                    <Link
+                                        className="button small"
+                                        to={`/testcases/${tc.metadata.name}/edit`}
                                     >
-                                        Run now
-                                    </button>
+                                        Edit
+                                    </Link>
                                 )}
-                                <Link
-                                    className="button small"
-                                    to={`/testcases/${tc.metadata.name}/edit`}
-                                >
-                                    Edit
-                                </Link>
                                 <button
                                     className="small"
                                     onClick={() =>
@@ -624,6 +641,15 @@ const SECTIONS = [
 export function TestCaseViewPage() {
     const { name = "" } = useParams();
     const testCase = useResource(() => api.testCase(name), [name], 10000, "TestCase");
+    return testCase.data && isParent(testCase.data) ? (
+        <TestCaseParentView testCase={testCase} />
+    ) : (
+        <TestCaseLeafView testCase={testCase} />
+    );
+}
+
+function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResource<TestCase>> }) {
+    const { name = "" } = useParams();
     const deployments = useResource(() => api.deployments(), [], 30000, "AuthentikDeployment");
     const runs = useResource(() => api.testRuns(name), [name], 10000, "TestRun");
     const tc = testCase.data;
@@ -782,11 +808,11 @@ export function TestCaseViewPage() {
                             : `template ${tc.spec.template ?? "login"}`}
                         {burn && ` · ${burn}`}
                         {burnedFor && ` · burned for ${burnedFor}`}
-                        {tc.metadata.labels?.[MATRIX_LABEL] && (
+                        {tc.metadata.labels?.[PARENT_LABEL] && (
                             <>
-                                {" · part of matrix "}
-                                <Link to={`/testmatrices/${tc.metadata.labels[MATRIX_LABEL]}`}>
-                                    {tc.metadata.labels[MATRIX_LABEL]}
+                                {" · part of "}
+                                <Link to={`/testcases/${tc.metadata.labels[PARENT_LABEL]}`}>
+                                    {tc.metadata.labels[PARENT_LABEL]}
                                 </Link>
                             </>
                         )}

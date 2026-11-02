@@ -19,7 +19,7 @@ import { useResource } from "../useResource";
 import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 // The branch comparison's equivalent, with the branch as a name segment.
 const BRANCH_LABEL = "bench.goauthentik.io/branch";
@@ -89,20 +89,16 @@ export function BranchComparisonPage() {
 }
 
 /**
- * PullRequestComparisonPage sets up a side-by-side Burn test of an authentik
- * pull request's CI build against its base branch or a release: two
- * deployments sharing every setting but the image, and one TestCase driving
- * both with the same load. In branch mode the PR is replaced by a branch and
- * the baseline is always a release. It creates those objects directly,
- * unless several templates are picked or the page was opened from the test
- * matrices (?matrix): then a single TestMatrix owning one such pair of
- * deployments plus a TestCase per template, so the templates' provisioning
- * and load don't interfere with each other.
+ * PullRequestComparisonPage sets up a side-by-side Burn test of an authentik pull request's CI
+ * build against its base branch or a release: two deployments sharing every setting but the image,
+ * and one TestCase driving both with the same load. In branch mode the PR is replaced by a branch
+ * and the baseline is always a release. It creates those objects directly, unless several templates
+ * are picked: then a single parent TestCase owning one such pair of deployments plus a child
+ * TestCase per template, so the templates' provisioning and load don't interfere with each other.
  */
 export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "branch" }) {
     const isBranch = mode === "branch";
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
     const templates = useResource(() => api.testCaseTemplates(), [], 0);
 
     const [prInput, setPrInput] = useState("");
@@ -209,7 +205,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
     const baselineSuffix =
         baseline === "base" ? k8sNameSegment(pr?.baseRef ?? "main") : k8sNameSegment(version);
     // The variant names make up the deployments' names,
-    // <matrix>-<variant>-<template> (see TestMatrix.DeploymentName).
+    // <parent>-<variant>-<template> (see TestCase.ChildDeploymentName).
     const variants = [
         { name: "head", image: DEV_IMAGE, tag: prTag },
         baseline === "base"
@@ -228,7 +224,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
     const tooLong = rows
         .flatMap((r) => r.deployments.map((d) => d.deploymentName))
         .filter((n) => n.length > MAX_DEPLOYMENT_NAME_LENGTH);
-    const asMatrix = searchParams.has("matrix") || rows.length > 1;
+    const asParent = rows.length > 1;
 
     async function submit(event: FormEvent) {
         event.preventDefault();
@@ -248,32 +244,32 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
               ? { [PULL_REQUEST_LABEL]: String(prNumber) }
               : undefined;
         const testCase = { profile: "Burn" as const, vus, flow, burnDuration, traceSampleRate };
-        if (!asMatrix) {
+        if (!asParent) {
             await createDirectly(rows[0], labels, testCase);
             return;
         }
         try {
-            await api.createTestMatrix({
+            await api.createTestCase({
                 metadata: { name: effectivePrefix, labels },
                 spec: {
+                    ...testCase,
                     variants,
-                    baseline: baselineSuffix,
+                    baselineVariant: baselineSuffix,
                     templates: selectedTemplates,
                     deployment: spec,
                     extraValues: extraValuesYAML.trim() ? extraValuesYAML : undefined,
-                    testCase,
                 },
             });
-            toast.success(`Created test matrix ${effectivePrefix}`);
-            navigate(`/testmatrices/${effectivePrefix}`);
+            toast.success(`Created test case ${effectivePrefix}`);
+            navigate(`/testcases/${effectivePrefix}`);
         } catch (err) {
             setError(errorMessage(err));
             setSaving(false);
         }
     }
 
-    // createDirectly is the matrix's work for a single template, without the
-    // matrix: the deployments and a TestCase driving them, named the same.
+    // createDirectly is a parent's work for a single template, without the
+    // parent: the deployments and a TestCase driving them, named the same.
     async function createDirectly(
         row: (typeof rows)[number],
         labels: Record<string, string> | undefined,
@@ -541,7 +537,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     </p>
                     <div className="fields">
                         <Field
-                            label={asMatrix ? "Matrix name" : "Name"}
+                            label="Name"
                             help="Test cases, deployments and namespaces are named after it"
                         >
                             <input
@@ -576,8 +572,8 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     <p className="muted">
                         Keeps both deployments under the same steady load until stopped, each tagged
                         with its own k6 target. The load starts on both at the same moment, once
-                        both deployments and their k6 runners are ready. Pick several templates for
-                        a matrix: each gets its own pair of deployments and test case.
+                        both deployments and their k6 runners are ready. Pick several templates to
+                        run them side by side: each gets its own pair of deployments and test case.
                     </p>
                     <div className="fields">
                         <div className="field wide">
@@ -637,9 +633,9 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
 
                 <fieldset>
                     <legend>Creates</legend>
-                    {asMatrix && (
+                    {asParent && (
                         <p className="muted">
-                            One test matrix <code>{effectivePrefix || "…"}</code>, which creates and
+                            One test case <code>{effectivePrefix || "…"}</code>, which creates and
                             owns:
                         </p>
                     )}
@@ -664,7 +660,7 @@ export function PullRequestComparisonPage({ mode = "pr" }: { mode?: "pr" | "bran
                     </ul>
                     {tooLong.length > 0 && (
                         <Alert>
-                            {`${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the ${asMatrix ? "matrix " : ""}name.`}
+                            {`${tooLong.join(", ")} ${tooLong.length === 1 ? "is" : "are"} longer than ${MAX_DEPLOYMENT_NAME_LENGTH} characters, Helm's release name limit - shorten the name.`}
                         </Alert>
                     )}
                 </fieldset>

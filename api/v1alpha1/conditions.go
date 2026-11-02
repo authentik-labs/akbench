@@ -22,8 +22,9 @@ const (
 	// resolved and mirrored to the runner cluster.
 	ConditionScriptReady = "ScriptReady"
 	// ConditionBurnStaged is True once every target of a Burn TestCase is
-	// Ready and its k6 pod is up, waiting at the start gate. A TestMatrix
-	// opens its TestCases' shared start gate once all of them report it.
+	// Ready and its k6 pod is up, waiting at the start gate. A parent
+	// TestCase opens its children's shared start gate once all of them
+	// report it.
 	ConditionBurnStaged = "BurnStaged"
 )
 

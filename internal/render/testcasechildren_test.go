@@ -6,24 +6,24 @@ import (
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
 
-func TestTestMatrixBuildsOneTestCaseAndDeploymentPairPerTemplate(t *testing.T) {
-	m := &benchv1alpha1.TestMatrix{
+func TestTestCaseChildrenBuildsOneTestCaseAndDeploymentPairPerTemplate(t *testing.T) {
+	m := &benchv1alpha1.TestCase{
 		Name: "pr-1", Namespace: "bench",
 		Labels: map[string]string{"bench.goauthentik.io/pull-request": "1"},
-		Spec: benchv1alpha1.TestMatrixSpec{
-			Variants: []benchv1alpha1.TestMatrixVariant{
+		Spec: benchv1alpha1.TestCaseSpec{
+			Variants: []benchv1alpha1.TestCaseVariant{
 				{Name: "pr", Tag: "gh-abc"},
 				{Name: "2026-6-0", Image: "ghcr.io/goauthentik/server", Tag: "2026.6.0"},
 			},
-			Baseline:    "2026-6-0",
-			Templates:   []string{"login", "oauth-oidc"},
-			Deployment:  benchv1alpha1.AuthentikDeploymentSpec{Authentik: benchv1alpha1.AuthentikSpec{Image: "ghcr.io/goauthentik/dev-server"}},
-			ExtraValues: "authentik:\n  log_level: debug\n",
-			TestCase:    benchv1alpha1.TestCaseSpec{Profile: benchv1alpha1.ProfileBurn, VUs: 4, Template: "ignored"},
+			BaselineVariant: "2026-6-0",
+			Templates:       []string{"login", "oauth-oidc"},
+			Deployment:      &benchv1alpha1.AuthentikDeploymentSpec{Authentik: benchv1alpha1.AuthentikSpec{Image: "ghcr.io/goauthentik/dev-server"}},
+			ExtraValues:     "authentik:\n  log_level: debug\n",
+			Profile:         benchv1alpha1.ProfileBurn, VUs: 4, Template: "ignored",
 		},
 	}
 
-	out, err := TestMatrix(m)
+	out, err := TestCaseChildren(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,10 +42,13 @@ func TestTestMatrixBuildsOneTestCaseAndDeploymentPairPerTemplate(t *testing.T) {
 	if got := tc.Spec.Deployments(); len(got) != 2 || got[0].Name != "pr-1-pr-oauth-oidc" || got[1].Name != "pr-1-2026-6-0-oauth-oidc" {
 		t.Errorf("deploymentRefs = %v", got)
 	}
+	if tc.IsParent() || tc.Spec.Deployment != nil || tc.Spec.Variants != nil || tc.Spec.ExtraValues != "" {
+		t.Errorf("child carries the parent's fields: %+v", tc.Spec)
+	}
 	if tc.Spec.BaselineRef.Name != "pr-1-2026-6-0-oauth-oidc" {
 		t.Errorf("baselineRef = %s", tc.Spec.BaselineRef.Name)
 	}
-	if tc.Labels[benchv1alpha1.LabelTestMatrix] != "pr-1" || tc.Labels["bench.goauthentik.io/pull-request"] != "1" {
+	if tc.Labels[benchv1alpha1.LabelParent] != "pr-1" || tc.Labels["bench.goauthentik.io/pull-request"] != "1" {
 		t.Errorf("labels = %v", tc.Labels)
 	}
 
@@ -61,12 +64,17 @@ func TestTestMatrixBuildsOneTestCaseAndDeploymentPairPerTemplate(t *testing.T) {
 	}
 
 	m.Spec.ExtraValues = "authentik:\n  log_level: info\n"
-	if changed, _ := TestMatrix(m); changed.ExtraValues.Name == out.ExtraValues.Name {
+	if changed, _ := TestCaseChildren(m); changed.ExtraValues.Name == out.ExtraValues.Name {
 		t.Error("extra-values ConfigMap name didn't change with its content")
 	}
 
-	m.Name = "a-matrix-name-long-enough-to-overflow"
-	if _, err := TestMatrix(m); err == nil {
+	m.Name = "a-test-case-name-long-enough-to-overflow"
+	if _, err := TestCaseChildren(m); err == nil {
 		t.Error("want an error for a deployment name past the AuthentikDeployment name limit")
+	}
+
+	m.Spec.Deployment = nil
+	if _, err := TestCaseChildren(m); err == nil {
+		t.Error("want an error for templates without a deployment")
 	}
 }

@@ -63,10 +63,9 @@ type TestCaseReconciler struct {
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testcases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testcases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testcases/finalizers,verbs=update
-// +kubebuilder:rbac:groups=bench.goauthentik.io,resources=authentikdeployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=bench.goauthentik.io,resources=authentikdeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testcasetemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=bench.goauthentik.io,resources=workloadclusters,verbs=get;list;watch
-// +kubebuilder:rbac:groups=bench.goauthentik.io,resources=testmatrices,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update
@@ -95,6 +94,9 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	if tc.IsParent() {
+		return r.reconcileParent(ctx, &tc)
+	}
 	if tc.Spec.Archived {
 		return r.reconcileArchived(ctx, &tc)
 	}
@@ -146,7 +148,7 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	for _, st := range tc.Status.Deployments {
 		previous[st.Name] = st
 	}
-	startAt, matrixGated, err := r.burnStart(ctx, &tc)
+	startAt, parentGated, err := r.burnStart(ctx, &tc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -205,7 +207,7 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 	setBurnStaged(r.Recorder, &tc, burnStaged)
-	result := openBurnStartGate(ctx, &tc, startAt, burnStaged, matrixGated)
+	result := openBurnStartGate(ctx, &tc, startAt, burnStaged, parentGated)
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionTrue,
 		benchv1alpha1.ReasonReady, "every deployment is Ready")
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionTrue,
@@ -266,22 +268,22 @@ func burnStartAt(tc *benchv1alpha1.TestCase) *metav1.Time {
 	return startAt
 }
 
-// burnStart is burnStartAt, falling back to the start time the TestMatrix
-// that created tc set for all its TestCases. matrixGated reports whether
-// that matrix, not tc, opens tc's start gate.
-func (r *TestCaseReconciler) burnStart(ctx context.Context, tc *benchv1alpha1.TestCase) (startAt *metav1.Time, matrixGated bool, err error) {
+// burnStart is burnStartAt, falling back to the start time the parent
+// TestCase that created tc set for all its children. parentGated reports
+// whether that parent, not tc, opens tc's start gate.
+func (r *TestCaseReconciler) burnStart(ctx context.Context, tc *benchv1alpha1.TestCase) (startAt *metav1.Time, parentGated bool, err error) {
 	startAt = burnStartAt(tc)
-	name := tc.Labels[benchv1alpha1.LabelTestMatrix]
+	name := tc.Labels[benchv1alpha1.LabelParent]
 	if name == "" || tc.Spec.Profile != benchv1alpha1.ProfileBurn {
 		return startAt, false, nil
 	}
-	var m benchv1alpha1.TestMatrix
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: tc.Namespace}, &m); err != nil {
-		// A TestCase outliving its matrix starts on its own.
+	var parent benchv1alpha1.TestCase
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: tc.Namespace}, &parent); err != nil {
+		// A TestCase outliving its parent starts on its own.
 		return startAt, false, client.IgnoreNotFound(err)
 	}
 	if startAt == nil {
-		startAt = m.Status.BurnStartAt
+		startAt = parent.Status.BurnStartAt
 	}
 	return startAt, true, nil
 }
@@ -304,10 +306,10 @@ func setBurnStaged(recorder record.EventRecorder, tc *benchv1alpha1.TestCase, st
 // openBurnStartGate records when a Burn TestCase whose AuthentikDeployments
 // are all Ready starts burning. The first time every k6 pod is up too
 // (staged), that's burnStartLead from now, so the start time reaches all of
-// them before it passes - unless matrixGated, where its TestMatrix picks
-// that time for all its TestCases at once (see burnStart). The
+// them before it passes - unless parentGated, where its parent TestCase
+// picks that time for all its children at once (see burnStart). The
 // returned result polls until then.
-func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt *metav1.Time, staged, matrixGated bool) ctrl.Result {
+func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt *metav1.Time, staged, parentGated bool) ctrl.Result {
 	var result ctrl.Result
 	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
 		return result
@@ -316,8 +318,8 @@ func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt 
 		if !staged {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}
 		}
-		if matrixGated {
-			// The TestMatrix watch wakes this up once it sets the time.
+		if parentGated {
+			// The parent watch wakes this up once it sets the time.
 			return result
 		}
 		startAt = &metav1.Time{Time: time.Now().Add(burnStartLead).Truncate(time.Second)}
@@ -870,22 +872,23 @@ func (r *TestCaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// anything on its own, so the stale condition can sit for a long
 		// time even though the real dependency is satisfied.
 		Watches(&benchv1alpha1.AuthentikDeployment{}, handler.EnqueueRequestsFromMapFunc(r.testCasesForDeployment)).
-		// A TestMatrix opening its burn start gate releases its TestCases.
-		Watches(&benchv1alpha1.TestMatrix{}, handler.EnqueueRequestsFromMapFunc(r.testCasesForMatrix)).
+		// A child's phase rolls up into its parent, and a parent opening its
+		// burn start gate releases its children.
+		Watches(&benchv1alpha1.TestCase{}, handler.EnqueueRequestsFromMapFunc(r.relatedTestCases)).
 		Named("testcase").
 		Complete(r)
 }
 
 // testCasesForDeployment maps an AuthentikDeployment change to every TestCase in
-// the same namespace referencing it, so its controller re-checks readiness
-// as soon as the deployment's own status changes instead of waiting for an
-// unrelated trigger.
+// the same namespace referencing it, plus the parent that created it, so
+// their controller re-checks readiness as soon as the deployment's own
+// status changes instead of waiting for an unrelated trigger.
 func (r *TestCaseReconciler) testCasesForDeployment(ctx context.Context, topo client.Object) []reconcile.Request {
 	var list benchv1alpha1.TestCaseList
 	if err := r.List(ctx, &list, client.InNamespace(topo.GetNamespace())); err != nil {
 		return nil
 	}
-	var reqs []reconcile.Request
+	reqs := parentRequest(topo)
 	for _, tc := range list.Items {
 		if slices.ContainsFunc(tc.Deployments(), func(ref corev1.LocalObjectReference) bool { return ref.Name == topo.GetName() }) {
 			reqs = append(reqs, reconcile.Request{Name: tc.Name, Namespace: tc.Namespace})
@@ -894,15 +897,24 @@ func (r *TestCaseReconciler) testCasesForDeployment(ctx context.Context, topo cl
 	return reqs
 }
 
-// testCasesForMatrix maps a TestMatrix change to the TestCases it created.
-func (r *TestCaseReconciler) testCasesForMatrix(ctx context.Context, m client.Object) []reconcile.Request {
+// relatedTestCases maps a TestCase change to its parent and its children.
+func (r *TestCaseReconciler) relatedTestCases(ctx context.Context, tc client.Object) []reconcile.Request {
+	reqs := parentRequest(tc)
 	var list benchv1alpha1.TestCaseList
-	if err := r.List(ctx, &list, client.InNamespace(m.GetNamespace()), client.MatchingLabels{benchv1alpha1.LabelTestMatrix: m.GetName()}); err != nil {
-		return nil
+	if err := r.List(ctx, &list, client.InNamespace(tc.GetNamespace()), client.MatchingLabels{benchv1alpha1.LabelParent: tc.GetName()}); err != nil {
+		return reqs
 	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for _, tc := range list.Items {
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&tc)})
+	for _, child := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&child)})
 	}
 	return reqs
+}
+
+// parentRequest is the parent TestCase controlling obj, if any.
+func parentRequest(obj client.Object) []reconcile.Request {
+	owner := metav1.GetControllerOf(obj)
+	if owner == nil || owner.Kind != "TestCase" {
+		return nil
+	}
+	return []reconcile.Request{{Name: owner.Name, Namespace: obj.GetNamespace()}}
 }

@@ -3,14 +3,22 @@
 What each component does.
 
 - **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TestCase`,
-  `TestCaseTemplate`, `TestMatrix`, `TestRun`, `WorkloadCluster`.
-- **`TestMatrixReconciler`**: crosses authentik builds (`spec.variants`) with
-  test case templates (`spec.templates`): one `TestCase` per template, each
-  driving its own `AuthentikDeployment` per variant
-  (`<matrix>-<variant>-<template>`), so templates never share a deployment.
-  It owns them all, so deleting the matrix deletes them, and rolls their
-  phases up into `status.rows` for the UI's matrix grid. The "Compare a PR"
-  and "Compare a branch" pages create one.
+  `TestCaseTemplate`, `TestRun`, `WorkloadCluster`, plus the deprecated
+  `TestMatrix` (migrated into a parent `TestCase` on sight).
+- **Parent `TestCase`s**: a `TestCase` with `spec.templates` drives nested
+  `TestCase`s instead of deployments. It crosses authentik builds
+  (`spec.variants`) with those templates: one child `TestCase` per template
+  (`<parent>-<template>`), each driving its own `AuthentikDeployment` per
+  variant (`<parent>-<variant>-<template>`), so templates never share a
+  deployment. It owns them all, so deleting the parent deletes them, rolls
+  their phases up into `status.children` for the UI's grid, and opens one
+  burn start gate (`status.burnStartAt`) for all children once each is
+  staged. The "Compare a PR" and "Compare a branch" pages create one when
+  more than one template is picked.
+- **`TestMatrixReconciler`**: migrates the deprecated `TestMatrix`, which
+  parent `TestCase`s replaced: it creates a parent `TestCase` of the same
+  name and spec, moves the matrix's children over to it (label and
+  controller reference) without recreating them, and deletes the matrix.
 - **`WorkloadClusterReconciler`**: renders a full Cluster API cluster stack
   (`Cluster`/`LXCCluster`/`KubeadmControlPlane`/`MachineDeployment` plus their
   `LXCMachineTemplate`s and a worker `KubeadmConfigTemplate`) against the

@@ -7,7 +7,7 @@ import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets"
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
 import { formatMetricValue } from "../format";
 import { PULL_REQUEST_LABEL } from "../github";
-import { MATRIX_LABEL, RangePoint, TestMatrix, testRunDeployment } from "../types";
+import { isParent, PARENT_LABEL, RangePoint, TestCase, testRunDeployment } from "../types";
 import { useResource } from "../useResource";
 
 import { Link } from "react-router";
@@ -30,10 +30,9 @@ export function DashboardPage() {
     const runs = useResource(() => api.testRuns(), [], 10000);
     const clusters = useResource(() => api.clusters(), [], 30000);
     const alerts = useResource(() => api.alerts(), [], 30000);
-    const matrices = useResource(() => api.testMatrices(), [], 15000);
 
     const burnTests = (testCases.data ?? [])
-        .filter((tc) => tc.spec.profile === "Burn" && !tc.spec.archived)
+        .filter((tc) => tc.spec.profile === "Burn" && !tc.spec.archived && !isParent(tc))
         .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
     const burnIDs = burnTests.map((tc) => tc.metadata.name);
     const live = useResource(
@@ -53,14 +52,14 @@ export function DashboardPage() {
         60000,
     );
 
-    // A matrix's test cases are shown as its grid instead of one group each;
-    // a one-template matrix's single test case keeps its own, fuller group.
-    const burnMatrices = (matrices.data ?? [])
-        .filter((m) => m.spec.templates.length > 1)
-        .filter((m) => (m.status?.rows ?? []).some((r) => burnIDs.includes(r.testCase)))
+    // A parent's children are shown as its grid instead of one group each;
+    // a one-template parent's single child keeps its own, fuller group.
+    const burnMatrices = (testCases.data ?? [])
+        .filter((m) => (m.spec.templates?.length ?? 0) > 1)
+        .filter((m) => (m.status?.children ?? []).some((r) => burnIDs.includes(r.testCase)))
         .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
-    const matrixBurnTests = (m: TestMatrix) =>
-        burnTests.filter((tc) => tc.metadata.labels?.[MATRIX_LABEL] === m.metadata.name);
+    const matrixBurnTests = (m: TestCase) =>
+        burnTests.filter((tc) => tc.metadata.labels?.[PARENT_LABEL] === m.metadata.name);
     const trendMetric = live.data?.metrics.find((x) => x.key === TREND_METRIC);
 
     const groups = burnTests.map((tc) => {
@@ -174,8 +173,8 @@ export function DashboardPage() {
                     <h2>Burn tests</h2>
                     <div className="muted">
                         Each test drives one or more targets with the same load. Live values cover
-                        the last minute; the trend shows p95 over 6 hours. A test matrix shows p95
-                        per template and variant, against its baseline.
+                        the last minute; the trend shows p95 over 6 hours. A parent test case shows
+                        p95 per template and variant, against its baseline.
                     </div>
                 </div>
                 {notReadyTargets > 0 && <Badge value="Not ready" />}
@@ -242,12 +241,12 @@ export function DashboardPage() {
                     <div className="group" key={m.metadata.name}>
                         <div className="group-head">
                             <span>
-                                <Link to={`/testmatrices/${m.metadata.name}`} className="mono">
+                                <Link to={`/testcases/${m.metadata.name}`} className="mono">
                                     <strong>{m.metadata.name}</strong>
                                 </Link>{" "}
                                 <span className="muted">
-                                    · {m.spec.variants.map((v) => v.name).join(" vs ")} ·{" "}
-                                    {m.spec.testCase.vus} VUs each
+                                    · {(m.spec.variants ?? []).map((v) => v.name).join(" vs ")} ·{" "}
+                                    {m.spec.vus} VUs each
                                     {burn && ` · ${burn}`}
                                     {m.metadata.labels?.[PULL_REQUEST_LABEL] && (
                                         <>
@@ -260,7 +259,7 @@ export function DashboardPage() {
                             <Badge value={m.status?.phase ?? "Pending"} />
                         </div>
                         <MatrixGrid
-                            matrix={m}
+                            parent={m}
                             results={live.data?.results ?? []}
                             metric={trendMetric}
                             metricKey={TREND_METRIC}

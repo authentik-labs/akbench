@@ -16,4 +16,7 @@ const (
 	// single label to match on regardless of which component or postgres
 	// mode is involved.
 	LabelDeployment = "bench.goauthentik.io/deployment"
+	// LabelParent names the parent TestCase an AuthentikDeployment, child
+	// TestCase or extra-values ConfigMap was created for.
+	LabelParent = "bench.goauthentik.io/parent"
 )

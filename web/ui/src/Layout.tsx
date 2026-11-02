@@ -26,7 +26,6 @@ const navSections: NavSection[] = [
         items: [
             { to: "/deployments", label: "Deployments" },
             { to: "/testcases", label: "Test cases" },
-            { to: "/testmatrices", label: "Test matrices" },
             { to: "/testruns", label: "Test runs" },
         ],
     },

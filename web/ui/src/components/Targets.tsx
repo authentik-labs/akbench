@@ -12,7 +12,7 @@ import {
     AuthentikDeployment,
     CompareMetric,
     CompareResponse,
-    MATRIX_LABEL,
+    PARENT_LABEL,
     RangePoint,
     TestCase,
     testCaseDeployments,
@@ -72,7 +72,7 @@ export function buildTargetRows(
 /**
  * burnStatus describes where a running Burn test is: waiting until every
  * target and its k6 pod is ready (the operator then starts them all at
- * once - with the rest of its matrix, if it is part of one), counting down
+ * once - with the rest of its parent's children, if it has one), counting down
  * to that shared start, or how long it has been
  * burning since - so operator restarts don't reset it. Undefined for a
  * Quick or archived test.
@@ -85,12 +85,12 @@ export function burnStatus(tc: TestCase, now = Date.now()): string | undefined {
         d.burningSince && !d.burnStoppedAt ? [Date.parse(d.burningSince)] : [],
     );
     if (since.length === 0) {
-        const matrix = tc.metadata.labels?.[MATRIX_LABEL];
+        const parent = tc.metadata.labels?.[PARENT_LABEL];
         const staged = tc.status?.conditions?.some(
             (c) => c.type === "BurnStaged" && c.status === "True",
         );
-        return matrix && staged
-            ? `waiting for every test case of matrix ${matrix} to be ready, to start them together`
+        return parent && staged
+            ? `waiting for every test case of ${parent} to be ready, to start them together`
             : "waiting for every target to be ready, to start them together";
     }
     const start = Math.min(...since);

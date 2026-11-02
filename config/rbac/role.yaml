@@ -75,7 +75,6 @@ rules:
   - authentikdeployments
   - testcases
   - testcasetemplates
-  - testmatrices
   - testruns
   - workloadclusters
   verbs:
@@ -92,7 +91,6 @@ rules:
   - authentikdeployments/finalizers
   - testcases/finalizers
   - testcasetemplates/finalizers
-  - testmatrices/finalizers
   - testruns/finalizers
   - workloadclusters/finalizers
   verbs:
@@ -110,6 +108,15 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - bench.goauthentik.io
+  resources:
+  - testmatrices
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - bootstrap.cluster.x-k8s.io
   resources:
