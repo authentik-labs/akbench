@@ -42,10 +42,14 @@ function providerBadge(p: InfrastructureProviderInfo) {
 
 // Inside the appliance, akbench itself (operator + apiserver) updates to the
 // latest published build from here; the appliance's sync loop rolls it out.
-function UpdateSection() {
+// managed comes from the (faster) infrastructure response, so the section
+// holds its place with placeholder versions while the registry lookup behind
+// api.update() is still running.
+function UpdateSection({ managed }: { managed?: boolean }) {
     const update = useResource(() => api.update(), [], 30000);
-    const info = update.data;
-    if (!info?.managed) {
+    const loading = !update.data;
+    const info = update.data ?? { managed: !!managed, current: "" };
+    if (!info.managed) {
         return null;
     }
     const rollingOut = info.target && info.target !== info.current;
@@ -55,21 +59,39 @@ function UpdateSection() {
     const operatorBehind = info.operator && info.target && info.operator !== info.target;
     return (
         <>
-            <h2>akbench</h2>
-            <Alert>{update.error}</Alert>
-            {info.latestError && <Alert>Checking for updates failed: {info.latestError}</Alert>}
-            <p>
-                Running <code>{info.current}</code>
-                {rollingOut && (
-                    <>
-                        {" "}
-                        - <span className="badge info">Updating to {info.target}</span>
-                    </>
+            <div className="page-head">
+                <div>
+                    <h2>akbench</h2>
+                    <div className="sub">
+                        <Alert>{update.error}</Alert>
+                        {info.latestError && (
+                            <Alert>Checking for updates failed: {info.latestError}</Alert>
+                        )}
+                        {operatorBehind && !rollingOut && (
+                            <Alert>
+                                The operator is still on {info.operator}. Its Flux HelmRelease
+                                (flux-system/authentik-bench-operator) has likely failed to upgrade;
+                                check its status.
+                            </Alert>
+                        )}
+                    </div>
+                </div>
+                {available && (
+                    <button
+                        className="primary"
+                        onClick={() =>
+                            void confirmAndRun(
+                                `Update the operator and web UI to ${info.latest}? The web UI restarts while it rolls out.`,
+                                () => api.applyUpdate(),
+                                update.reload,
+                                `Updating to ${info.latest}`,
+                            )
+                        }
+                    >
+                        Update to {info.latest}
+                    </button>
                 )}
-                {!rollingOut && !available && info.latest && (
-                    <span className="muted"> - up to date</span>
-                )}
-            </p>
+            </div>
             <Table
                 rows={[
                     { component: "Web UI / API server", version: info.current },
@@ -95,6 +117,8 @@ function UpdateSection() {
                         render: (r) =>
                             r.version ? (
                                 <code>{r.version}</code>
+                            ) : loading ? (
+                                <span className="muted">…</span>
                             ) : (
                                 <span className="muted">unknown</span>
                             ),
@@ -102,28 +126,6 @@ function UpdateSection() {
                     { label: "", render: (r) => r.note },
                 ]}
             />
-            {operatorBehind && !rollingOut && (
-                <Alert>
-                    The operator is still on {info.operator}. Its Flux HelmRelease
-                    (flux-system/authentik-bench-operator) has likely failed to upgrade; check its
-                    status.
-                </Alert>
-            )}
-            {available && (
-                <button
-                    className="primary"
-                    onClick={() =>
-                        void confirmAndRun(
-                            `Update the operator and web UI to ${info.latest}? The web UI restarts while it rolls out.`,
-                            () => api.applyUpdate(),
-                            update.reload,
-                            `Updating to ${info.latest}`,
-                        )
-                    }
-                >
-                    Update to {info.latest}
-                </button>
-            )}
         </>
     );
 }
@@ -152,7 +154,7 @@ export function InfrastructurePage() {
             title="Infrastructure"
             subtitle="Where workload clusters are provisioned, and how to reach it."
         >
-            <UpdateSection />
+            <UpdateSection managed={infra.data?.managed} />
             <Alert>{infra.error}</Alert>
             <h2>Providers</h2>
             {infra.data && !infra.data.managed && (
@@ -204,7 +206,7 @@ export function InfrastructurePage() {
                 <p className="muted">Last synced {formatTimestamp(infra.data.syncedAt)}.</p>
             )}
 
-            <div className="page-head" style={{ marginTop: 24 }}>
+            <div className="page-head">
                 <div>
                     <h2>Incus connections</h2>
                     <div className="sub">
