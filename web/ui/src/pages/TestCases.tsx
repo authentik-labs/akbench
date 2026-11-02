@@ -158,7 +158,7 @@ export function TestCasesPage() {
         }
     }
 
-    function table(rows: TestCase[] | undefined, empty: string) {
+    function table(rows: TestCase[] | undefined, empty: string, archived = false) {
         const nested = rows && nestChildren(rows);
         return (
             <Table
@@ -178,21 +178,32 @@ export function TestCasesPage() {
                         ),
                     },
                     {
-                        label: "Deployment",
-                        render: ({ tc }) =>
-                            isParent(tc) ? (
-                                "-"
-                            ) : (
-                                <span className="row" style={{ gap: 4 }}>
-                                    {testCaseDeployments(tc.spec).map((ref, i) => (
-                                        <span key={ref.name}>
-                                            {i > 0 && ", "}
-                                            <Link to={`/deployments/${ref.name}`}>{ref.name}</Link>
-                                        </span>
-                                    ))}
-                                </span>
-                            ),
+                        label: "Pull request",
+                        render: ({ tc }) => <PullRequestLink labels={tc.metadata.labels} />,
                     },
+                    // An archived test case's deployments are usually deleted.
+                    ...(archived
+                        ? []
+                        : [
+                              {
+                                  label: "Deployment",
+                                  render: ({ tc }: { tc: TestCase }) =>
+                                      isParent(tc) ? (
+                                          "-"
+                                      ) : (
+                                          <span className="row" style={{ gap: 4 }}>
+                                              {testCaseDeployments(tc.spec).map((ref, i) => (
+                                                  <span key={ref.name}>
+                                                      {i > 0 && ", "}
+                                                      <Link to={`/deployments/${ref.name}`}>
+                                                          {ref.name}
+                                                      </Link>
+                                                  </span>
+                                              ))}
+                                          </span>
+                                      ),
+                              },
+                          ]),
                     {
                         label: "Template",
                         render: ({ tc }) =>
@@ -207,10 +218,6 @@ export function TestCasesPage() {
                     { label: "Profile", render: ({ tc }) => <Badge value={tc.spec.profile} /> },
                     { label: "VUs", render: ({ tc }) => tc.spec.vus },
                     { label: "Created by", render: ({ tc }) => createdBy(tc.metadata) },
-                    {
-                        label: "Pull request",
-                        render: ({ tc }) => <PullRequestLink labels={tc.metadata.labels} />,
-                    },
                     {
                         label: "Status",
                         render: ({ tc }) => (
@@ -299,6 +306,7 @@ export function TestCasesPage() {
                 {table(
                     testCases.data && newestFirst(testCases.data.filter((tc) => tc.spec.archived)),
                     "No archived test cases.",
+                    true,
                 )}
             </Section>
         </Page>
