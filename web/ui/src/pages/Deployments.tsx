@@ -25,7 +25,13 @@ import {
     targetNameOf,
     timeRangeSeconds,
 } from "../format";
-import { k8sNameInput, k8sNameSegment, PULL_REQUEST_LABEL } from "../github";
+import {
+    DEV_IMAGE,
+    fetchLatestDevImageTag,
+    k8sNameInput,
+    k8sNameSegment,
+    PULL_REQUEST_LABEL,
+} from "../github";
 import { psqlCommand, shellLinkForCluster } from "../shell/links";
 import {
     AuthentikDeployment,
@@ -378,6 +384,21 @@ export function DeploymentSpecFields({
 }) {
     const authentik = spec.authentik ?? {};
     const errorReporting = authentik.errorReporting ?? {};
+    const [resolvingMain, setResolvingMain] = useState(false);
+
+    async function pinCurrentMain() {
+        setResolvingMain(true);
+        try {
+            const tag = await fetchLatestDevImageTag("main", (t) =>
+                api.checkImage(DEV_IMAGE.replace(/^ghcr\.io\//, ""), t).then((r) => r.exists),
+            );
+            patch({ authentik: { ...authentik, image: DEV_IMAGE, tag } });
+        } catch (err) {
+            toast.error(errorMessage(err));
+        } finally {
+            setResolvingMain(false);
+        }
+    }
 
     return (
         <>
@@ -424,7 +445,22 @@ export function DeploymentSpecFields({
                                     }
                                 />
                             </Field>
-                            <Field label="authentik image tag" help="Defaults to the chart's own">
+                            <Field
+                                label="authentik image tag"
+                                help={
+                                    <>
+                                        Defaults to the chart&apos;s own.{" "}
+                                        <button
+                                            type="button"
+                                            className="small"
+                                            disabled={resolvingMain}
+                                            onClick={() => void pinCurrentMain()}
+                                        >
+                                            {resolvingMain ? "Looking up…" : "Use current main"}
+                                        </button>
+                                    </>
+                                }
+                            >
                                 <input
                                     value={authentik.tag ?? ""}
                                     placeholder="2026.6.0"

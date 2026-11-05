@@ -164,3 +164,28 @@ export async function fetchBranchHead(branch: string): Promise<string> {
     );
     return res.commit.sha;
 }
+
+/** fetchBranchCommits returns the shas of a branch's newest commits, newest first. */
+export async function fetchBranchCommits(branch: string): Promise<string[]> {
+    const commits = await github<{ sha: string }[]>(
+        `/commits?sha=${encodeURIComponent(branch)}&per_page=10`,
+    );
+    return commits.map((c) => c.sha);
+}
+
+/**
+ * fetchLatestDevImageTag returns the dev-server tag of the newest commit on a
+ * branch whose image CI has published - the head commit's often isn't yet.
+ */
+export async function fetchLatestDevImageTag(
+    branch: string,
+    exists: (tag: string) => Promise<boolean>,
+): Promise<string> {
+    for (const sha of await fetchBranchCommits(branch)) {
+        const tag = devImageTag(sha);
+        if (await exists(tag)) {
+            return tag;
+        }
+    }
+    throw new Error(`None of ${branch}'s recent commits has a published image`);
+}
