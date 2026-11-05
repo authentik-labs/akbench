@@ -88,7 +88,14 @@ export function DashboardPage() {
     const slowest = worst("http_req_duration_p99");
     const mostFailing = worst("http_req_failed");
     const firing = (alerts.data?.items ?? []).filter((a) => a.state === "active");
-    const monitoringAlerts = firing.filter((a) => a.labels.namespace === OBSERVABILITY_NAMESPACE);
+    // One banner per alert per cluster: the same rule fires once per pod/instance.
+    const monitoringAlerts = [
+        ...new Map(
+            firing
+                .filter((a) => a.labels.namespace === OBSERVABILITY_NAMESPACE)
+                .map((a) => [`${a.cluster}/${a.labels.alertname}`, a]),
+        ).values(),
+    ];
 
     const quickRuns = [...(runs.data ?? [])].sort((a, b) =>
         (b.metadata.creationTimestamp ?? "").localeCompare(a.metadata.creationTimestamp ?? ""),
@@ -120,7 +127,7 @@ export function DashboardPage() {
         >
             <Alert>{deployments.error ?? testCases.error ?? runs.error ?? live.error}</Alert>
             {monitoringAlerts.map((a) => (
-                <Alert key={`${a.cluster}/${a.labels.alertname}/${a.startsAt}`}>
+                <Alert key={`${a.cluster}/${a.labels.alertname}`}>
                     <Link to="/alerts">{a.labels.alertname}</Link> on{" "}
                     <Link to={`/clusters/${a.cluster}`}>{a.cluster}</Link>
                     {a.annotations.summary && `: ${a.annotations.summary}`}
