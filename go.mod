@@ -30,7 +30,7 @@ require (
 	k8s.io/streaming v0.37.2
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/cluster-api v1.14.4
-	sigs.k8s.io/cluster-api/api v1.14.3
+	sigs.k8s.io/cluster-api/api v1.14.4
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/yaml v1.6.0
 )
