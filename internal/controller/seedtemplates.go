@@ -66,6 +66,31 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "oauth-refresh-rotation", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Logs each VU in once through an authorization-code grant with offline_access, then rotates its " +
+					"refresh token every iteration. Every rotation leaves a revoked refresh token row behind until it expires.",
+				Script:       mustEmbeddedScript("oauth-refresh.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
+			Name: "user-settings", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Logs in, then saves the user settings form unchanged. Its prompt validation policy adds new " +
+					"Prometheus series on every save, which fills /dev/shm and slows metric scrapes on a long run.",
+				Script: mustEmbeddedScript("user-settings.ts"),
+			},
+		},
+		{
+			Name: "login-logout", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Logs in, then logs out. Each logout broadcasts an outpost session end to every outpost channel, " +
+					"so restarting server pods during a burn run shows ghost channel fan-out in the channel layer tables.",
+				Script: mustEmbeddedScript("logout.ts"),
+			},
+		},
+		{
 			Name: "saml", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description:  "Drives an SP-initiated SAML login (HTTP-POST response binding) through a saml-test-sp service provider, reusing the same flow-executor walk as login.",

@@ -44,7 +44,7 @@ type (
 	samlClientBlueprint struct{ ID, ACSURL, Audience string }
 	oidcSourceBlueprint struct{ Slug, Secret, IssuerURL string }
 	samlSourceBlueprint struct{ Slug, SSOURL string }
-	oauthTokenBlueprint struct{ ID, Secret, ExchangeID, ExchangeSecret string }
+	oauthTokenBlueprint struct{ ID, Secret, ExchangeID, ExchangeSecret, RedirectURI string }
 )
 
 func (b dependencyBlueprint) render() (string, error) {
@@ -207,7 +207,7 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 		if err != nil {
 			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth exchange client secret: %w", err)
 		}
-		blueprint.OAuthToken = &oauthTokenBlueprint{ids.oauthToken, secret, ids.oauthExchange, exchangeSecret}
+		blueprint.OAuthToken = &oauthTokenBlueprint{ids.oauthToken, secret, ids.oauthExchange, exchangeSecret, render.OAuthRedirectURI}
 	}
 
 	content, err := blueprint.render()

@@ -89,7 +89,7 @@ What each component does.
   `make fixtures` (the original script) still replaces them on demand.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds nine built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds thirteen built-in ones at startup (`login`; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through
@@ -100,6 +100,12 @@ What each component does.
   `oauth-client-credentials` and `oauth-token-exchange`, which only hit the
   OAuth2 token endpoint (a `client_credentials` grant, and an RFC 8693
   exchange of that token for another provider's);
+  `oauth-refresh-rotation`, an authorization-code login once per VU and
+  then one refresh token rotation per iteration;
+  `user-settings`, a login and an unchanged save of the user settings form,
+  whose prompt validation adds Prometheus series on every save;
+  `login-logout`, a login and a logout, each logout broadcasting an outpost
+  session end through the channel layer;
   `mixed-usage`, a weighted mix of logins, logins + API browsing, failed
   logins and flow page loads, drawn from a PRNG seeded per TestCase via
   `spec.seed` - defaulting to a hash of the TestCase name - so every run
@@ -118,8 +124,9 @@ What each component does.
   provider), `oidc-idp` ([dex](https://dexidp.io) + OAuth source) and
   `saml-idp` ([BeryJu/saml-test-idp](https://github.com/BeryJu/saml-test-idp)
   + SAML source) and `oauth-token` (two OAuth2 providers, the second trusting
-  the first's tokens for token exchange; no service, client secrets reach k6
-  from a Secret). Their addresses, source slugs and IdP test credentials
+  the first's tokens for token exchange, the first also taking authorization
+  codes and refresh tokens; no service, client secrets reach k6 from a
+  Secret). Their addresses, source slugs and IdP test credentials
   reach k6 as env vars (`render.DependencyEndpoints`).
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source

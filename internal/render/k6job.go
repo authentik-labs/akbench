@@ -139,6 +139,10 @@ type DependencyEndpoints struct {
 // OAuthClientSecretKey is the oauth-token client secrets' Secret key.
 const OAuthClientSecretKey = "client-secret"
 
+// OAuthRedirectURI is the oauth-token client's authorization-code redirect
+// URI. k6 reads the code off the redirect and never requests it.
+const OAuthRedirectURI = "http://localhost/akbench/callback"
+
 // EnvVars renders the env vars for the dependencies in use.
 func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
 	var vars []corev1.EnvVar
@@ -177,6 +181,7 @@ func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
 		vars = append(vars,
 			corev1.EnvVar{Name: "OAUTH_CLIENT_ID", Value: d.OAuthClientID},
 			corev1.EnvVar{Name: "OAUTH_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthSecretName)},
+			corev1.EnvVar{Name: "OAUTH_REDIRECT_URI", Value: OAuthRedirectURI},
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_ID", Value: d.OAuthExchangeClientID},
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthExchangeSecretName)},
 		)

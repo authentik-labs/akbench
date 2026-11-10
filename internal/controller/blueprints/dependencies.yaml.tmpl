@@ -115,7 +115,9 @@ entries:
   # with no relying party in front: the first issues client_credentials
   # tokens (to the provider's generated service account), the second
   # exchanges those for its own (RFC 8693), trusting the first through
-  # jwt_federation_providers.
+  # jwt_federation_providers. The first also takes authorization codes and
+  # rotates refresh tokens (oauth-refresh-rotation): k6 walks the login and
+  # consent flows itself and reads the code off the redirect to RedirectURI.
   - model: authentik_providers_oauth2.oauth2provider
     id: {{ .ID | quote }}
     identifiers:
@@ -126,10 +128,17 @@ entries:
       client_type: confidential
       client_id: {{ .ID | quote }}
       client_secret: {{ .Secret | quote }}
-      # Required by the serializer even without a browser flow.
-      redirect_uris: []
+      redirect_uris:
+        - matching_mode: strict
+          url: {{ .RedirectURI | quote }}
+          redirect_uri_type: authorization
       grant_types:
         - client_credentials
+        - authorization_code
+        - refresh_token
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-offline_access]]
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
   - model: authentik_core.application
     identifiers:

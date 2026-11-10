@@ -1,5 +1,7 @@
 package render
 
+import "fmt"
+
 const (
 	// defaultAlertRulesKey is this project's own rules' key in
 	// kube-prometheus-stack's additionalPrometheusRulesMap (the chart names
@@ -93,9 +95,50 @@ func (ar alertRule) toMap() map[string]any {
 //     authentik's own background task failures (blueprint apply, outpost
 //     sync, etc.) - a real signal no generic k8s-level rule could derive.
 //
+// The rules below DefaultAlertRuleGroups' generic ones come from a
+// production incident report against authentik 2026.5.8 (expired-model
+// cleanup timing out for weeks, the channel layer tables growing to
+// terabytes, /dev/shm filling with prometheus multiprocess files). They catch
+// the same failure modes on a burn run. Unlike the rules above, their
+// expressions have not yet been checked against a live Prometheus. The
+// table rules match both postgres_exporter's pg_stat_user_tables_* (Embedded)
+// and CNPG's cnpg_pg_stat_user_tables_* (CNPG).
+//
+//   - AuthentikBenchExpiredModelCleanup{Stalled,Failing,Slow}:
+//     clean_expired_models is scheduled every 5 minutes. Stalled fires when
+//     workers process tasks but this one has not run for 30m (a task row left
+//     "running" by a killed worker blocks its schedule), Failing when every
+//     run in the last hour raised (e.g. TimeLimitExceeded), Slow when its mean
+//     duration nears the 10m default time limit.
+//   - AuthentikBench{ChannelMessage,GroupChannel,CacheEntry}Backlog: live rows
+//     in tables that only clean_expired_models prunes. Channel messages live
+//     60s, so a large table means cleanup is not reaching them; a large group
+//     channel table means broadcasts fan out to dead channels.
+//   - AuthentikBenchPolicyEngineLabelCardinality: prompt validation runs the
+//     policy engine on an unsaved PolicyBindingModel, whose random pk becomes
+//     the obj_pk label - one new histogram per submission, kept in /dev/shm
+//     until the pod restarts.
+//   - AuthentikBenchMetricsScrapeSlow: the multiprocess collector reads every
+//     series file under the GIL, so scrape time grows with that cardinality.
+//
 // Deliberately NOT duplicated here: node/PVC/pod-restart health, which
 // kube-prometheus-stack's own default rules already cover once Alertmanager
 // exists to receive them.
+// cleanupActor is the expired-model cleanup task's actor_name label.
+const cleanupActor = "authentik.core.tasks.clean_expired_models"
+
+// tableBacklogRule fires when a table holds more than limit live rows.
+func tableBacklogRule(name, table string, limit int, why string) alertRule {
+	return alertRule{
+		name:        name,
+		expr:        fmt.Sprintf(`max by (namespace) ({__name__=~"(cnpg_)?pg_stat_user_tables_n_live_tup", relname=%q}) > %d`, table, limit),
+		forDuration: "15m",
+		severity:    severityWarning,
+		summary:     fmt.Sprintf("%s in {{ $labels.namespace }} has {{ $value }} live rows", table),
+		description: fmt.Sprintf("%s has more than %d live rows. %s", table, limit, why),
+	}
+}
+
 func DefaultAlertRuleGroups() []any {
 	ruleDefs := []alertRule{
 		{
@@ -130,6 +173,55 @@ func DefaultAlertRuleGroups() []any {
 			severity:    severityWarning,
 			summary:     "authentik worker on {{ $labels.instance }} is recording background task errors",
 			description: "authentik_tasks_errors_total increased in the last 15m on {{ $labels.instance }} - check that pod's own worker logs for the failing task.",
+		},
+		{
+			name: "AuthentikBenchExpiredModelCleanupStalled",
+			expr: `group by (namespace) (authentik_tasks_total) unless on (namespace) (` +
+				`sum by (namespace) (increase(authentik_tasks_total{actor_name="` + cleanupActor + `"}[30m])) > 0)`,
+			forDuration: "15m",
+			severity:    severityCritical,
+			summary:     "clean_expired_models has not run in {{ $labels.namespace }} for 30m",
+			description: "Workers in {{ $labels.namespace }} process tasks, but clean_expired_models (scheduled every 5m) has not finished a run in 30m. A task row stuck in state running, e.g. left behind by a killed worker, blocks its schedule.",
+		},
+		{
+			name: "AuthentikBenchExpiredModelCleanupFailing",
+			expr: `sum by (namespace) (increase(authentik_tasks_errors_total{actor_name="` + cleanupActor + `"}[1h]))` +
+				` >= sum by (namespace) (increase(authentik_tasks_total{actor_name="` + cleanupActor + `"}[1h])) > 0`,
+			forDuration: "15m",
+			severity:    severityCritical,
+			summary:     "every clean_expired_models run in {{ $labels.namespace }} failed in the last hour",
+			description: "No clean_expired_models run in {{ $labels.namespace }} succeeded in the last hour. A run that times out rolls back, so expired rows pile up and the next run has even more to do.",
+		},
+		{
+			name: "AuthentikBenchExpiredModelCleanupSlow",
+			expr: `sum by (namespace) (rate(authentik_tasks_duration_milliseconds_sum{actor_name="` + cleanupActor + `"}[1h]))` +
+				` / sum by (namespace) (rate(authentik_tasks_duration_milliseconds_count{actor_name="` + cleanupActor + `"}[1h])) > 300000`,
+			forDuration: "15m",
+			severity:    severityWarning,
+			summary:     "clean_expired_models in {{ $labels.namespace }} takes {{ $value | humanize }}ms on average",
+			description: "clean_expired_models' mean duration in {{ $labels.namespace }} is above 5m, half of the default 10m task time limit. A larger backlog will make it time out.",
+		},
+		tableBacklogRule("AuthentikBenchChannelMessageBacklog", "django_channels_postgres_message", 50000,
+			"Channel layer messages expire after 60s, so this table should stay small. Either clean_expired_models does not reach it, or broadcasts fan out to many dead channels."),
+		tableBacklogRule("AuthentikBenchGroupChannelBacklog", "django_channels_postgres_groupchannel", 1000,
+			"Every group_send inserts one message per channel in the group, expired and ghost channels included, so this multiplies broadcast writes."),
+		tableBacklogRule("AuthentikBenchCacheEntryBacklog", "django_postgres_cache_cacheentry", 1000000,
+			"Expired cache entries are only removed by clean_expired_models, and a large cache table slows every cache read."),
+		{
+			name:        "AuthentikBenchPolicyEngineLabelCardinality",
+			expr:        `count by (namespace) (authentik_policies_engine_time_total_seconds_count{obj_type="authentik.policies.models.PolicyBindingModel"}) > 100`,
+			forDuration: "5m",
+			severity:    severityWarning,
+			summary:     "{{ $value }} policy engine series for unsaved binding models in {{ $labels.namespace }}",
+			description: "Prompt stage validation labels each policy engine run with a random obj_pk. Every new label set is kept in the prometheus multiprocess files in /dev/shm until the pod restarts.",
+		},
+		{
+			name:        "AuthentikBenchMetricsScrapeSlow",
+			expr:        `scrape_duration_seconds{job="authentik"} > 1`,
+			forDuration: "15m",
+			severity:    severityWarning,
+			summary:     "scraping {{ $labels.instance }} takes {{ $value }}s",
+			description: "authentik's /metrics takes more than 1s on {{ $labels.instance }}. The multiprocess collector reads every series file in /dev/shm, so this usually means metric labels with unbounded values.",
 		},
 	}
 	rules := make([]any, len(ruleDefs))

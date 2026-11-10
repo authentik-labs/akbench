@@ -290,6 +290,7 @@ export interface TokenResponse {
     access_token: string;
     expires_in: number;
     issued_token_type?: string;
+    refresh_token?: string;
 }
 
 // requestToken POSTs a grant to the token endpoint (form-encoded, client

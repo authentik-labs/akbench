@@ -75,7 +75,7 @@ var allDependencies = dependencyBlueprint{
 	SAMLClient: &samlClientBlueprint{"saml-test-c-d", "http://sp/saml/acs", "http://sp/saml/metadata"},
 	OIDCSource: &oidcSourceBlueprint{"oidc-idp-c-d", "secret", "http://dex/dex"},
 	SAMLSource: &samlSourceBlueprint{"saml-idp-c-d", "http://idp/sso"},
-	OAuthToken: &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2"},
+	OAuthToken: &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2", "http://localhost/cb"},
 }
 
 func renderBlueprint(t *testing.T, b dependencyBlueprint) []byte {
@@ -124,6 +124,9 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"sso_url: \"http://idp/sso\"",
 		"[slug, default-source-pre-authentication]",
 		"- client_credentials",
+		"- authorization_code\n        - refresh_token",
+		"url: \"http://localhost/cb\"",
+		"[managed, goauthentik.io/providers/oauth2/scope-offline_access]",
 		`- "urn:ietf:params:oauth:grant-type:token-exchange"`,
 		"jwt_federation_providers:\n        - !KeyOf \"oauth-cc-c-d\"",
 	} {
