@@ -89,7 +89,7 @@ What each component does.
   `make fixtures` (the original script) still replaces them on demand.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds thirteen built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through
@@ -106,6 +106,11 @@ What each component does.
   whose prompt validation adds Prometheus series on every save;
   `login-logout`, a login and a logout, each logout broadcasting an outpost
   session end through the channel layer;
+  `prompt-policy-login` and `binding-policy-login`, the same login with the
+  same two policies run from a prompt stage's `validation_policies` (through
+  an `ak_call_policy` orchestrator) or from its `FlowStageBinding` - run
+  them on two deployments of one build to compare metric series and policy
+  cache keys;
   `mixed-usage`, a weighted mix of logins, logins + API browsing, failed
   logins and flow page loads, drawn from a PRNG seeded per TestCase via
   `spec.seed` - defaulting to a hash of the TestCase name - so every run
@@ -126,8 +131,9 @@ What each component does.
   + SAML source) and `oauth-token` (two OAuth2 providers, the second trusting
   the first's tokens for token exchange, the first also taking authorization
   codes and refresh tokens; no service, client secrets reach k6 from a
-  Secret). Their addresses, source slugs and IdP test credentials
-  reach k6 as env vars (`render.DependencyEndpoints`).
+  Secret) and `policy-flows` (the two login flows the `*-policy-login`
+  templates walk; no service). Their addresses, source slugs and IdP
+  test credentials reach k6 as env vars (`render.DependencyEndpoints`).
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source
   of truth), proxies PromQL for the compare view (resolved per-testid

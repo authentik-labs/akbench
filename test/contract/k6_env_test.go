@@ -121,6 +121,7 @@ func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 		SAMLSourceSlug: "saml-idp",
 		OAuthClientID:  "oauth-cc", OAuthSecretName: "oauth-cc",
 		OAuthExchangeClientID: "oauth-te", OAuthExchangeSecretName: "oauth-te",
+		PolicyPromptFlow: "policy-prompt", PolicyBindingFlow: "policy-binding",
 	}
 	rendered := envValueMap(p.EnvVars())
 

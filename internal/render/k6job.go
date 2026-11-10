@@ -134,6 +134,11 @@ type DependencyEndpoints struct {
 	OAuthSecretName         string
 	OAuthExchangeClientID   string
 	OAuthExchangeSecretName string
+	// PolicyPromptFlow/PolicyBindingFlow: the policy-flows login flow slugs,
+	// with the policies in the prompt stage's validation_policies and on its
+	// FlowStageBinding.
+	PolicyPromptFlow  string
+	PolicyBindingFlow string
 }
 
 // OAuthClientSecretKey is the oauth-token client secrets' Secret key.
@@ -184,6 +189,12 @@ func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
 			corev1.EnvVar{Name: "OAUTH_REDIRECT_URI", Value: OAuthRedirectURI},
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_ID", Value: d.OAuthExchangeClientID},
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthExchangeSecretName)},
+		)
+	}
+	if d.PolicyPromptFlow != "" {
+		vars = append(vars,
+			corev1.EnvVar{Name: "POLICY_PROMPT_FLOW", Value: d.PolicyPromptFlow},
+			corev1.EnvVar{Name: "POLICY_BINDING_FLOW", Value: d.PolicyBindingFlow},
 		)
 	}
 	return vars

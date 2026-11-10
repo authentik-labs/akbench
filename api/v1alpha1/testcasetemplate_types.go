@@ -31,8 +31,9 @@ type TestCaseTemplateSpec struct {
 	// AuthentikDeployment itself, plus the authentik objects each needs:
 	// oidc-client (oidc-test-client + OAuth2 provider), saml-client
 	// (saml-test-sp + SAML provider), oidc-idp (dex + OAuth source) and
-	// saml-idp (saml-test-idp + SAML source) and oauth-token (two OAuth2
-	// providers driven directly at the token endpoint, no service) - see
+	// saml-idp (saml-test-idp + SAML source), oauth-token (two OAuth2
+	// providers driven directly at the token endpoint, no service) and
+	// policy-flows (two login flows, no service) - see
 	// internal/controller/testdeps.go and internal/render/testdeps.go. Scoped to the TestCase, not the
 	// AuthentikDeployment it targets, so "what is being tested" stays fully
 	// decoupled from "what it's being tested against" the same way the k6
@@ -45,7 +46,7 @@ type TestCaseTemplateSpec struct {
 
 // TestCaseDependency names one extra service a TestCaseTemplate needs
 // provisioned next to its target AuthentikDeployment.
-// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token
+// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token;policy-flows
 type TestCaseDependency string
 
 const (
@@ -65,6 +66,10 @@ const (
 	// drives at authentik's token endpoint: one issuing client_credentials
 	// tokens, one exchanging those for its own (RFC 8693 token exchange).
 	DependencyOAuthToken TestCaseDependency = "oauth-token"
+	// DependencyPolicyFlows is two login flows running the same policies
+	// before a prompt stage: one through the prompt stage's
+	// validation_policies, one through its FlowStageBinding.
+	DependencyPolicyFlows TestCaseDependency = "policy-flows"
 )
 
 // HasDependency reports whether this template lists dep.

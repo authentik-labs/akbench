@@ -298,6 +298,7 @@ export const testCaseDependencies = {
     "oidc-idp": "OIDC IdP",
     "saml-idp": "SAML IdP",
     "oauth-token": "OAuth token clients",
+    "policy-flows": "Policy placement flows",
 } as const;
 
 export type TestCaseDependency = keyof typeof testCaseDependencies;

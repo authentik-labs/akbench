@@ -71,11 +71,12 @@ func TestDependencyBlueprintQuotesValues(t *testing.T) {
 
 // allDependencies is a blueprint with every dependency section in use.
 var allDependencies = dependencyBlueprint{
-	OIDCClient: &oidcClientBlueprint{"oauth-test-c-d", "secret", "http://client/auth/callback"},
-	SAMLClient: &samlClientBlueprint{"saml-test-c-d", "http://sp/saml/acs", "http://sp/saml/metadata"},
-	OIDCSource: &oidcSourceBlueprint{"oidc-idp-c-d", "secret", "http://dex/dex"},
-	SAMLSource: &samlSourceBlueprint{"saml-idp-c-d", "http://idp/sso"},
-	OAuthToken: &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2", "http://localhost/cb"},
+	OIDCClient:  &oidcClientBlueprint{"oauth-test-c-d", "secret", "http://client/auth/callback"},
+	SAMLClient:  &samlClientBlueprint{"saml-test-c-d", "http://sp/saml/acs", "http://sp/saml/metadata"},
+	OIDCSource:  &oidcSourceBlueprint{"oidc-idp-c-d", "secret", "http://dex/dex"},
+	SAMLSource:  &samlSourceBlueprint{"saml-idp-c-d", "http://idp/sso"},
+	OAuthToken:  &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2", "http://localhost/cb"},
+	PolicyFlows: &policyFlowsBlueprint{"policy-c-d"},
 }
 
 func renderBlueprint(t *testing.T, b dependencyBlueprint) []byte {
@@ -110,6 +111,13 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"authentik_sources_saml.samlsource",
 		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
 		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
+		"authentik_policies_expression.expressionpolicy", "authentik_policies_expression.expressionpolicy",
+		"authentik_policies_expression.expressionpolicy", "authentik_stages_prompt.prompt",
+		"authentik_stages_prompt.promptstage", "authentik_stages_prompt.promptstage",
+		"authentik_flows.flow", "authentik_flows.flowstagebinding", "authentik_flows.flowstagebinding", "authentik_flows.flowstagebinding",
+		"authentik_flows.flow", "authentik_flows.flowstagebinding", "authentik_flows.flowstagebinding", "authentik_flows.flowstagebinding",
+		"authentik_flows.flowstagebinding", "authentik_flows.flowstagebinding",
+		"authentik_policies.policybinding", "authentik_policies.policybinding",
 	}
 	if strings.Join(models, ",") != strings.Join(want, ",") {
 		t.Errorf("models = %v, want %v", models, want)
@@ -129,6 +137,12 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"[managed, goauthentik.io/providers/oauth2/scope-offline_access]",
 		`- "urn:ietf:params:oauth:grant-type:token-exchange"`,
 		"jwt_federation_providers:\n        - !KeyOf \"oauth-cc-c-d\"",
+		`expression: "return ak_call_policy(\"policy-c-d-check-a\").passing and ak_call_policy(\"policy-c-d-check-b\").passing"`,
+		"validation_policies:\n        - !KeyOf \"policy-c-d-orchestrator\"",
+		"slug: \"policy-c-d-prompt\"",
+		"slug: \"policy-c-d-binding\"",
+		"stage: !KeyOf \"policy-c-d-prompt-plain\"\n      target: !KeyOf \"policy-c-d-binding\"",
+		"policy: !KeyOf \"policy-c-d-check-b\"\n      target: !KeyOf \"policy-c-d-binding-prompt\"",
 	} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("blueprint missing %q\n%s", want, got)
@@ -156,6 +170,12 @@ func TestDependencyEndpoints(t *testing.T) {
 	if got.OAuthClientID != "oauth-cc-c-d" || got.OAuthExchangeClientID != "oauth-te-c-d" ||
 		got.OAuthSecretName != got.OAuthClientID || got.OAuthExchangeSecretName != got.OAuthExchangeClientID {
 		t.Errorf("oauth token clients = %+v", got)
+	}
+	got = dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{Dependencies: []benchv1alpha1.TestCaseDependency{
+		benchv1alpha1.DependencyPolicyFlows,
+	}})
+	if got.PolicyPromptFlow != "policy-c-d-prompt" || got.PolicyBindingFlow != "policy-c-d-binding" {
+		t.Errorf("policy flows = %q, %q", got.PolicyPromptFlow, got.PolicyBindingFlow)
 	}
 	if empty := dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{}); empty.EnvVars() != nil {
 		t.Errorf("no dependencies should render no env vars, got %v", empty.EnvVars())

@@ -13,8 +13,9 @@ func defaultAlertRules(t *testing.T) []map[string]any {
 	if len(groups) != 1 {
 		t.Fatalf("got %d rule groups, want 1", len(groups))
 	}
-	var rules []map[string]any
-	for _, r := range groups[0].(map[string]any)["rules"].([]any) {
+	raw := groups[0].(map[string]any)["rules"].([]any)
+	rules := make([]map[string]any, 0, len(raw))
+	for _, r := range raw {
 		rules = append(rules, r.(map[string]any))
 	}
 	return rules
@@ -71,6 +72,7 @@ func TestDefaultAlertRulesCoverReportedFailureModes(t *testing.T) {
 		"AuthentikBenchPolicyEngineLabelCardinality": {
 			"authentik_policies_engine_time_total_seconds_count", `obj_type="authentik.policies.models.PolicyBindingModel"`,
 		},
+		"AuthentikBenchPolicyCacheKeys":   {"authentik_policies_cached"},
 		"AuthentikBenchMetricsScrapeSlow": {`scrape_duration_seconds{job="authentik"}`},
 	}
 	for name, parts := range want {

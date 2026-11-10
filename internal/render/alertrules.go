@@ -21,6 +21,9 @@ const (
 	// The two severities this project's own alert rules use.
 	severityWarning  = "warning"
 	severityCritical = "critical"
+
+	// forSustained is how long a backlog or slow-down must last before it alerts.
+	forSustained = "15m"
 )
 
 // alertRule is one Prometheus alerting rule, in the shape every rule this
@@ -118,6 +121,9 @@ func (ar alertRule) toMap() map[string]any {
 //     policy engine on an unsaved PolicyBindingModel, whose random pk becomes
 //     the obj_pk label - one new histogram per submission, kept in /dev/shm
 //     until the pod restarts.
+//   - AuthentikBenchPolicyCacheKeys: each scrape reads every policy cache key
+//     from the database to set authentik_policies_cached, so a large policy
+//     cache slows scrapes too.
 //   - AuthentikBenchMetricsScrapeSlow: the multiprocess collector reads every
 //     series file under the GIL, so scrape time grows with that cardinality.
 //
@@ -132,7 +138,7 @@ func tableBacklogRule(name, table string, limit int, why string) alertRule {
 	return alertRule{
 		name:        name,
 		expr:        fmt.Sprintf(`max by (namespace) ({__name__=~"(cnpg_)?pg_stat_user_tables_n_live_tup", relname=%q}) > %d`, table, limit),
-		forDuration: "15m",
+		forDuration: forSustained,
 		severity:    severityWarning,
 		summary:     fmt.Sprintf("%s in {{ $labels.namespace }} has {{ $value }} live rows", table),
 		description: fmt.Sprintf("%s has more than %d live rows. %s", table, limit, why),
@@ -178,7 +184,7 @@ func DefaultAlertRuleGroups() []any {
 			name: "AuthentikBenchExpiredModelCleanupStalled",
 			expr: `group by (namespace) (authentik_tasks_total) unless on (namespace) (` +
 				`sum by (namespace) (increase(authentik_tasks_total{actor_name="` + cleanupActor + `"}[30m])) > 0)`,
-			forDuration: "15m",
+			forDuration: forSustained,
 			severity:    severityCritical,
 			summary:     "clean_expired_models has not run in {{ $labels.namespace }} for 30m",
 			description: "Workers in {{ $labels.namespace }} process tasks, but clean_expired_models (scheduled every 5m) has not finished a run in 30m. A task row stuck in state running, e.g. left behind by a killed worker, blocks its schedule.",
@@ -187,7 +193,7 @@ func DefaultAlertRuleGroups() []any {
 			name: "AuthentikBenchExpiredModelCleanupFailing",
 			expr: `sum by (namespace) (increase(authentik_tasks_errors_total{actor_name="` + cleanupActor + `"}[1h]))` +
 				` >= sum by (namespace) (increase(authentik_tasks_total{actor_name="` + cleanupActor + `"}[1h])) > 0`,
-			forDuration: "15m",
+			forDuration: forSustained,
 			severity:    severityCritical,
 			summary:     "every clean_expired_models run in {{ $labels.namespace }} failed in the last hour",
 			description: "No clean_expired_models run in {{ $labels.namespace }} succeeded in the last hour. A run that times out rolls back, so expired rows pile up and the next run has even more to do.",
@@ -196,7 +202,7 @@ func DefaultAlertRuleGroups() []any {
 			name: "AuthentikBenchExpiredModelCleanupSlow",
 			expr: `sum by (namespace) (rate(authentik_tasks_duration_milliseconds_sum{actor_name="` + cleanupActor + `"}[1h]))` +
 				` / sum by (namespace) (rate(authentik_tasks_duration_milliseconds_count{actor_name="` + cleanupActor + `"}[1h])) > 300000`,
-			forDuration: "15m",
+			forDuration: forSustained,
 			severity:    severityWarning,
 			summary:     "clean_expired_models in {{ $labels.namespace }} takes {{ $value | humanize }}ms on average",
 			description: "clean_expired_models' mean duration in {{ $labels.namespace }} is above 5m, half of the default 10m task time limit. A larger backlog will make it time out.",
@@ -216,9 +222,17 @@ func DefaultAlertRuleGroups() []any {
 			description: "Prompt stage validation labels each policy engine run with a random obj_pk. Every new label set is kept in the prometheus multiprocess files in /dev/shm until the pod restarts.",
 		},
 		{
+			name:        "AuthentikBenchPolicyCacheKeys",
+			expr:        `max by (namespace) (authentik_policies_cached) > 50000`,
+			forDuration: forSustained,
+			severity:    severityWarning,
+			summary:     "{{ $value }} policy result cache keys in {{ $labels.namespace }}",
+			description: "Every /metrics scrape loads all policy cache keys to set authentik_policies_cached. Keys contain the session key, and ak_call_policy adds a random binding UUID, so they are rarely reused and only go away through clean_expired_models.",
+		},
+		{
 			name:        "AuthentikBenchMetricsScrapeSlow",
 			expr:        `scrape_duration_seconds{job="authentik"} > 1`,
-			forDuration: "15m",
+			forDuration: forSustained,
 			severity:    severityWarning,
 			summary:     "scraping {{ $labels.instance }} takes {{ $value }}s",
 			description: "authentik's /metrics takes more than 1s on {{ $labels.instance }}. The multiprocess collector reads every series file in /dev/shm, so this usually means metric labels with unbounded values.",

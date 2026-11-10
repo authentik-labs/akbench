@@ -91,6 +91,24 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "prompt-policy-login", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Logs in through a flow whose prompt stage runs its policies as validation_policies, through an " +
+					"ak_call_policy orchestrator. Compare with binding-policy-login on a second deployment of the same build.",
+				Script:       mustEmbeddedScript("prompt-policy-login.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyPolicyFlows},
+			},
+		},
+		{
+			Name: "binding-policy-login", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Logs in through a flow that binds the same policies to the prompt stage's FlowStageBinding " +
+					"instead. Compare with prompt-policy-login on a second deployment of the same build.",
+				Script:       mustEmbeddedScript("binding-policy-login.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyPolicyFlows},
+			},
+		},
+		{
 			Name: "saml", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description:  "Drives an SP-initiated SAML login (HTTP-POST response binding) through a saml-test-sp service provider, reusing the same flow-executor walk as login.",

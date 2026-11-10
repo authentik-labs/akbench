@@ -170,3 +170,111 @@ entries:
       provider: !KeyOf {{ .ExchangeID | quote }}
       name: {{ .ExchangeID | quote }}
 {{- end }}
+{{- with .PolicyFlows }}
+{{- $p := .Prefix }}
+  # Two login flows that run the same two expression policies before the
+  # same prompt stage, placed two ways (policy-flows). PromptFlow puts them
+  # behind an orchestrator policy in the prompt stage's validation_policies,
+  # which calls them with ak_call_policy. BindingFlow binds them to the
+  # prompt stage's FlowStageBinding instead. Both reuse the default
+  # authentication flow's own identification, password and login stages.
+  - model: authentik_policies_expression.expressionpolicy
+    id: {{ print $p "-check-a" | quote }}
+    identifiers:
+      name: {{ print $p "-check-a" | quote }}
+    attrs:
+      expression: "return True"
+  - model: authentik_policies_expression.expressionpolicy
+    id: {{ print $p "-check-b" | quote }}
+    identifiers:
+      name: {{ print $p "-check-b" | quote }}
+    attrs:
+      expression: "return True"
+  - model: authentik_policies_expression.expressionpolicy
+    id: {{ print $p "-orchestrator" | quote }}
+    identifiers:
+      name: {{ print $p "-orchestrator" | quote }}
+    attrs:
+      expression: {{ printf "return ak_call_policy(%q).passing and ak_call_policy(%q).passing" (print $p "-check-a") (print $p "-check-b") | quote }}
+  - model: authentik_stages_prompt.prompt
+    id: {{ print $p "-newsletter" | quote }}
+    identifiers:
+      name: {{ print $p "-newsletter" | quote }}
+    attrs:
+      field_key: newsletter
+      label: Newsletter
+      type: checkbox
+      required: false
+      order: 0
+  - model: authentik_stages_prompt.promptstage
+    id: {{ print $p "-prompt-validation" | quote }}
+    identifiers:
+      name: {{ print $p "-prompt-validation" | quote }}
+    attrs:
+      fields:
+        - !KeyOf {{ print $p "-newsletter" | quote }}
+      validation_policies:
+        - !KeyOf {{ print $p "-orchestrator" | quote }}
+  - model: authentik_stages_prompt.promptstage
+    id: {{ print $p "-prompt-plain" | quote }}
+    identifiers:
+      name: {{ print $p "-prompt-plain" | quote }}
+    attrs:
+      fields:
+        - !KeyOf {{ print $p "-newsletter" | quote }}
+      validation_policies: []
+{{- template "loginFlow" print $p "-prompt" }}
+{{- template "loginFlow" print $p "-binding" }}
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 30
+      stage: !KeyOf {{ print $p "-prompt-validation" | quote }}
+      target: !KeyOf {{ print $p "-prompt" | quote }}
+  - model: authentik_flows.flowstagebinding
+    id: {{ print $p "-binding-prompt" | quote }}
+    identifiers:
+      order: 30
+      stage: !KeyOf {{ print $p "-prompt-plain" | quote }}
+      target: !KeyOf {{ print $p "-binding" | quote }}
+    attrs:
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !KeyOf {{ print $p "-check-a" | quote }}
+      target: !KeyOf {{ print $p "-binding-prompt" | quote }}
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 1
+      policy: !KeyOf {{ print $p "-check-b" | quote }}
+      target: !KeyOf {{ print $p "-binding-prompt" | quote }}
+{{- end }}
+{{- /* A login flow with the default identification, password and login
+stages; the caller binds its prompt stage at order 30. */ -}}
+{{- define "loginFlow" }}
+  - model: authentik_flows.flow
+    id: {{ . | quote }}
+    identifiers:
+      slug: {{ . | quote }}
+    attrs:
+      name: {{ . | quote }}
+      title: {{ . | quote }}
+      designation: authentication
+      authentication: none
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 10
+      stage: !Find [authentik_stages_identification.identificationstage, [name, default-authentication-identification]]
+      target: !KeyOf {{ . | quote }}
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 20
+      stage: !Find [authentik_stages_password.passwordstage, [name, default-authentication-password]]
+      target: !KeyOf {{ . | quote }}
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 100
+      stage: !Find [authentik_stages_user_login.userloginstage, [name, default-authentication-login]]
+      target: !KeyOf {{ . | quote }}
+{{- end }}

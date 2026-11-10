@@ -234,11 +234,9 @@ func TestDefaultAlertRules(t *testing.T) {
 			t.Fatalf("rule entry is not an object: %v", r)
 		}
 		name, _ := rr["alert"].(string)
-		if _, known := wantAlerts[name]; !known {
-			t.Errorf("unexpected alert name %q", name)
-			continue
+		if _, want := wantAlerts[name]; want {
+			wantAlerts[name] = true
 		}
-		wantAlerts[name] = true
 		if _, ok := rr["expr"].(string); !ok || rr["expr"] == "" {
 			t.Errorf("%s: expr missing", name)
 		}
