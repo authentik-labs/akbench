@@ -13,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -132,27 +134,9 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmName := extraValuesConfigMapName(name)
-	cm := &corev1.ConfigMap{
-		Name: cmName, Namespace: s.cfg.Namespace,
-		Data: map[string]string{"values.yaml": body.ValuesYAML},
-	}
-	var existing corev1.ConfigMap
-	err = s.client.Get(r.Context(), types.NamespacedName{Name: cmName, Namespace: s.cfg.Namespace}, &existing)
-	switch {
-	case apierrors.IsNotFound(err):
-		if err := s.client.Create(r.Context(), cm); err != nil {
-			writeAPIError(w, r, err)
-			return
-		}
-	case err != nil:
+	if err := s.writeExtraValuesConfigMap(r, &topo, cmName, body.ValuesYAML); err != nil {
 		writeAPIError(w, r, err)
 		return
-	default:
-		existing.Data = cm.Data
-		if err := s.client.Update(r.Context(), &existing); err != nil {
-			writeAPIError(w, r, err)
-			return
-		}
 	}
 
 	if err := s.setExtraValuesRef(r, name, cmName); err != nil {
@@ -161,6 +145,71 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusOK, body)
+}
+
+// writeExtraValuesConfigMap creates or updates ConfigMap cmName with the
+// extra values, owned by topo so it is garbage-collected with it - unless
+// another deployment needs it too (see mayOwnExtraValues). Without an owner
+// every deleted deployment left its ConfigMap behind. Updating also adopts a
+// ConfigMap saved before these had an owner.
+//
+// Retried when someone else wrote the ConfigMap since it was read, and when
+// it was deleted in between: one still owned by an earlier deployment of the
+// same name is garbage-collected at any moment, so the next attempt creates
+// it afresh.
+func (s *Server) writeExtraValuesConfigMap(r *http.Request, topo *benchv1alpha1.AuthentikDeployment, cmName, valuesYAML string) error {
+	key := types.NamespacedName{Name: cmName, Namespace: s.cfg.Namespace}
+	retriable := func(err error) bool {
+		return apierrors.IsConflict(err) || apierrors.IsNotFound(err) || apierrors.IsAlreadyExists(err)
+	}
+	return retry.OnError(retry.DefaultBackoff, retriable, func() error {
+		var cm corev1.ConfigMap
+		err := s.client.Get(r.Context(), key, &cm)
+		exists := err == nil
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if !exists {
+			cm = corev1.ConfigMap{Name: cmName, Namespace: s.cfg.Namespace}
+		}
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+		cm.Data["values.yaml"] = valuesYAML
+		own, err := s.mayOwnExtraValues(r, topo, cmName)
+		if err != nil {
+			return err
+		}
+		if own {
+			if err := controllerutil.SetOwnerReference(topo, &cm, s.client.Scheme()); err != nil {
+				return err
+			}
+		}
+		if exists {
+			return s.client.Update(r.Context(), &cm)
+		}
+		return s.client.Create(r.Context(), &cm)
+	})
+}
+
+// mayOwnExtraValues reports whether topo may own ConfigMap cmName. Not when
+// another deployment's extraValuesRef names it as well: deleting topo would
+// then delete the ConfigMap from under that deployment, which stops
+// reconciling until it is back.
+func (s *Server) mayOwnExtraValues(r *http.Request, topo *benchv1alpha1.AuthentikDeployment, cmName string) (bool, error) {
+	var list benchv1alpha1.AuthentikDeploymentList
+	if err := s.client.List(r.Context(), &list, client.InNamespace(topo.Namespace)); err != nil {
+		return false, err
+	}
+	for _, other := range list.Items {
+		if other.Name == topo.Name {
+			continue
+		}
+		if ref := other.Spec.Authentik.ExtraValuesRef; ref != nil && ref.Name == cmName {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // setExtraValuesRef points the deployment's spec.authentik.extraValuesRef at

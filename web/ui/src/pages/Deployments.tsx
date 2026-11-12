@@ -173,12 +173,16 @@ function duplicateLink(name: string): string {
 /**
  * duplicateSpec copies a deployment's spec for a new one. The namespace and
  * target name are cleared so they follow the new name instead of colliding
- * with the source's.
+ * with the source's. So is extraValuesRef: the copy gets its own ConfigMap
+ * when the form saves the extra values. Kept, saving the copy's extra values
+ * would edit the source's, and a copy whose save failed would go on pointing
+ * at a ConfigMap the source owns and is deleted with it.
  */
-function duplicateSpec(source: AuthentikDeployment): AuthentikDeploymentSpec {
+export function duplicateSpec(source: AuthentikDeployment): AuthentikDeploymentSpec {
     const spec = structuredClone(source.spec);
     spec.namespace = "";
     delete spec.targetName;
+    delete spec.authentik?.extraValuesRef;
     return spec;
 }
 

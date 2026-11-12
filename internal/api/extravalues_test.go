@@ -81,6 +81,42 @@ func TestPutAndGetExtraValues(t *testing.T) {
 	}
 }
 
+// The ConfigMap is owned by its deployment, so deleting the deployment
+// garbage-collects it instead of leaving it behind - whether this save
+// creates it or updates one saved before these had an owner.
+func TestPutExtraValuesOwnsConfigMap(t *testing.T) {
+	unowned := &corev1.ConfigMap{
+		Name: "topo-a-extra-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: info\n"},
+	}
+	for name, exists := range map[string]bool{"created": false, "updated": true} {
+		t.Run(name, func(t *testing.T) {
+			topo := sampleDeployment("topo-a")
+			topo.UID = "topo-uid"
+			s, k8s := newServer(t, Config{}, topo)
+			if exists {
+				s, k8s = newServer(t, Config{}, topo, unowned)
+			}
+
+			rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values",
+				extraValuesBody{ValuesYAML: "authentik:\n  log_level: debug\n"})
+			requireStatus(t, rec, http.StatusOK)
+
+			var cm corev1.ConfigMap
+			if err := k8s.Get(t.Context(), types.NamespacedName{Name: "topo-a-extra-values", Namespace: testNamespace}, &cm); err != nil {
+				t.Fatalf("get configmap: %v", err)
+			}
+			if len(cm.OwnerReferences) != 1 {
+				t.Fatalf("ownerReferences = %+v, want exactly the deployment", cm.OwnerReferences)
+			}
+			owner := cm.OwnerReferences[0]
+			if owner.Kind != "AuthentikDeployment" || owner.Name != "topo-a" || owner.UID != "topo-uid" {
+				t.Fatalf("owner = %+v, want AuthentikDeployment topo-a (topo-uid)", owner)
+			}
+		})
+	}
+}
+
 func TestPutExtraValuesRejectsInvalidYAML(t *testing.T) {
 	s, _ := newServer(t, Config{}, sampleDeployment("topo-a"))
 	rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values",
@@ -274,5 +310,83 @@ func TestPutExtraValuesGivesUpAfterRepeatedConflicts(t *testing.T) {
 	requireStatus(t, rec, http.StatusConflict)
 	if conflicts != retry.DefaultBackoff.Steps {
 		t.Fatalf("got %d attempts, want %d", conflicts, retry.DefaultBackoff.Steps)
+	}
+}
+
+// A ConfigMap another deployment references as well is written but not
+// adopted: owned, it would be deleted with this deployment and leave the
+// other one without its extra values.
+func TestPutExtraValuesDoesNotAdoptSharedConfigMap(t *testing.T) {
+	shared := &corev1.ConfigMap{
+		Name: "topo-a-extra-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: info\n"},
+	}
+	topoA := sampleDeployment("topo-a")
+	topoA.UID = "topo-a-uid"
+	topoB := sampleDeployment("topo-b")
+	topoB.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: shared.Name}
+	s, k8s := newServer(t, Config{}, topoA, topoB, shared)
+
+	yamlBody := "authentik:\n  log_level: debug\n"
+	rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values", extraValuesBody{ValuesYAML: yamlBody})
+	requireStatus(t, rec, http.StatusOK)
+
+	var cm corev1.ConfigMap
+	if err := k8s.Get(t.Context(), types.NamespacedName{Name: shared.Name, Namespace: testNamespace}, &cm); err != nil {
+		t.Fatalf("get configmap: %v", err)
+	}
+	if cm.Data["values.yaml"] != yamlBody {
+		t.Fatalf("configmap values.yaml = %q, want %q", cm.Data["values.yaml"], yamlBody)
+	}
+	if len(cm.OwnerReferences) != 0 {
+		t.Fatalf("ownerReferences = %+v, want none while topo-b references it", cm.OwnerReferences)
+	}
+}
+
+// The garbage collector can delete the ConfigMap between the save reading
+// and updating it - one still owned by an earlier deployment of the same
+// name. The save then creates it instead of failing.
+func TestPutExtraValuesRecreatesConfigMapDeletedDuringSave(t *testing.T) {
+	stale := &corev1.ConfigMap{
+		Name: "topo-a-extra-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: info\n"},
+	}
+	topo := sampleDeployment("topo-a")
+	topo.UID = "topo-uid"
+	collected := false
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(topo, stale).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if _, ok := obj.(*corev1.ConfigMap); ok && !collected {
+					collected = true
+					if err := cl.Delete(ctx, stale.DeepCopy()); err != nil {
+						return err
+					}
+					return apierrors.NewNotFound(corev1.Resource("configmaps"), obj.GetName())
+				}
+				return cl.Update(ctx, obj, opts...)
+			},
+		}).
+		Build()
+	s := New(c, Config{Namespace: testNamespace, Token: testToken})
+
+	yamlBody := "authentik:\n  log_level: debug\n"
+	rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values", extraValuesBody{ValuesYAML: yamlBody})
+	requireStatus(t, rec, http.StatusOK)
+	if !collected {
+		t.Fatal("the ConfigMap was never updated")
+	}
+
+	var cm corev1.ConfigMap
+	if err := c.Get(t.Context(), types.NamespacedName{Name: stale.Name, Namespace: testNamespace}, &cm); err != nil {
+		t.Fatalf("get configmap: %v", err)
+	}
+	if cm.Data["values.yaml"] != yamlBody {
+		t.Fatalf("configmap values.yaml = %q, want %q", cm.Data["values.yaml"], yamlBody)
+	}
+	if len(cm.OwnerReferences) != 1 || cm.OwnerReferences[0].UID != "topo-uid" {
+		t.Fatalf("ownerReferences = %+v, want the deployment", cm.OwnerReferences)
 	}
 }
