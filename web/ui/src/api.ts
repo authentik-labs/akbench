@@ -19,6 +19,8 @@ import {
     RangeResponse,
     TestCase,
     TestCaseSpec,
+    TenantPreset,
+    TenantPresetSpec,
     TestCaseTemplate,
     ObjectEvent,
     Rollout,
@@ -111,6 +113,7 @@ const seg = encodeURIComponent;
  */
 export type ResourcePath =
     | "deployments"
+    | "tenantpresets"
     | "testcases"
     | "testcasetemplates"
     | "testruns"
@@ -261,6 +264,17 @@ export const api = {
         request<TestCaseTemplate>(`/api/v1/testcasetemplates/${seg(name)}`, json("PUT", obj)),
     deleteTestCaseTemplate: (name: string) =>
         request<void>(`/api/v1/testcasetemplates/${seg(name)}`, { method: "DELETE" }),
+
+    // -- Tenant presets
+    tenantPresets: () =>
+        request<List<TenantPreset>>("/api/v1/tenantpresets").then((r) => r.items ?? []),
+    tenantPreset: (name: string) => request<TenantPreset>(`/api/v1/tenantpresets/${seg(name)}`),
+    createTenantPreset: (obj: ObjectInput<TenantPresetSpec>) =>
+        request<TenantPreset>("/api/v1/tenantpresets", json("POST", obj)),
+    updateTenantPreset: (name: string, obj: { spec: TenantPresetSpec }) =>
+        request<TenantPreset>(`/api/v1/tenantpresets/${seg(name)}`, json("PUT", obj)),
+    deleteTenantPreset: (name: string) =>
+        request<void>(`/api/v1/tenantpresets/${seg(name)}`, { method: "DELETE" }),
 
     // -- Test runs (read-only: a TestRun is only ever created via runTestCase)
     testRuns: (testCase?: string) =>
