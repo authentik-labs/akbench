@@ -462,6 +462,39 @@ export interface CompareResponse {
     errors?: Record<string, string>;
 }
 
+/** One setting that is not the same on every deployment of a test case. */
+export interface ConfigDifference {
+    path: string;
+    // Keyed by deployment name; a deployment without an entry does not set it.
+    values: Record<string, string>;
+    // Set for a credential, whose values are only ever shown as "(set)".
+    note?: string;
+}
+
+/** A deployment the config diff could not compare, and why. */
+export interface ConfigPending {
+    name: string;
+    reason: string;
+}
+
+/** Where an External postgres deployment's database is. */
+export interface ConfigDatabase {
+    host?: string;
+    port?: string;
+    name?: string;
+    user?: string;
+}
+
+/** internal/api/configdiff.go's ConfigDiff. */
+export interface ConfigDiff {
+    testid: string;
+    targets: string[];
+    pending?: ConfigPending[];
+    // External databases by deployment: shown, not compared.
+    databases?: Record<string, ConfigDatabase>;
+    differences: ConfigDifference[];
+}
+
 export interface RangePoint {
     time: number;
     value: number;
