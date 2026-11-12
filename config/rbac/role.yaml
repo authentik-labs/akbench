@@ -73,6 +73,7 @@ rules:
   - bench.goauthentik.io
   resources:
   - authentikdeployments
+  - tenantpresets
   - testcases
   - testcasetemplates
   - testruns
