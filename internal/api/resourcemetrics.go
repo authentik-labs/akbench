@@ -91,19 +91,28 @@ func (s *Server) deploymentTargetsForTestID(ctx context.Context, testid string) 
 	if err := s.client.Get(ctx, types.NamespacedName{Name: testid, Namespace: s.cfg.Namespace}, &tc); err != nil {
 		return nil
 	}
-	var targets []deploymentTarget
+	targets, _ := s.resolveDeploymentTargets(ctx, &tc)
+	return targets
+}
+
+// resolveDeploymentTargets is deploymentTargetsForTestID for a TestCase
+// already read, also naming the deployments it skipped, for a caller that
+// has to say which ones it could not check.
+func (s *Server) resolveDeploymentTargets(ctx context.Context, tc *benchv1alpha1.TestCase) (targets []deploymentTarget, skipped []string) {
 	for _, ref := range tc.Deployments() {
-		cluster, namespace, targetName, ok := s.targetDeployment(ctx, &tc, ref.Name)
+		cluster, namespace, targetName, ok := s.targetDeployment(ctx, tc, ref.Name)
 		if !ok {
+			skipped = append(skipped, ref.Name)
 			continue
 		}
 		promURL := s.prometheusURLForCluster(ctx, cluster)
 		if cluster != "" && promURL == "" {
+			skipped = append(skipped, ref.Name)
 			continue
 		}
 		targets = append(targets, deploymentTarget{PrometheusURL: promURL, Namespace: namespace, Target: targetName, Deployment: ref.Name})
 	}
-	return targets
+	return targets, skipped
 }
 
 // listResourceMetrics answers GET
