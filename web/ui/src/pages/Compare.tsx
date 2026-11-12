@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { MetricsChart, ResourceCharts } from "../components/MetricsChart";
+import { RestartsWarning } from "../components/Restarts";
 import { Alert, Empty, Field, Page, TimeRangeSelect } from "../components/ui";
 import {
     earliestBurnStart,
@@ -213,6 +214,11 @@ export function ComparePage() {
             ) : (
                 <>
                     <h2>Summary</h2>
+                    <RestartsWarning
+                        testids={selected}
+                        period={summaryWindow}
+                        endSeconds={anchor?.endSeconds}
+                    />
                     <table className="table">
                         <thead>
                             <tr>
