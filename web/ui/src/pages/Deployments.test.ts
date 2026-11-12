@@ -1,5 +1,5 @@
 import { AuthentikDeployment } from "../types";
-import { duplicateSpec } from "./Deployments";
+import { duplicateSpec, extraValuesSaveBlocker } from "./Deployments";
 
 import { describe, expect, it } from "vitest";
 
@@ -45,5 +45,19 @@ describe("duplicateSpec", () => {
         duplicateSpec(source);
         expect(source.spec.namespace).toBe("src");
         expect(source.spec.authentik?.extraValuesRef).toEqual({ name: "src-extra-values" });
+    });
+});
+
+describe("extraValuesSaveBlocker", () => {
+    it("allows saving once the extra values are loaded", () => {
+        expect(extraValuesSaveBlocker({ state: "loaded" })).toBeUndefined();
+    });
+
+    it("blocks saving while they load", () => {
+        expect(extraValuesSaveBlocker({ state: "loading" })).toBeDefined();
+    });
+
+    it("blocks saving when loading them failed, with the error", () => {
+        expect(extraValuesSaveBlocker({ state: "failed", error: "boom" })).toContain("boom");
     });
 });

@@ -186,6 +186,29 @@ export function duplicateSpec(source: AuthentikDeployment): AuthentikDeploymentS
     return spec;
 }
 
+/** ExtraValuesLoad tracks fetching the extra values an edit or duplicate starts from. */
+export type ExtraValuesLoad =
+    | { state: "loading" }
+    | { state: "loaded" }
+    | { state: "failed"; error: string };
+
+/**
+ * extraValuesSaveBlocker says why the form can't be saved yet, or undefined
+ * when it can. Saving always writes the extra values field, so saving before
+ * the current values arrived - or after fetching them failed - would replace
+ * them with a blank field.
+ */
+export function extraValuesSaveBlocker(load: ExtraValuesLoad): string | undefined {
+    switch (load.state) {
+        case "loading":
+            return "Still loading the extra Helm values.";
+        case "failed":
+            return `Couldn't load the extra Helm values, so saving would overwrite them: ${load.error}. Reload the page to try again.`;
+        default:
+            return undefined;
+    }
+}
+
 function DeploymentForm({
     existing,
     source,
@@ -201,6 +224,11 @@ function DeploymentForm({
         existing?.spec ?? (source ? duplicateSpec(source) : emptySpec()),
     );
     const [extraValuesYAML, setExtraValuesYAML] = useState("");
+    const valuesFrom = existing ?? source;
+    const [extraValuesLoad, setExtraValuesLoad] = useState<ExtraValuesLoad>(
+        valuesFrom ? { state: "loading" } : { state: "loaded" },
+    );
+    const saveBlocker = extraValuesSaveBlocker(extraValuesLoad);
     const [error, setError] = useState<string>();
     const [saving, setSaving] = useState(false);
     // Once the user edits the namespace directly, the name stops driving it.
@@ -210,17 +238,24 @@ function DeploymentForm({
         setSpec((current) => ({ ...current, ...changes }));
 
     // Extra values live in a separate ConfigMap: fetched once for an edit or
-    // a duplicate.
-    const valuesFrom = existing ?? source;
+    // a duplicate. Saving waits for them (see extraValuesSaveBlocker).
     useEffect(() => {
         if (!valuesFrom) {
             return;
         }
         let cancelled = false;
         api.getExtraValues(valuesFrom.metadata.name)
-            .then((res) => !cancelled && setExtraValuesYAML(res.valuesYAML))
-            // Not fatal - the field starts blank and a real problem surfaces on save.
-            .catch(() => undefined);
+            .then((res) => {
+                if (!cancelled) {
+                    setExtraValuesYAML(res.valuesYAML);
+                    setExtraValuesLoad({ state: "loaded" });
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setExtraValuesLoad({ state: "failed", error: errorMessage(err) });
+                }
+            });
         return () => {
             cancelled = true;
         };
@@ -228,6 +263,11 @@ function DeploymentForm({
 
     async function submit(event: FormEvent) {
         event.preventDefault();
+        // The submit button is disabled too; this also covers submitting with
+        // the Enter key.
+        if (saveBlocker) {
+            return;
+        }
         setSaving(true);
         setError(undefined);
         try {
@@ -254,6 +294,8 @@ function DeploymentForm({
         >
             <form onSubmit={submit}>
                 <Alert>{error}</Alert>
+                {/* Only the failure: "still loading" is brief and the disabled button says enough. */}
+                <Alert>{extraValuesLoad.state === "failed" && saveBlocker}</Alert>
 
                 <fieldset>
                     <legend>Identity</legend>
@@ -312,7 +354,11 @@ function DeploymentForm({
                 {existing && <GeneratedHelmValues name={existing.metadata.name} />}
 
                 <div className="form-actions">
-                    <button type="submit" className="primary" disabled={saving}>
+                    <button
+                        type="submit"
+                        className="primary"
+                        disabled={saving || Boolean(saveBlocker)}
+                    >
                         {saving ? "Saving…" : existing ? "Save changes" : "Create deployment"}
                     </button>
                     <button type="button" onClick={() => navigate(-1)}>

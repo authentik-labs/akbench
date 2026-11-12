@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	"github.com/go-chi/chi/v5"
@@ -26,6 +27,9 @@ func extraValuesConfigMapName(deploymentName string) string {
 	return deploymentName + "-extra-values"
 }
 
+// kindTestCase is the kind of the parent TestCase owner references name.
+const kindTestCase = "TestCase"
+
 // extraValuesBody is both the request and response shape: a single raw YAML
 // document merged over the generated Helm values last (see
 // internal/render.MergeExtraValues) - the escape hatch for authentik/chart
@@ -40,7 +44,7 @@ type extraValuesBody struct {
 // spec.extraValues instead, shared by every variant.
 func (s *Server) owningParent(r *http.Request, topo *benchv1alpha1.AuthentikDeployment) (*benchv1alpha1.TestCase, error) {
 	owner := metav1.GetControllerOf(topo)
-	if owner == nil || owner.Kind != "TestCase" {
+	if owner == nil || owner.Kind != kindTestCase {
 		return nil, nil
 	}
 	var m benchv1alpha1.TestCase
@@ -50,25 +54,43 @@ func (s *Server) owningParent(r *http.Request, topo *benchv1alpha1.AuthentikDepl
 	return &m, nil
 }
 
-// getExtraValues returns the deployment's current extra-values YAML, or an
-// empty string if none is set - not a 404, since "no extra values" is a
+// getExtraValues returns the extra-values YAML in effect for the deployment,
+// or an empty string if none is set - not a 404, since "no extra values" is a
 // normal, common state rather than a missing resource.
+//
+// "In effect" means the ConfigMap spec.authentik.extraValuesRef names, which
+// is the one the operator merges. A ConfigMap that merely has the
+// conventional name is not reported: showing it made a deployment look
+// configured when the operator was ignoring it. A reference to a ConfigMap
+// that doesn't exist reports none as well, so the form starts blank and
+// saving repairs the reference (see extraValuesTarget).
+//
+// A deployment that doesn't exist is a 404, like saving its extra values:
+// its own ConfigMap is garbage-collected with it, so there are no last
+// values left to show.
 func (s *Server) getExtraValues(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var topo benchv1alpha1.AuthentikDeployment
-	if err := s.client.Get(r.Context(), types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}, &topo); err == nil {
-		m, err := s.owningParent(r, &topo)
-		if err != nil {
-			writeAPIError(w, r, err)
-			return
-		}
-		if m != nil {
-			writeJSON(w, r, http.StatusOK, extraValuesBody{ValuesYAML: m.Spec.ExtraValues})
-			return
-		}
+	if err := s.client.Get(r.Context(), types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}, &topo); err != nil {
+		writeAPIError(w, r, err)
+		return
+	}
+	m, err := s.owningParent(r, &topo)
+	if err != nil {
+		writeAPIError(w, r, err)
+		return
+	}
+	if m != nil {
+		writeJSON(w, r, http.StatusOK, extraValuesBody{ValuesYAML: m.Spec.ExtraValues})
+		return
+	}
+	ref := topo.Spec.Authentik.ExtraValuesRef
+	if ref == nil || ref.Name == "" {
+		writeJSON(w, r, http.StatusOK, extraValuesBody{})
+		return
 	}
 	var cm corev1.ConfigMap
-	key := types.NamespacedName{Name: extraValuesConfigMapName(name), Namespace: s.cfg.Namespace}
+	key := types.NamespacedName{Name: ref.Name, Namespace: s.cfg.Namespace}
 	if err := s.client.Get(r.Context(), key, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			writeJSON(w, r, http.StatusOK, extraValuesBody{})
@@ -80,12 +102,13 @@ func (s *Server) getExtraValues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, extraValuesBody{ValuesYAML: cm.Data["values.yaml"]})
 }
 
-// putExtraValues upserts the deployment's extra-values ConfigMap and points
-// spec.authentik.extraValuesRef at it, creating the reference the first time
-// this is called. The deployment itself is only written when that reference
-// changes: AuthentikDeploymentReconciler watches ConfigMaps and reconciles
-// every deployment whose extraValuesRef names one that changed, so new
-// content in an already-referenced ConfigMap is picked up without it.
+// putExtraValues upserts the deployment's extra-values ConfigMap (see
+// extraValuesTarget for which one) and points spec.authentik.extraValuesRef
+// at it, creating the reference the first time this is called. The
+// deployment itself is only written when that reference changes:
+// AuthentikDeploymentReconciler watches ConfigMaps and reconciles every
+// deployment whose extraValuesRef names one that changed, so new content in
+// an already-referenced ConfigMap is picked up without it.
 func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
@@ -133,7 +156,11 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmName := extraValuesConfigMapName(name)
+	cmName, err := s.extraValuesTarget(r, &topo)
+	if err != nil {
+		writeAPIError(w, r, err)
+		return
+	}
 	if err := s.writeExtraValuesConfigMap(r, &topo, cmName, body.ValuesYAML); err != nil {
 		writeAPIError(w, r, err)
 		return
@@ -145,6 +172,50 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusOK, body)
+}
+
+// extraValuesTarget picks the ConfigMap a save writes: the one
+// spec.authentik.extraValuesRef already names, which is the one
+// getExtraValues showed and possibly one several deployments share. Always
+// writing the deployment's own instead would quietly fork it off a shared
+// ConfigMap whenever its edit form was saved.
+//
+// The deployment's own (extraValuesConfigMapName) is written instead when it
+// references none, one that no longer exists, or one a parent TestCase
+// created (see render.TestCaseChildren): that is named after its content and
+// replaced whenever the parent's extra values change, and a child's values
+// belong to its parent anyway.
+func (s *Server) extraValuesTarget(r *http.Request, topo *benchv1alpha1.AuthentikDeployment) (string, error) {
+	own := extraValuesConfigMapName(topo.Name)
+	ref := topo.Spec.Authentik.ExtraValuesRef
+	if ref == nil || ref.Name == "" || ref.Name == own {
+		return own, nil
+	}
+	var cm corev1.ConfigMap
+	if err := s.client.Get(r.Context(), types.NamespacedName{Name: ref.Name, Namespace: s.cfg.Namespace}, &cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return own, nil
+		}
+		return "", err
+	}
+	if createdByParent(&cm) {
+		return own, nil
+	}
+	return ref.Name, nil
+}
+
+// createdByParent reports whether cm is a parent TestCase's extra-values
+// ConfigMap, which carries the parent label and is owned by the parent.
+func createdByParent(cm *corev1.ConfigMap) bool {
+	if cm.Labels[benchv1alpha1.LabelParent] != "" {
+		return true
+	}
+	for _, owner := range cm.OwnerReferences {
+		if owner.Kind == kindTestCase && strings.HasPrefix(owner.APIVersion, benchv1alpha1.GroupVersion.Group+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // writeExtraValuesConfigMap creates or updates ConfigMap cmName with the
@@ -192,11 +263,16 @@ func (s *Server) writeExtraValuesConfigMap(r *http.Request, topo *benchv1alpha1.
 	})
 }
 
-// mayOwnExtraValues reports whether topo may own ConfigMap cmName. Not when
-// another deployment's extraValuesRef names it as well: deleting topo would
-// then delete the ConfigMap from under that deployment, which stops
-// reconciling until it is back.
+// mayOwnExtraValues reports whether topo may own ConfigMap cmName. Only its
+// own, conventionally named one: any other a save writes was made by someone
+// else (see extraValuesTarget), and deleting it with this deployment would
+// come as a surprise. And not when another deployment's extraValuesRef names
+// it as well: deleting topo would then delete the ConfigMap from under that
+// deployment, which stops reconciling until it is back.
 func (s *Server) mayOwnExtraValues(r *http.Request, topo *benchv1alpha1.AuthentikDeployment, cmName string) (bool, error) {
+	if cmName != extraValuesConfigMapName(topo.Name) {
+		return false, nil
+	}
 	var list benchv1alpha1.AuthentikDeploymentList
 	if err := s.client.List(r.Context(), &list, client.InNamespace(topo.Namespace)); err != nil {
 		return false, err

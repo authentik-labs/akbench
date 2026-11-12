@@ -32,6 +32,65 @@ func TestGetExtraValuesWithoutAnySet(t *testing.T) {
 	}
 }
 
+// A ConfigMap with the conventional name that the deployment does not
+// reference is not in effect, so it is not reported as the deployment's
+// extra values.
+func TestGetExtraValuesIgnoresUnattachedConfigMap(t *testing.T) {
+	unattached := &corev1.ConfigMap{
+		Name: "topo-a-extra-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: debug\n"},
+	}
+	s, _ := newServer(t, Config{}, sampleDeployment("topo-a"), unattached)
+	rec := do(t, s, http.MethodGet, "/api/v1/deployments/topo-a/extra-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[extraValuesBody](t, rec).ValuesYAML; got != "" {
+		t.Fatalf("got valuesYAML %q for an unattached ConfigMap, want empty", got)
+	}
+}
+
+// The ConfigMap the deployment references is the one reported, whatever it
+// is named.
+func TestGetExtraValuesFollowsRef(t *testing.T) {
+	yamlBody := "authentik:\n  log_level: debug\n"
+	topo := sampleDeployment("topo-a")
+	topo.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: "shared-values"}
+	referenced := &corev1.ConfigMap{
+		Name: "shared-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": yamlBody},
+	}
+	s, _ := newServer(t, Config{}, topo, referenced)
+	rec := do(t, s, http.MethodGet, "/api/v1/deployments/topo-a/extra-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[extraValuesBody](t, rec).ValuesYAML; got != yamlBody {
+		t.Fatalf("got valuesYAML %q, want %q", got, yamlBody)
+	}
+}
+
+// A deployment that doesn't exist has no extra values to show: its own
+// ConfigMap is garbage-collected with it, and one still around is not read.
+func TestGetExtraValuesUnknownDeployment(t *testing.T) {
+	leftover := &corev1.ConfigMap{
+		Name: "gone-extra-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: debug\n"},
+	}
+	s, _ := newServer(t, Config{}, leftover)
+	rec := do(t, s, http.MethodGet, "/api/v1/deployments/gone/extra-values", nil)
+	requireStatus(t, rec, http.StatusNotFound)
+}
+
+// A reference to a ConfigMap that doesn't exist reports no extra values, so
+// the form starts blank and saving repairs the reference.
+func TestGetExtraValuesDanglingRef(t *testing.T) {
+	topo := sampleDeployment("topo-a")
+	topo.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: "topo-a-extra-values"}
+	s, _ := newServer(t, Config{}, topo)
+	rec := do(t, s, http.MethodGet, "/api/v1/deployments/topo-a/extra-values", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[extraValuesBody](t, rec).ValuesYAML; got != "" {
+		t.Fatalf("got valuesYAML %q for a dangling reference, want empty", got)
+	}
+}
+
 func TestPutAndGetExtraValues(t *testing.T) {
 	s, k8s := newServer(t, Config{}, sampleDeployment("topo-a"))
 
@@ -388,5 +447,112 @@ func TestPutExtraValuesRecreatesConfigMapDeletedDuringSave(t *testing.T) {
 	}
 	if len(cm.OwnerReferences) != 1 || cm.OwnerReferences[0].UID != "topo-uid" {
 		t.Fatalf("ownerReferences = %+v, want the deployment", cm.OwnerReferences)
+	}
+}
+
+// Saving writes the ConfigMap the deployment already references - the one
+// GET showed - instead of forking the deployment off it onto its own.
+func TestPutExtraValuesWritesReferencedConfigMap(t *testing.T) {
+	shared := &corev1.ConfigMap{
+		Name: "shared-values", Namespace: testNamespace,
+		Data: map[string]string{"values.yaml": "authentik:\n  log_level: info\n", "notes": "kept"},
+	}
+	topoA := sampleDeployment("topo-a")
+	topoA.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: shared.Name}
+	topoB := sampleDeployment("topo-b")
+	topoB.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: shared.Name}
+	s, k8s := newServer(t, Config{}, topoA, topoB, shared)
+
+	yamlBody := "authentik:\n  log_level: debug\n"
+	rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values", extraValuesBody{ValuesYAML: yamlBody})
+	requireStatus(t, rec, http.StatusOK)
+
+	var cm corev1.ConfigMap
+	if err := k8s.Get(t.Context(), types.NamespacedName{Name: shared.Name, Namespace: testNamespace}, &cm); err != nil {
+		t.Fatalf("get configmap: %v", err)
+	}
+	if cm.Data["values.yaml"] != yamlBody || cm.Data["notes"] != "kept" {
+		t.Fatalf("configmap data = %v, want values.yaml %q and the other keys kept", cm.Data, yamlBody)
+	}
+	// Made by hand, so not adopted: deleting topo-a must not delete it.
+	if len(cm.OwnerReferences) != 0 {
+		t.Fatalf("ownerReferences = %+v, want none", cm.OwnerReferences)
+	}
+	err := k8s.Get(t.Context(), types.NamespacedName{Name: "topo-a-extra-values", Namespace: testNamespace}, &corev1.ConfigMap{})
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("get topo-a-extra-values: %v, want NotFound", err)
+	}
+	var topo benchv1alpha1.AuthentikDeployment
+	if err := k8s.Get(t.Context(), types.NamespacedName{Name: "topo-a", Namespace: testNamespace}, &topo); err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	if ref := topo.Spec.Authentik.ExtraValuesRef; ref == nil || ref.Name != shared.Name {
+		t.Fatalf("deployment extraValuesRef = %+v, want %s", ref, shared.Name)
+	}
+}
+
+// A reference to a parent TestCase's content-named ConfigMap (left on a
+// deployment no longer controlled by its parent), or to one that doesn't
+// exist, is replaced by the deployment's own ConfigMap: the parent's would be
+// replaced whenever the parent's extra values change.
+func TestPutExtraValuesWritesOwnConfigMapInsteadOfRef(t *testing.T) {
+	parentCM := func(mutate func(*corev1.ConfigMap)) *corev1.ConfigMap {
+		cm := &corev1.ConfigMap{
+			Name: "pr-1-extra-values-0badf00d", Namespace: testNamespace,
+			Data: map[string]string{"values.yaml": "authentik:\n  log_level: info\n"},
+		}
+		mutate(cm)
+		return cm
+	}
+	cases := map[string]*corev1.ConfigMap{
+		"labelled by its parent": parentCM(func(cm *corev1.ConfigMap) {
+			cm.Labels = map[string]string{benchv1alpha1.LabelParent: "pr-1"}
+		}),
+		"owned by its parent": parentCM(func(cm *corev1.ConfigMap) {
+			cm.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: benchv1alpha1.GroupVersion.String(), Kind: "TestCase",
+				Name: "pr-1", UID: "parent-uid", Controller: ptr.To(true),
+			}}
+		}),
+		"missing": nil,
+	}
+	for name, referenced := range cases {
+		t.Run(name, func(t *testing.T) {
+			topo := sampleDeployment("topo-a")
+			topo.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: "pr-1-extra-values-0badf00d"}
+			objects := []client.Object{topo}
+			if referenced != nil {
+				objects = append(objects, referenced)
+			}
+			s, k8s := newServer(t, Config{}, objects...)
+
+			yamlBody := "authentik:\n  log_level: debug\n"
+			rec := do(t, s, http.MethodPut, "/api/v1/deployments/topo-a/extra-values", extraValuesBody{ValuesYAML: yamlBody})
+			requireStatus(t, rec, http.StatusOK)
+
+			var cm corev1.ConfigMap
+			if err := k8s.Get(t.Context(), types.NamespacedName{Name: "topo-a-extra-values", Namespace: testNamespace}, &cm); err != nil {
+				t.Fatalf("get topo-a-extra-values: %v", err)
+			}
+			if cm.Data["values.yaml"] != yamlBody {
+				t.Fatalf("configmap values.yaml = %q, want %q", cm.Data["values.yaml"], yamlBody)
+			}
+			var got benchv1alpha1.AuthentikDeployment
+			if err := k8s.Get(t.Context(), types.NamespacedName{Name: "topo-a", Namespace: testNamespace}, &got); err != nil {
+				t.Fatalf("get deployment: %v", err)
+			}
+			if ref := got.Spec.Authentik.ExtraValuesRef; ref == nil || ref.Name != "topo-a-extra-values" {
+				t.Fatalf("deployment extraValuesRef = %+v, want topo-a-extra-values", ref)
+			}
+			if referenced != nil {
+				var parent corev1.ConfigMap
+				if err := k8s.Get(t.Context(), types.NamespacedName{Name: referenced.Name, Namespace: testNamespace}, &parent); err != nil {
+					t.Fatalf("get parent configmap: %v", err)
+				}
+				if parent.Data["values.yaml"] != referenced.Data["values.yaml"] {
+					t.Fatalf("parent configmap values.yaml = %q, want it untouched", parent.Data["values.yaml"])
+				}
+			}
+		})
 	}
 }
