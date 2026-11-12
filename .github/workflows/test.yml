@@ -30,6 +30,9 @@ jobs:
           go mod tidy
           make test
 
+      - name: Test the tenant seeder
+        run: make seeder-test
+
       - name: Validate blueprints against the upstream schema
         run: |
           curl -fsSL -o "$RUNNER_TEMP/blueprint-schema.json" https://goauthentik.io/blueprints/schema.json
