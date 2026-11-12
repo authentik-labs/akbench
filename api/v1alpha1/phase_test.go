@@ -47,3 +47,12 @@ func TestPhaseForArchived(t *testing.T) {
 		t.Errorf("PhaseFor(Ready=False, Archived) = %q, want %q", got, PhaseArchived)
 	}
 }
+
+func TestPhaseForPostgresStorageFull(t *testing.T) {
+	conditions := []metav1.Condition{
+		{Type: ConditionReady, Status: metav1.ConditionFalse, Reason: ReasonPostgresStorageFull},
+	}
+	if got := PhaseFor(conditions); got != PhaseFailed {
+		t.Errorf("PhaseFor(Ready=False, PostgresStorageFull) = %q, want %q", got, PhaseFailed)
+	}
+}

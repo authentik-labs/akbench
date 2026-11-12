@@ -31,7 +31,8 @@ func setCondition(recorder record.EventRecorder, obj runtime.Object, conditions 
 		ObservedGeneration: generation,
 	})
 	eventType := corev1.EventTypeNormal
-	if status == metav1.ConditionFalse && (reason == benchv1alpha1.ReasonReconcileError || reason == benchv1alpha1.ReasonNotImplemented) {
+	if status == metav1.ConditionFalse && (reason == benchv1alpha1.ReasonReconcileError || reason == benchv1alpha1.ReasonNotImplemented ||
+		reason == benchv1alpha1.ReasonPostgresStorageFull) {
 		eventType = corev1.EventTypeWarning
 	}
 	recorder.Event(obj, eventType, reason, message)
