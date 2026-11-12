@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	"github.com/go-chi/chi/v5"
@@ -13,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/yaml"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -80,11 +80,10 @@ func (s *Server) getExtraValues(w http.ResponseWriter, r *http.Request) {
 
 // putExtraValues upserts the deployment's extra-values ConfigMap and points
 // spec.authentik.extraValuesRef at it, creating the reference the first time
-// this is called. It always writes the AuthentikDeployment itself (touching an
-// annotation even when extraValuesRef.name doesn't change) so
-// AuthentikDeploymentReconciler - which does not separately watch this
-// ConfigMap - picks up the new content: editing the ConfigMap alone would
-// otherwise never re-trigger a reconcile.
+// this is called. The deployment itself is only written when that reference
+// changes: AuthentikDeploymentReconciler watches ConfigMaps and reconciles
+// every deployment whose extraValuesRef names one that changed, so new
+// content in an already-referenced ConfigMap is picked up without it.
 func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
@@ -112,8 +111,19 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m != nil {
-		m.Spec.ExtraValues = body.ValuesYAML
-		if err := s.client.Update(r.Context(), m); err != nil {
+		// Retried on conflict for the same reason as the deployment update
+		// (setExtraValuesRef): the operator writes the parent's status while
+		// it reconciles.
+		parentKey := types.NamespacedName{Name: m.Name, Namespace: m.Namespace}
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			var current benchv1alpha1.TestCase
+			if err := s.client.Get(r.Context(), parentKey, &current); err != nil {
+				return err
+			}
+			current.Spec.ExtraValues = body.ValuesYAML
+			return s.client.Update(r.Context(), &current)
+		})
+		if err != nil {
 			writeAPIError(w, r, err)
 			return
 		}
@@ -145,22 +155,35 @@ func (s *Server) putExtraValues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if topo.Spec.Authentik.ExtraValuesRef == nil || topo.Spec.Authentik.ExtraValuesRef.Name != cmName {
-		topo.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: cmName}
-	}
-	if topo.Annotations == nil {
-		topo.Annotations = map[string]string{}
-	}
-	// Forces a spec-unrelated write every call, so the controller's watch on
-	// AuthentikDeployment fires even when extraValuesRef.name is unchanged -
-	// this ConfigMap's content is the only thing that changed.
-	topo.Annotations["bench.goauthentik.io/extra-values-updated-at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := s.client.Update(r.Context(), &topo); err != nil {
+	if err := s.setExtraValuesRef(r, name, cmName); err != nil {
 		writeAPIError(w, r, err)
 		return
 	}
 
 	writeJSON(w, r, http.StatusOK, body)
+}
+
+// setExtraValuesRef points the deployment's spec.authentik.extraValuesRef at
+// cmName, writing the deployment only if it points elsewhere.
+//
+// Retried on conflict, re-reading the deployment each time: the operator
+// writes its status while it reconciles, most of all right after it is
+// created - which is when the comparison wizard saves extra values. A
+// conflict here used to fail the request after the ConfigMap was already
+// written, leaving it behind with no deployment referencing it.
+func (s *Server) setExtraValuesRef(r *http.Request, name, cmName string) error {
+	key := types.NamespacedName{Name: name, Namespace: s.cfg.Namespace}
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		var current benchv1alpha1.AuthentikDeployment
+		if err := s.client.Get(r.Context(), key, &current); err != nil {
+			return err
+		}
+		if ref := current.Spec.Authentik.ExtraValuesRef; ref != nil && ref.Name == cmName {
+			return nil
+		}
+		current.Spec.Authentik.ExtraValuesRef = &corev1.LocalObjectReference{Name: cmName}
+		return s.client.Update(r.Context(), &current)
+	})
 }
 
 // getHelmValues returns the fully generated chart values (extra values
