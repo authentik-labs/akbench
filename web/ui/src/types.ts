@@ -313,6 +313,80 @@ export interface TestCaseTemplate {
     };
 }
 
+/**
+ * A named size for the test data a deployment is to be seeded with: users,
+ * groups and memberships. Numbers added later are optional and count as 0
+ * when left out.
+ */
+export interface TenantPresetSpec {
+    description?: string;
+    seed?: number;
+    users: number;
+    groups: number;
+    groupDepth: number;
+    groupsPerUser: number;
+}
+
+export interface TenantPreset {
+    metadata: ObjectMeta;
+    spec: TenantPresetSpec;
+}
+
+/** Set on the presets the operator ships and resets on every start. */
+export const builtInLabel = "bench.goauthentik.io/built-in";
+
+export function isBuiltIn(obj: { metadata: ObjectMeta }): boolean {
+    return obj.metadata.labels?.[builtInLabel] === "true";
+}
+
+/** The range the TenantPreset schema allows for each number. */
+export const tenantPresetLimits = {
+    users: { label: "Users", min: 1, max: 1_000_000 },
+    groups: { label: "Groups", min: 0, max: 1_000_000 },
+    groupDepth: { label: "Group tree depth", min: 1, max: 10 },
+    groupsPerUser: { label: "Groups per user", min: 0, max: undefined },
+    seed: { label: "Seed", min: 1, max: 2_147_483_647 },
+} as const;
+
+/**
+ * Why the TenantPreset schema would reject spec, or undefined if it would
+ * accept it. Checked before saving so the form can say it in plain words
+ * rather than show the API server's CEL message.
+ */
+export function tenantPresetProblem(spec: TenantPresetSpec): string | undefined {
+    for (const [key, { label, min, max }] of Object.entries(tenantPresetLimits)) {
+        const value = spec[key as keyof typeof tenantPresetLimits];
+        // A preset without a seed gets the schema's default.
+        if (key === "seed" && value === undefined) {
+            continue;
+        }
+        if (typeof value !== "number" || !Number.isInteger(value)) {
+            return `${label} must be a whole number.`;
+        }
+        if (value < min) {
+            return `${label} must be at least ${min}.`;
+        }
+        if (max !== undefined && value > max) {
+            return `${label} must be at most ${max.toLocaleString("en-US")}.`;
+        }
+    }
+    if (spec.groupsPerUser > spec.groups) {
+        return "Groups per user cannot be more than the number of groups.";
+    }
+    if (spec.groupDepth > Math.max(spec.groups, 1)) {
+        return "The group tree cannot have more levels than there are groups.";
+    }
+    return undefined;
+}
+
+/**
+ * What the form for a copy of source starts with. The description is left
+ * empty: it describes the source's numbers, which a copy is made to change.
+ */
+export function tenantPresetCopy(source: TenantPreset): { name: string; spec: TenantPresetSpec } {
+    return { name: `${source.metadata.name}-copy`, spec: { ...source.spec, description: "" } };
+}
+
 export type TestRunPhase = "Pending" | "Running" | "Succeeded" | "Failed";
 
 export interface TestRun {

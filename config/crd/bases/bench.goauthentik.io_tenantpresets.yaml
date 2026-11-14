@@ -1,0 +1,132 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: tenantpresets.bench.goauthentik.io
+spec:
+  group: bench.goauthentik.io
+  names:
+    kind: TenantPreset
+    listKind: TenantPresetList
+    plural: tenantpresets
+    singular: tenantpreset
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.users
+      name: Users
+      type: integer
+    - jsonPath: .spec.groups
+      name: Groups
+      type: integer
+    - jsonPath: .spec.groupDepth
+      name: Depth
+      type: integer
+    - jsonPath: .spec.groupsPerUser
+      name: Groups per user
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TenantPreset is the Schema for the tenantpresets API. It has no status:
+          nothing reconciles a preset, and the schema itself rejects one that could
+          not be seeded.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              TenantPresetSpec is a "size" for the test data an authentik deployment is
+              to be seeded with: how many users and groups it gets, how the groups nest
+              and how many groups each user is in. Kept under a name, the same numbers
+              can be used again for another deployment, and a result can say what it was
+              measured against. Nothing seeds a deployment from a preset yet. Like a
+              TestCaseTemplate it is editable, through the web UI or plain kubectl, and
+              the operator ships a few built-in ones (see
+              internal/controller/seedpresets.go).
+
+              A dimension added later is added here as an optional field that defaults
+              to 0, meaning none of it - so a preset saved before the dimension existed
+              stays valid and keeps describing the same tenant.
+            properties:
+              description:
+                description: description says what this preset stands for, in a sentence.
+                type: string
+              groupDepth:
+                description: |-
+                  groupDepth is how many levels the group tree has: 1 is a flat list of
+                  groups, 2 is one root group with every other group below it, and so
+                  on. The tree has a single root, g000000, which every user belongs to
+                  through the tree. At most groups, since each level needs a group.
+                format: int32
+                maximum: 10
+                minimum: 1
+                type: integer
+              groups:
+                description: groups is how many groups the tenant has, named g000000
+                  onwards.
+                format: int32
+                maximum: 1000000
+                minimum: 0
+                type: integer
+              groupsPerUser:
+                description: |-
+                  groupsPerUser is how many groups each user is a direct member of. A
+                  few groups end up large and most small, the way real directories are.
+                format: int32
+                minimum: 0
+                type: integer
+              seed:
+                default: 1
+                description: |-
+                  seed makes the tenant reproducible: the same seed and numbers always
+                  produce the same users, groups and memberships, which is what keeps
+                  the deployments of one comparison identical.
+                format: int32
+                maximum: 2147483647
+                minimum: 1
+                type: integer
+              users:
+                description: |-
+                  users is how many users the tenant has, named u000000 onwards. Capped
+                  so those names keep their six digits, which scripts and blueprints
+                  rely on.
+                format: int32
+                maximum: 1000000
+                minimum: 1
+                type: integer
+            required:
+            - groupDepth
+            - groups
+            - groupsPerUser
+            - users
+            type: object
+            x-kubernetes-validations:
+            - message: groupsPerUser must not exceed groups
+              rule: self.groupsPerUser <= self.groups
+            - message: 'groupDepth must not exceed groups: each level needs a group'
+              rule: 'self.groupDepth <= (self.groups > 0 ? self.groups : 1)'
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

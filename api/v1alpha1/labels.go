@@ -19,4 +19,8 @@ const (
 	// LabelParent names the parent TestCase an AuthentikDeployment, child
 	// TestCase or extra-values ConfigMap was created for.
 	LabelParent = "bench.goauthentik.io/parent"
+	// LabelBuiltIn marks a TenantPreset the operator ships and resets to its
+	// own numbers on every start, so the web UI can offer copying one
+	// instead of editing it.
+	LabelBuiltIn = "bench.goauthentik.io/built-in"
 )

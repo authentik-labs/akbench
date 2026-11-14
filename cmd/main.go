@@ -261,6 +261,13 @@ func main() {
 		setupLog.Error(err, "Failed to seed default TestCaseTemplates")
 		os.Exit(1)
 	}
+	// Not fatal: nothing reads a preset yet, and the chart pulls :latest, so
+	// an install whose CRDs predate TenantPreset can restart into this
+	// binary - it should keep running, and seeds them on a start after the CRD
+	// is installed.
+	if err := controller.SeedDefaultTenantPresets(ctx, seedClient, envOr("BENCH_NAMESPACE", "default")); err != nil {
+		setupLog.Error(err, "Failed to seed default TenantPresets")
+	}
 	// Synthetic test users, unless already loaded (e.g. by `make fixtures`).
 	// Not fatal: without them only test cases are blocked, and they say so.
 	if users, seed, err := fixtureSettings(); err != nil {

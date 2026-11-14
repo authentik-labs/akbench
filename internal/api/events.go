@@ -1,11 +1,11 @@
 package api
 
 // Live UI updates: a WebSocket feed that tells every connected browser
-// "a TestCase/TestRun/AuthentikDeployment/TestCaseTemplate/WorkloadCluster
-// changed", so pages can refetch immediately instead of waiting for their
-// own poll interval. Deliberately a thin invalidation signal, not a second
-// copy of cluster state - the payload is just {kind, name, type}; the
-// client already knows how to GET the real thing.
+// "a TestCase/TestRun/AuthentikDeployment/TestCaseTemplate/TenantPreset/
+// WorkloadCluster changed", so pages can refetch immediately instead of
+// waiting for their own poll interval. Deliberately a thin invalidation
+// signal, not a second copy of cluster state - the payload is just
+// {kind, name, type}; the client already knows how to GET the real thing.
 //
 // Watching: one goroutine per resourceKind calls s.client.Watch (the
 // management cluster's real watch endpoint, via the same client every REST

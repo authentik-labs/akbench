@@ -41,6 +41,7 @@ const navSections: NavSection[] = [
         label: "Setup",
         items: [
             { to: "/testcasetemplates", label: "Templates" },
+            { to: "/tenantpresets", label: "Tenant presets" },
             { to: "/clusters", label: "Clusters" },
             { to: "/infrastructure", label: "Providers" },
             { to: "/shell", label: "Shell" },
