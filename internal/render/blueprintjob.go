@@ -53,16 +53,16 @@ func authentikConfigSecretName(t *benchv1alpha1.AuthentikDeployment) string {
 // The image is hashed in too, so a Job stuck on an image that can't be
 // pulled is replaced once the image changes, instead of blocking forever.
 func BlueprintJobName(t *benchv1alpha1.AuthentikDeployment, label, content string) string {
-	sum := sha256.Sum256(fmt.Appendf(nil, "%s/%s/%s/%s", t.Name, label, content, blueprintImage(t)))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s/%s/%s/%s", t.Name, label, content, authentikImage(t)))
 	return BlueprintJobNamePrefix + hex.EncodeToString(sum[:])[:16]
 }
 
-// blueprintImage is the authentik image the deployment runs. With no tag
+// authentikImage is the authentik image the deployment runs. With no tag
 // set, the chart uses its own appVersion, which matches the chart version
 // (there is no :latest tag), so this falls back to the installed chart
-// version. Blueprint Jobs are only created once the HelmRelease is Ready,
-// by which point status.chartVersion is recorded.
-func blueprintImage(t *benchv1alpha1.AuthentikDeployment) string {
+// version. Blueprint and tenant seeding Jobs are only created once the
+// HelmRelease is Ready, by which point status.chartVersion is recorded.
+func authentikImage(t *benchv1alpha1.AuthentikDeployment) string {
 	image := t.Spec.Authentik.Image
 	if image == "" {
 		image = "ghcr.io/goauthentik/server"
@@ -123,7 +123,7 @@ func BlueprintJob(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Worklo
 					SecurityContext: &corev1.PodSecurityContext{FSGroup: new(int64(1000))},
 					Containers: []corev1.Container{{
 						Name:    "apply-blueprint",
-						Image:   blueprintImage(t),
+						Image:   authentikImage(t),
 						Command: []string{"sh", "-c", fmt.Sprintf("cp %s %s && ak apply_blueprint %s", sourcePath, targetPath, targetPath)},
 						EnvFrom: []corev1.EnvFromSource{
 							{SecretRef: &corev1.SecretEnvSource{Name: authentikConfigSecretName(t)}},

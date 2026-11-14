@@ -13,6 +13,9 @@
 # Re-include k6 scripts embedded via go:embed (see k6/scripts/embed.go)
 !k6/scripts/*.ts
 
+# Re-include the tenant seeder embedded via go:embed (see seeder/embed.go)
+!seeder/seed.py
+
 # Re-include Grafana dashboards embedded via go:embed (see internal/render/grafana.go)
 !internal/render/manifests/grafana-dashboards/*.json
 
