@@ -153,8 +153,12 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 	topo, targetName, host, port, err := resolveReadyDeployment(ctx, r.Client, tc.Namespace, deploymentRef.Name)
 	if err != nil {
 		if errors.Is(err, errDeploymentNotReady) {
+			message := "AuthentikDeployment is not Ready yet"
+			if failure := tenantSeedingFailure(topo); failure != "" {
+				message = "AuthentikDeployment's " + failure
+			}
 			setCondition(r.Recorder, run, &run.Status.Conditions, run.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-				benchv1alpha1.ReasonDependencyNotReady, "AuthentikDeployment is not Ready yet")
+				benchv1alpha1.ReasonDependencyNotReady, message)
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(ctx, run)
 		}
 		return ctrl.Result{}, fmt.Errorf("resolve deployment: %w", err)
@@ -186,8 +190,9 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 	}
 
 	var deps render.DependencyEndpoints
+	var tmpl *benchv1alpha1.TestCaseTemplate
 	if tc.Spec.Inline == "" && tc.Spec.ScriptConfigMapRef == nil {
-		tmpl, err := resolveTemplate(ctx, r.Client, tc.Namespace, tc.Spec.Template)
+		tmpl, err = resolveTemplate(ctx, r.Client, tc.Namespace, tc.Spec.Template)
 		if err != nil {
 			setCondition(r.Recorder, run, &run.Status.Conditions, run.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 				benchv1alpha1.ReasonDependencyNotReady, fmt.Sprintf("resolving TestCaseTemplate %q: %v", tc.Spec.Template, err))
@@ -195,6 +200,16 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 		}
 		deps = dependencyEndpoints(&tc, deploymentRef.Name, &tmpl.Spec)
 	}
+	tenant, refusal, err := runTenant(ctx, r.Client, rc, run.Namespace, topo, tmpl)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if refusal != "" {
+		setCondition(r.Recorder, run, &run.Status.Conditions, run.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonDependencyNotReady, refusal)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, r.Status().Update(ctx, run)
+	}
+	run.Status.Tenant = tenantRecord(topo, tenant)
 
 	runnerWC := resolveWorkloadCluster(ctx, r.Client, run.Namespace, runnerClusterName(&tc, topo))
 	nodeSelector, tolerations := render.K6PoolPlacement(runnerWC)
@@ -209,6 +224,7 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 		UserScriptConfigMapName: userScriptConfigMapName(&tc),
 		FixturesSecretName:      fixturesSecretName,
 		Dependencies:            deps,
+		Tenant:                  tenant,
 		NodeSelector:            nodeSelector,
 		Tolerations:             tolerations,
 	}
@@ -247,6 +263,26 @@ func (r *TestRunReconciler) start(ctx context.Context, run *benchv1alpha1.TestRu
 	}
 
 	return ctrl.Result{RequeueAfter: 2 * time.Second}, r.Status().Update(ctx, run)
+}
+
+// runTenant is the tenant a Quick run of tmpl against topo gives k6, with
+// its password mirrored onto rc (see tenantForTarget and
+// ensureTenantPassword), or a refusal saying why the run has to wait.
+func runTenant(ctx context.Context, c, rc client.Client, namespace string, topo *benchv1alpha1.AuthentikDeployment,
+	tmpl *benchv1alpha1.TestCaseTemplate,
+) (*benchv1alpha1.TenantParams, string, error) {
+	tenant, refusal := tenantForTarget(topo, tmpl)
+	if refusal != "" {
+		return nil, refusal, nil
+	}
+	refusal, err := ensureTenantPassword(ctx, c, rc, namespace, topo, tenant)
+	if err != nil {
+		return nil, "", fmt.Errorf("ensure tenant password secret: %w", err)
+	}
+	if refusal != "" {
+		return nil, refusal, nil
+	}
+	return tenant, "", nil
 }
 
 // resolveRunRunnerClient re-derives the cluster a TestRun's Job runs on from

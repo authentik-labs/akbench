@@ -155,6 +155,12 @@ What each component does.
   Secret) and `policy-flows` (the two login flows the `*-policy-login`
   templates walk; no service). Their addresses, source slugs and IdP
   test credentials reach k6 as env vars (`render.DependencyEndpoints`).
+  `seeded-tenant` provisions nothing: it requires the target deployment to
+  have a seeded tenant (a test case refuses to run on one without, on one
+  needing a reset or whose password changed since, or on targets seeded
+  differently), and k6 gets its numbers and password as `TENANT_*` env
+  vars. Which tenant each target ran against is recorded in the test case's
+  `status.deployments[].tenant` and a Quick run's `status.tenant`.
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source
   of truth), proxies PromQL for the compare view (resolved per-testid

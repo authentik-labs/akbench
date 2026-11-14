@@ -111,22 +111,13 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, r.Status().Update(ctx, &tc)
 	}
 
-	var tmpl *benchv1alpha1.TestCaseTemplate
-	usingTemplate := tc.Spec.Inline == "" && tc.Spec.ScriptConfigMapRef == nil
-	if usingTemplate {
-		var err error
-		tmpl, err = resolveTemplate(ctx, r.Client, tc.Namespace, tc.Spec.Template)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionFalse,
-					benchv1alpha1.ReasonDependencyNotReady, fmt.Sprintf("TestCaseTemplate %q not found", tc.Spec.Template))
-				setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-					benchv1alpha1.ReasonDependencyNotReady, "waiting for template")
-				tc.Status.Phase = benchv1alpha1.PhaseFor(tc.Status.Conditions)
-				return ctrl.Result{}, r.Status().Update(ctx, &tc)
-			}
-			return ctrl.Result{}, fmt.Errorf("resolve template: %w", err)
-		}
+	tmpl, waiting, err := r.resolveTargetsTemplate(ctx, &tc, refs)
+	switch {
+	case err != nil:
+		return ctrl.Result{}, err
+	case waiting:
+		tc.Status.Phase = benchv1alpha1.PhaseFor(tc.Status.Conditions)
+		return ctrl.Result{}, r.Status().Update(ctx, &tc)
 	}
 
 	// One pass per target deployment - everything in reconcileTarget
@@ -222,6 +213,40 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	log.Info("reconciled TestCase", "profile", tc.Spec.Profile, "deployments", len(refs))
 	return result, nil
+}
+
+// resolveTargetsTemplate returns tc's template (nil for an inline or
+// ConfigMap script). waiting is true, with tc's conditions saying why, when
+// tc can't go ahead with its targets yet: the template doesn't exist (yet),
+// or it needs a seeded tenant and the targets hold different ones. The
+// latter is checked before any target's k6 workload is set up, so a
+// comparison never starts on mismatched data.
+func (r *TestCaseReconciler) resolveTargetsTemplate(ctx context.Context, tc *benchv1alpha1.TestCase, refs []corev1.LocalObjectReference,
+) (*benchv1alpha1.TestCaseTemplate, bool, error) {
+	if tc.Spec.Inline != "" || tc.Spec.ScriptConfigMapRef != nil {
+		return nil, false, nil
+	}
+	tmpl, err := resolveTemplate(ctx, r.Client, tc.Namespace, tc.Spec.Template)
+	switch {
+	case apierrors.IsNotFound(err):
+		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonDependencyNotReady, fmt.Sprintf("TestCaseTemplate %q not found", tc.Spec.Template))
+		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonDependencyNotReady, "waiting for template")
+		return nil, true, nil
+	case err != nil:
+		return nil, false, fmt.Errorf("resolve template: %w", err)
+	}
+	refusal, err := r.differentTenants(ctx, tc, tmpl, refs)
+	if err != nil || refusal == "" {
+		return tmpl, false, err
+	}
+	// Not requeued: the deployment watch brings this back once one is reset.
+	setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionFalse,
+		benchv1alpha1.ReasonDependencyNotReady, refusal)
+	setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+		benchv1alpha1.ReasonDependencyNotReady, refusal)
+	return tmpl, true, nil
 }
 
 // cleanupStaleBurnsEverywhere runs cleanupStaleBurnDeployments on every
@@ -362,6 +387,11 @@ func keepRecordedStatus(tc *benchv1alpha1.TestCase, result *targetResult, prev b
 	if tc.Spec.Profile == benchv1alpha1.ProfileBurn && prev.BurnStoppedAt == nil {
 		result.status.BurningSince = prev.BurningSince
 	}
+	// A target held back this pass, by its tenant needing a reset say,
+	// keeps a running burn going on the tenant it was given.
+	if !result.ready && result.status.Tenant == nil {
+		result.status.Tenant = prev.Tenant
+	}
 }
 
 // keepRecordedPlacement carries prev's runner cluster over to st, and where
@@ -438,12 +468,25 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 			result.notReadyMsg = fmt.Sprintf("%s: AuthentikDeployment not found", ref.Name)
 		case errors.Is(err, errDeploymentNotReady):
 			result.notReadyMsg = fmt.Sprintf("%s: not Ready yet", ref.Name)
+			if failure := tenantSeedingFailure(topo); failure != "" {
+				result.notReadyMsg = fmt.Sprintf("%s: %s", ref.Name, failure)
+			}
 		default:
 			return targetResult{}, fmt.Errorf("resolve deployment %q: %w", ref.Name, err)
 		}
 		return result, nil
 	}
 	result.status.Cluster, result.status.Namespace, result.status.Target = topo.Spec.ClusterRef.Name, topo.Spec.Namespace, targetName
+	// Not requeued: the deployment watch brings this back once it changes.
+	// Refusing only holds back what is still to be set up: a Burn already
+	// running on this target keeps running, since the data and the env it
+	// was given still match (a tenant needing a reset is still in the
+	// database, unchanged, and k6 keeps the password it started with).
+	tenant, refusal := tenantForTarget(topo, tmpl)
+	if refusal != "" {
+		result.notReadyMsg = fmt.Sprintf("%s: %s", ref.Name, refusal)
+		return result, nil
+	}
 
 	rc, remote, err := resolveRunnerClient(ctx, r.Tracker, r.Client, tc.Namespace, tc.Spec.RunnerClusterRef, topo.Spec.ClusterRef)
 	if err != nil {
@@ -481,6 +524,16 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 		}
 		return targetResult{}, fmt.Errorf("ensure fixtures secret for %q: %w", ref.Name, err)
 	}
+	refusal, err = ensureTenantPassword(ctx, r.Client, rc, tc.Namespace, topo, tenant)
+	if err != nil {
+		return targetResult{}, fmt.Errorf("ensure tenant password secret for %q: %w", ref.Name, err)
+	}
+	if refusal != "" {
+		result.requeue = true
+		result.notReadyMsg = fmt.Sprintf("%s: %s", ref.Name, refusal)
+		return result, nil
+	}
+	result.status.Tenant = tenantRecord(topo, tenant)
 
 	var deps render.DependencyEndpoints
 	if tmpl != nil {
@@ -504,6 +557,7 @@ func (r *TestCaseReconciler) reconcileTarget(ctx context.Context, tc *benchv1alp
 		UserScriptConfigMapName: userScriptConfigMapName(tc),
 		FixturesSecretName:      fixturesSecretName,
 		Dependencies:            deps,
+		Tenant:                  tenant,
 		NodeSelector:            nodeSelector,
 		Tolerations:             tolerations,
 	}

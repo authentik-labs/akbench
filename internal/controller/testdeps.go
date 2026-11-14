@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -146,7 +147,12 @@ func serviceHost(name, namespace string) string {
 // to a Reconcile method, confirmed by testing: the identical marker on this
 // helper was silently dropped from the generated ClusterRole.
 func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.Client, remote bool, tc *benchv1alpha1.TestCase, deploymentName string, topo *benchv1alpha1.AuthentikDeployment, spec *benchv1alpha1.TestCaseTemplateSpec, host string, port int32) (render.DependencyEndpoints, error) {
-	if len(spec.Dependencies) == 0 {
+	// seeded-tenant comes with the target deployment, not from here (see
+	// tenantForTarget): a template listing only that would otherwise import
+	// an empty blueprint for nothing.
+	if !slices.ContainsFunc(spec.Dependencies, func(dep benchv1alpha1.TestCaseDependency) bool {
+		return dep != benchv1alpha1.DependencySeededTenant
+	}) {
 		return render.DependencyEndpoints{}, nil
 	}
 	ids := idsFor(tc, deploymentName)

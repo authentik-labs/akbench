@@ -78,6 +78,11 @@ type K6WorkloadParams struct {
 	// internal/controller/testdeps.go). Only the ones set render env vars,
 	// so a script without dependencies never sees any.
 	Dependencies DependencyEndpoints
+	// Tenant is what the target deployment was seeded with, set only for a
+	// template with the seeded-tenant dependency; the users' password is
+	// under TenantPasswordKey in the TenantPasswordSecretName Secret on the
+	// runner cluster, which the caller mirrors there.
+	Tenant *benchv1alpha1.TenantParams
 	// NodeSelector/Tolerations target this TestCase's own k6-pool node (see
 	// render.K6PoolPlacement), resolved by the caller from the runner's own
 	// WorkloadCluster - empty when that cluster has no K6-role pool (or when
@@ -91,7 +96,7 @@ type K6WorkloadParams struct {
 // resulting metrics carry the same meaning as the Ansible-based harness.
 func (p K6WorkloadParams) EnvVars() []corev1.EnvVar {
 	tc := p.TestCase
-	return append([]corev1.EnvVar{
+	vars := append([]corev1.EnvVar{
 		{Name: "TEST_ID", Value: tc.Name},
 		{Name: "TARGET", Value: p.TargetName},
 		{Name: "PROFILE", Value: k6ProfileValue(tc.Spec.Profile)},
@@ -109,6 +114,27 @@ func (p K6WorkloadParams) EnvVars() []corev1.EnvVar {
 		{Name: "K6_FEATURES", Value: "native-histograms"},
 		{Name: "K6_PROMETHEUS_RW_PUSH_INTERVAL", Value: "1s"},
 	}, p.Dependencies.EnvVars()...)
+	return append(vars, p.tenantEnvVars()...)
+}
+
+// tenantEnvVars tell a script what the target deployment's tenant holds -
+// its numbers are enough to work out every user and group name (see
+// seeder/seed.py) - and the password its users have. None without a tenant.
+func (p K6WorkloadParams) tenantEnvVars() []corev1.EnvVar {
+	t := p.Tenant
+	if t == nil {
+		return nil
+	}
+	return []corev1.EnvVar{
+		{Name: "TENANT_SEED", Value: fmt.Sprintf("%d", t.Seed)},
+		{Name: "TENANT_USERS", Value: fmt.Sprintf("%d", t.Users)},
+		{Name: "TENANT_GROUPS", Value: fmt.Sprintf("%d", t.Groups)},
+		{Name: "TENANT_GROUP_DEPTH", Value: fmt.Sprintf("%d", t.GroupDepth)},
+		{Name: "TENANT_GROUPS_PER_USER", Value: fmt.Sprintf("%d", t.GroupsPerUser)},
+		{Name: "TENANT_PASSWORD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+			Name: TenantPasswordSecretName, Key: TenantPasswordKey,
+		}}},
+	}
 }
 
 // DependencyEndpoints is where a k6 script finds each test dependency its
