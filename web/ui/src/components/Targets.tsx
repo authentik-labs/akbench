@@ -14,10 +14,12 @@ import {
     CompareResponse,
     PARENT_LABEL,
     RangePoint,
+    TenantRecord,
     TestCase,
     testCaseDeployments,
 } from "../types";
 import { Badge } from "./Status";
+import { tenantRecordText } from "./Tenant";
 
 // One row per deployment a TestCase drives ("target"), side by side - the
 // core view of a multi-deployment Burn test: same script, same load, so any
@@ -38,6 +40,8 @@ export interface TargetRow {
     /** From TestCase status.deployments - undefined until first reconciled. */
     ready?: boolean;
     burnWorkload?: string;
+    /** The seeded tenant this target's k6 workload was given, if any. */
+    tenant?: TenantRecord;
     values: Record<string, number>;
 }
 
@@ -62,6 +66,7 @@ export function buildTargetRows(
             deployment,
             ready: status?.ready,
             burnWorkload: status?.burnWorkloadRef?.name,
+            tenant: status?.tenant,
             values:
                 results.find((r) => r.testid === testCase.metadata.name && r.target === target)
                     ?.values ?? {},
@@ -191,6 +196,11 @@ export function TargetTable({
                                         {row.deploymentName}
                                     </Link>
                                 </span>
+                                {row.tenant && (
+                                    <div className="muted">
+                                        tenant {tenantRecordText(row.tenant)}
+                                    </div>
+                                )}
                             </td>
                             <td className="mono" title={row.deployment?.spec.authentik?.tag}>
                                 {row.deployment?.spec.authentik?.tag ? (

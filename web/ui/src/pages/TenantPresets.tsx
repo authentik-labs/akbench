@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { formatCount } from "../components/Tenant";
 import { toast } from "../components/Toast";
 import { Alert, confirmAndRun, errorMessage, Field, Page, Table } from "../components/ui";
 import { k8sNameInput } from "../github";
@@ -23,8 +24,6 @@ const emptySpec: TenantPresetSpec = {
     groupDepth: 3,
     groupsPerUser: 4,
 };
-
-const count = (n: number) => n.toLocaleString("en-US");
 
 export function TenantPresetsPage() {
     const presets = useResource(() => api.tenantPresets(), [], 5000, "TenantPreset");
@@ -60,8 +59,8 @@ export function TenantPresetsPage() {
                         ),
                     },
                     { label: "Description", render: (p) => p.spec.description ?? "" },
-                    { label: "Users", render: (p) => count(p.spec.users) },
-                    { label: "Groups", render: (p) => count(p.spec.groups) },
+                    { label: "Users", render: (p) => formatCount(p.spec.users) },
+                    { label: "Groups", render: (p) => formatCount(p.spec.groups) },
                     { label: "Tree depth", render: (p) => p.spec.groupDepth },
                     { label: "Groups per user", render: (p) => p.spec.groupsPerUser },
                     {

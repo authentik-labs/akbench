@@ -126,6 +126,9 @@ export interface AuthentikDeploymentSpec {
         pyroscopeHost?: string;
         extraValuesRef?: { name: string };
     };
+    // Seeds a synthetic tenant from a TenantPreset once the deployment is up.
+    // Changing it after seeding needs a reset.
+    tenant?: { presetRef: { name: string } };
 }
 
 export interface AuthentikDeploymentStatus {
@@ -141,7 +144,43 @@ export interface AuthentikDeploymentStatus {
         capacityBytes?: number;
         lastChecked?: string;
     };
+    tenant?: TenantStatus;
 }
+
+/** The numbers a tenant was seeded with: a TenantPresetSpec without its description. */
+export interface TenantParams {
+    seed: number;
+    users: number;
+    groups: number;
+    groupDepth: number;
+    groupsPerUser: number;
+}
+
+export type TenantState = "Seeding" | "Seeded" | "Failed";
+
+/**
+ * What the operator seeded into a deployment, recorded when seeding starts
+ * and never changed afterwards: a later change of the preset needs a reset.
+ */
+export interface TenantStatus {
+    preset: string;
+    params: TenantParams;
+    passwordFingerprint?: string;
+    state: TenantState;
+    // The seeder's own last line on failure.
+    message?: string;
+    seededAt?: string;
+}
+
+/** The tenant a test ran against: the preset it was seeded from and its numbers. */
+export interface TenantRecord {
+    preset: string;
+    params: TenantParams;
+}
+
+/** The deployment condition that reports on its tenant, and its reset-required reason. */
+export const TENANT_SEEDED_CONDITION = "TenantSeeded";
+export const TENANT_RESET_REQUIRED = "TenantResetRequired";
 
 export interface AuthentikDeployment {
     metadata: ObjectMeta;
@@ -210,6 +249,8 @@ export interface TestCaseDeploymentStatus {
     burningSince?: string;
     // Set once archiving stopped this target's burn; burningSince is then kept.
     burnStoppedAt?: string;
+    // The seeded tenant this target's k6 workload was given.
+    tenant?: TenantRecord;
 }
 
 export interface TestCase {
@@ -299,6 +340,7 @@ export const testCaseDependencies = {
     "saml-idp": "SAML IdP",
     "oauth-token": "OAuth token clients",
     "policy-flows": "Policy placement flows",
+    "seeded-tenant": "Seeded tenant",
 } as const;
 
 export type TestCaseDependency = keyof typeof testCaseDependencies;
@@ -411,6 +453,8 @@ export interface TestRun {
         // overrides this run actually used (internal/controller/testrun_controller.go
         // sets it) - what a historical run's own "what ran" record is.
         resolvedSpec?: TestCaseSpec;
+        // The seeded tenant the run's k6 Job was given.
+        tenant?: TenantRecord;
     };
 }
 

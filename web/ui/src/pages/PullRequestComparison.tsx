@@ -678,6 +678,12 @@ export function ComparisonForm({
                             </li>
                         ))}
                     </ul>
+                    {spec.tenant && (
+                        <p className="muted">
+                            Every deployment is seeded with the tenant preset{" "}
+                            <code>{spec.tenant.presetRef.name}</code>.
+                        </p>
+                    )}
                 </>
             ),
         },
