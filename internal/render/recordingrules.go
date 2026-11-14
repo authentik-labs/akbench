@@ -17,6 +17,8 @@ const (
 	RecordedIterations        = "testid_target:k6_iterations:rate1m"
 	RecordedHTTPReqDuration   = "testid_target:k6_http_req_duration_seconds:rate1m"
 	RecordedIterationDuration = "testid_target:k6_iteration_duration_seconds:rate1m"
+	RecordedIterationOutcomes = "testid_target:k6_iteration_outcomes:rate1m"
+	RecordedIterationsFailed  = "testid_target:k6_iteration_outcomes_failed:rate1m"
 )
 
 // K6RecordingRuleGroups builds the recording rules behind the Recorded*
@@ -38,6 +40,8 @@ func K6RecordingRuleGroups() []any {
 				record(RecordedIterations, by+`(rate(k6_iterations_total[1m]))`),
 				record(RecordedHTTPReqDuration, by+`(rate(k6_http_req_duration_seconds[1m]))`),
 				record(RecordedIterationDuration, by+`(rate(k6_iteration_duration_seconds[1m]))`),
+				record(RecordedIterationOutcomes, by+`(rate(k6_iteration_outcomes_total[1m]))`),
+				record(RecordedIterationsFailed, by+`(rate(k6_iteration_outcomes_total{outcome="failed"}[1m]))`),
 			},
 		},
 	}

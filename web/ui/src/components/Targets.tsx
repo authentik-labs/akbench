@@ -127,6 +127,7 @@ export const TARGET_METRICS = [
     "iteration_duration_p95",
     "http_req_duration_p99",
     "http_req_failed",
+    "iteration_failed",
     "checks",
 ];
 

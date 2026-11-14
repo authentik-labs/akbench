@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
+	"github.com/authentik-labs/akbench/internal/render"
 )
 
 func TestProxyQueryInstant(t *testing.T) {
@@ -114,6 +116,121 @@ func TestCompare(t *testing.T) {
 	wantP95 := `histogram_quantile(0.95, sum by (target) (rate(k6_http_req_duration_seconds{testid="login-a"}[5m])))`
 	if !seen[wantP95] {
 		t.Fatalf("p95 query was not %q; queries seen: %v", wantP95, seen)
+	}
+}
+
+// Failed transactions are rated over the requested window from the scripts'
+// own outcome counter, not read from a since-start ratio: the failed
+// outcome's rate over the rate of all outcomes. No "or 0" fallback - bench.ts
+// keeps the failed series alive with zeros, so an empty result is missing
+// data and shows as "-" like "Failed requests", not as a confident 0%.
+func TestCompareFailedTransactionsUsesWindow(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheus(t, func(query string) (string, string, bool) {
+		seen[query] = true
+		if strings.Contains(query, "k6_iteration_outcomes_total") {
+			return "0.02", "", true
+		}
+		return "", "", false
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/compare?testids=login-a&window=15m", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	body := decodeBody[struct {
+		Results []struct {
+			Values map[string]float64 `json:"values"`
+		} `json:"results"`
+	}](t, rec)
+	if len(body.Results) != 1 {
+		t.Fatalf("got %d results, want 1", len(body.Results))
+	}
+	if got := body.Results[0].Values["iteration_failed"]; got != 0.02 {
+		t.Fatalf("iteration_failed is %v, want 0.02", got)
+	}
+	want := `sum by (target) (rate(k6_iteration_outcomes_total{testid="login-a", outcome="failed"}[15m]))` +
+		` / sum by (target) (rate(k6_iteration_outcomes_total{testid="login-a"}[15m]))`
+	if !seen[want] {
+		t.Fatalf("failed transactions query was not %q; queries seen: %v", want, seen)
+	}
+	for query := range seen {
+		if strings.Contains(query, "k6_iteration_outcomes") && strings.Contains(query, " or ") {
+			t.Errorf("failed transactions query falls back to a value on missing data: %q", query)
+		}
+	}
+}
+
+// With no failure in the window the failed series is still there, at 0, so
+// the row reads 0 rather than going missing.
+func TestCompareFailedTransactionsZero(t *testing.T) {
+	prom := fakePrometheus(t, func(query string) (string, string, bool) {
+		return "0", "", strings.Contains(query, "k6_iteration_outcomes_total")
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/compare?testids=login-a", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	body := decodeBody[struct {
+		Results []struct {
+			Values map[string]float64 `json:"values"`
+		} `json:"results"`
+	}](t, rec)
+	if got, present := body.Results[0].Values["iteration_failed"]; !present || got != 0 {
+		t.Fatalf("iteration_failed is %v (present %v), want a reported 0", got, present)
+	}
+}
+
+// Over an hour or more, failed transactions come from the recording rules
+// like the other rated rows, not from a scan of every raw 1s sample.
+func TestCompareFailedTransactionsLongWindowUsesRecordingRules(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheus(t, func(query string) (string, string, bool) {
+		seen[query] = true
+		return "0.01", "", strings.Contains(query, "testid_target:k6_iteration_outcomes")
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/compare?testids=login-a&window=1h", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	body := decodeBody[struct {
+		Results []struct {
+			Values map[string]float64 `json:"values"`
+		} `json:"results"`
+	}](t, rec)
+	if got := body.Results[0].Values["iteration_failed"]; got != 0.01 {
+		t.Fatalf("iteration_failed is %v, want 0.01 from the recording rules", got)
+	}
+	want := `sum by (target) (sum_over_time(` + render.RecordedIterationsFailed + `{testid="login-a"}[1h]))` +
+		` / sum by (target) (sum_over_time(` + render.RecordedIterationOutcomes + `{testid="login-a"}[1h]))`
+	if !seen[want] {
+		t.Fatalf("recorded failed transactions query was not %q; queries seen: %v", want, seen)
+	}
+	for query := range seen {
+		if strings.Contains(query, "k6_iteration_outcomes_total") {
+			t.Fatalf("raw outcome query ran despite recorded data: %q", query)
+		}
+	}
+}
+
+// Every series a Recorded query reads is one render's recording rules
+// actually record; a typo would only ever fall back to the slow raw query.
+func TestCompareRecordedQueriesReadRecordedSeries(t *testing.T) {
+	recorded := map[string]bool{}
+	for _, group := range render.K6RecordingRuleGroups() {
+		for _, rule := range group.(map[string]any)["rules"].([]any) {
+			recorded[rule.(map[string]any)["record"].(string)] = true
+		}
+	}
+	series := regexp.MustCompile(`testid_target:[a-z0-9_]+:[a-z0-9]+`)
+	for _, m := range compareMetrics {
+		for _, name := range series.FindAllString(m.Recorded, -1) {
+			if !recorded[name] {
+				t.Errorf("%s's recorded query reads %s, which no recording rule records", m.Key, name)
+			}
+		}
 	}
 }
 

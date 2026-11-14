@@ -6,7 +6,7 @@ import http from "k6/http";
 import type { Params, Response } from "k6/http";
 import { check, fail } from "k6";
 import { SharedArray } from "k6/data";
-import { Rate } from "k6/metrics";
+import { Counter, Rate } from "k6/metrics";
 import type { Options, PerVUIterationsScenario, Scenario, Threshold } from "k6/options";
 
 export interface User {
@@ -87,6 +87,13 @@ export function userFor(users: User[], stride: number = vus): User {
 // run over the threshold exits non-zero, which fails its TestRun.
 const iterationFailed = new Rate("iteration_failed");
 
+// The same verdict as a counter, tagged with how the iteration ended. k6
+// reports a Rate only as its ratio since the run started, so iteration_failed
+// (like the built-in checks rate) cannot say how the last five minutes went.
+// A counter can be rated over any window, which is what the compare view's
+// "Failed transactions" does.
+const iterationOutcomes = new Counter("iteration_outcomes");
+
 // iteration wraps a script's iteration, which returns whether it completed,
 // into its default function: `export default iteration(() => ...)`.
 export function iteration(run: () => boolean): () => void {
@@ -96,6 +103,14 @@ export function iteration(run: () => boolean): () => void {
             ok = run();
         } finally {
             iterationFailed.add(!ok);
+            // Both outcomes on every iteration, the one that did not happen
+            // as a 0. k6's remote write pushes only series that got a sample
+            // since the last flush, and rate() needs two samples in its
+            // window and never counts a series' first one: a "failed" series
+            // sampled only when an iteration fails would read as no failures
+            // for a window with one or two of them.
+            iterationOutcomes.add(ok ? 0 : 1, { outcome: "failed" });
+            iterationOutcomes.add(ok ? 1 : 0, { outcome: "ok" });
         }
     };
 }
