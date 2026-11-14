@@ -94,7 +94,20 @@ What each component does.
   startup (`tiny` to `huge`), resetting them on every start; copy one to
   change it. A preset someone created under a built-in's name is left alone,
   and a built-in a later release drops loses its built-in label and becomes
-  an ordinary preset. Nothing seeds a deployment from a preset yet.
+  an ordinary preset.
+- **Tenant seeding**: a deployment's `spec.tenant.presetRef` names a preset
+  to seed it with. Once its HelmRelease is Ready, the operator runs
+  `seeder/seed.py` in a Job using the deployment's own authentik image and
+  database settings (`render.TenantSeedJob`), with a password generated once
+  per namespace (Secret `bench-tenant-password`). `status.tenant` records the
+  preset, a copy of its numbers and a fingerprint of the password when
+  seeding starts, and isn't changed after: a different preset, an edited one
+  or a replaced password shows as `TenantSeeded=False` with reason
+  `TenantResetRequired` (the deployment stays Ready), and a reset seeds
+  again. A failed run makes the deployment `Failed` with the seeder's own
+  message; it is not retried until a reset, a different preset or image,
+  or the tenant being removed and chosen again. A seeding pod that is
+  evicted or preempted is replaced instead of failing the run.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
   seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
