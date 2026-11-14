@@ -30,6 +30,15 @@ func TestPhaseForFailed(t *testing.T) {
 	}
 }
 
+func TestPhaseForSeedingFailed(t *testing.T) {
+	conditions := []metav1.Condition{
+		{Type: ConditionReady, Status: metav1.ConditionFalse, Reason: ReasonSeedingFailed},
+	}
+	if got := PhaseFor(conditions); got != PhaseFailed {
+		t.Errorf("PhaseFor(Ready=False, SeedingFailed) = %q, want %q", got, PhaseFailed)
+	}
+}
+
 func TestPhaseForReconciling(t *testing.T) {
 	conditions := []metav1.Condition{
 		{Type: ConditionReady, Status: metav1.ConditionFalse, Reason: ReasonDependencyNotReady},

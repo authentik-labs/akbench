@@ -15,6 +15,12 @@ const (
 	// is configured) has been applied against this deployment's authentik
 	// instance - True with no work done if none is configured.
 	ConditionBlueprintApplied = "BlueprintApplied"
+	// ConditionTenantSeeded is True once an AuthentikDeployment's tenant
+	// (spec.tenant) is seeded - True with no work done if none is
+	// configured. False with ReasonTenantResetRequired when what was seeded
+	// no longer matches spec.tenant, its preset or the password; the
+	// deployment stays Ready then, since its data is intact.
+	ConditionTenantSeeded = "TenantSeeded"
 	// ConditionDeploymentReady is True once a TestCase's AuthentikDeployment is
 	// itself Ready.
 	ConditionDeploymentReady = "DeploymentReady"
@@ -37,4 +43,9 @@ const (
 	ReasonDependencyNotReady = "DependencyNotReady"
 	ReasonResetting          = "Resetting"
 	ReasonArchived           = "Archived"
+	// ReasonSeedingFailed: the tenant seeding Job failed. A reset retries.
+	ReasonSeedingFailed = "SeedingFailed"
+	// ReasonTenantResetRequired: the seeded tenant no longer matches what
+	// the deployment asks for; only a reset seeds it again.
+	ReasonTenantResetRequired = "TenantResetRequired"
 )

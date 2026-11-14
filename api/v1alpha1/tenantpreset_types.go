@@ -9,9 +9,9 @@ import (
 // to be seeded with: how many users and groups it gets, how the groups nest
 // and how many groups each user is in. Kept under a name, the same numbers
 // can be used again for another deployment, and a result can say what it was
-// measured against. Nothing seeds a deployment from a preset yet. Like a
-// TestCaseTemplate it is editable, through the web UI or plain kubectl, and
-// the operator ships a few built-in ones (see
+// measured against. An AuthentikDeployment names one in spec.tenant to be
+// seeded with it. Like a TestCaseTemplate it is editable, through the web UI
+// or plain kubectl, and the operator ships a few built-in ones (see
 // internal/controller/seedpresets.go).
 //
 // A dimension added later is added here as an optional field that defaults

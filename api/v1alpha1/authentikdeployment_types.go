@@ -222,6 +222,91 @@ type AuthentikDeploymentSpec struct {
 
 	// +optional
 	Authentik AuthentikSpec `json:"authentik,omitempty"`
+
+	// tenant, when set, seeds a synthetic tenant from a TenantPreset once
+	// the deployment is up. Changing it after seeding needs a reset.
+	// +optional
+	Tenant *TenantSpec `json:"tenant,omitempty"`
+}
+
+// TenantSpec picks the synthetic tenant (users, groups, memberships) the
+// operator seeds into the deployment once it is up. See TenantPreset.
+type TenantSpec struct {
+	// presetRef names a TenantPreset in the deployment's namespace.
+	// +required
+	PresetRef corev1.LocalObjectReference `json:"presetRef"`
+}
+
+// TenantParams are the numbers a tenant was seeded with (TenantPresetSpec
+// without its description).
+type TenantParams struct {
+	// seed is the TenantPreset's seed.
+	Seed int32 `json:"seed"`
+	// users is how many users the tenant has.
+	Users int32 `json:"users"`
+	// groups is how many groups the tenant has.
+	Groups int32 `json:"groups"`
+	// groupDepth is how many levels the group tree has.
+	GroupDepth int32 `json:"groupDepth"`
+	// groupsPerUser is how many groups each user is a direct member of.
+	GroupsPerUser int32 `json:"groupsPerUser"`
+}
+
+// TenantState is how far seeding a deployment's tenant has got.
+// +kubebuilder:validation:Enum=Seeding;Seeded;Failed
+type TenantState string
+
+const (
+	// TenantSeeding means the seeding Job is running.
+	TenantSeeding TenantState = "Seeding"
+	// TenantSeeded means the tenant is in the database.
+	TenantSeeded TenantState = "Seeded"
+	// TenantFailed means the seeding Job failed. The seeder writes
+	// everything in one transaction, so nothing of the tenant is left
+	// behind; a reset tries again.
+	TenantFailed TenantState = "Failed"
+)
+
+// TenantStatus records the tenant a deployment was seeded with. It is
+// written when seeding starts and not changed afterwards: a later change
+// of the preset, of spec.tenant or of the password is reported as needing
+// a reset instead.
+type TenantStatus struct {
+	// preset is the TenantPreset the numbers were taken from.
+	Preset string `json:"preset"`
+	// params are the numbers, copied from the preset when seeding started,
+	// so a later edit of the preset can't change what a result was measured
+	// against.
+	Params TenantParams `json:"params"`
+	// passwordFingerprint identifies the password the users were given
+	// (the first 12 hex characters of its SHA-256), so a replaced password
+	// Secret is noticed instead of every k6 login failing.
+	// +optional
+	PasswordFingerprint string `json:"passwordFingerprint,omitempty"`
+	// state is how far seeding has got.
+	State TenantState `json:"state"`
+	// jobName is the seeding Job this attempt created, set once it exists.
+	// A failed attempt is only tried again by itself once spec.tenant, its
+	// preset or the image would run a Job by another name: the same one
+	// would fail the same way.
+	// +optional
+	JobName string `json:"jobName,omitempty"`
+	// message is the seeder's own last line on failure.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// seededAt is when seeding finished.
+	// +optional
+	SeededAt *metav1.Time `json:"seededAt,omitempty"`
+}
+
+// TenantRecord is the tenant a test ran against: the preset a deployment's
+// tenant was seeded from and the numbers it was seeded with, as recorded in
+// the deployment's status.tenant then.
+type TenantRecord struct {
+	// preset is the TenantPreset the tenant was seeded from.
+	Preset string `json:"preset"`
+	// params are the numbers it was seeded with.
+	Params TenantParams `json:"params"`
 }
 
 // PostgresStorageStatus reports postgres volume usage as last checked for
@@ -245,7 +330,8 @@ type PostgresStorageStatus struct {
 
 // AuthentikDeploymentStatus defines the observed state of AuthentikDeployment.
 type AuthentikDeploymentStatus struct {
-	// conditions report Ready, PostgresReady and HelmReleaseReady.
+	// conditions report Ready, PostgresReady, HelmReleaseReady,
+	// BlueprintApplied and TenantSeeded.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -274,6 +360,11 @@ type AuthentikDeploymentStatus struct {
 	// authentik mid-benchmark).
 	// +optional
 	ChartVersion string `json:"chartVersion,omitempty"`
+	// tenant is what spec.tenant was seeded with, once seeding has started.
+	// It stays after spec.tenant is removed, since the data is still in the
+	// database; a reset clears it.
+	// +optional
+	Tenant *TenantStatus `json:"tenant,omitempty"`
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
