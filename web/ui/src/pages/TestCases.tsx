@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
+import { ConfigDiffWarning } from "../components/ConfigDiff";
 import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MarketingReport } from "../components/MarketingReport";
 import {
@@ -968,6 +969,7 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
             }
         >
             <Alert>{testCase.error ?? actionError ?? summary.error}</Alert>
+            <ConfigDiffWarning testid={name} />
             <SectionNav
                 sections={rollingOut ? [SECTIONS.at(-1)!, ...SECTIONS.slice(0, -1)] : SECTIONS}
             />
