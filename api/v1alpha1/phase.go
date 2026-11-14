@@ -23,7 +23,9 @@ const (
 	PhaseReconciling ReconcilePhase = "Reconciling"
 	// PhaseReady means Ready=True.
 	PhaseReady ReconcilePhase = "Ready"
-	// PhaseFailed means Ready=False with reason ReasonReconcileError.
+	// PhaseFailed means Ready=False with reason ReasonReconcileError, or
+	// ReasonPostgresStorageFull: the test case stopped itself and needs
+	// someone to act before it runs again.
 	PhaseFailed ReconcilePhase = "Failed"
 	// PhaseArchived means Ready=False with reason ReasonArchived: the
 	// resource is intentionally stopped (TestCase spec.archived).
@@ -42,7 +44,7 @@ func PhaseFor(conditions []metav1.Condition) ReconcilePhase {
 		return PhaseReady
 	}
 	switch cond.Reason {
-	case ReasonReconcileError:
+	case ReasonReconcileError, ReasonPostgresStorageFull:
 		return PhaseFailed
 	case ReasonArchived:
 		return PhaseArchived
