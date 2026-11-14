@@ -12,6 +12,7 @@ import {
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
+import { RestartsWarning } from "../components/Restarts";
 import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
 import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets";
@@ -973,6 +974,7 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
             />
             {rollingOut && statusSection}
 
+            <RestartsWarning testids={[name]} period={summaryWindow} endSeconds={metricsEnd} />
             <Section
                 id="targets"
                 title="Targets & timeline"

@@ -451,6 +451,21 @@ export interface CompareMetric {
     better: "higher" | "lower";
 }
 
+/** internal/api/restarts.go's response: container restarts per deployment. */
+export interface RestartsResponse {
+    window: string;
+    // restarts is keyed by container name; a target that stayed up has none.
+    // started counts the pods that started within the window the same way:
+    // replaced pods, whose restarts do not show in restarts.
+    targets: {
+        testid: string;
+        target: string;
+        restarts: Record<string, number>;
+        started?: Record<string, number>;
+    }[];
+    errors?: Record<string, string>;
+}
+
 export interface CompareResponse {
     window: string;
     metrics: CompareMetric[];
