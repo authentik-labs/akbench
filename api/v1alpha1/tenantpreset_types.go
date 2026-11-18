@@ -58,7 +58,10 @@ type TenantPresetSpec struct {
 
 	// groupsPerUser is how many groups each user is a direct member of. A
 	// few groups end up large and most small, the way real directories are.
+	// Capped because the tenant gets users times this many memberships: a
+	// million users in a hundred groups each is already 100 million rows.
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
 	// +required
 	GroupsPerUser int32 `json:"groupsPerUser"`
 }

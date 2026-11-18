@@ -92,6 +92,7 @@ describe("tenantPresetProblem", () => {
         ["the deepest tree", { groups: 10, groupDepth: 10 }],
         ["as many tree levels as groups", { groups: 3, groupsPerUser: 3, groupDepth: 3 }],
         ["every user in every group", { groupsPerUser: 10 }],
+        ["the most groups per user", { groups: 200, groupsPerUser: 100 }],
         ["the largest seed", { seed: 2_147_483_647 }],
     ])("accepts %s", (_, change) => {
         expect(tenantPresetProblem({ ...valid, ...change })).toBeUndefined();
@@ -103,6 +104,7 @@ describe("tenantPresetProblem", () => {
         ["a negative group count", { groups: -1 }],
         ["a group tree with no levels", { groupDepth: 0 }],
         ["more groups per user than groups", { groupsPerUser: 11 }],
+        ["more than a hundred groups per user", { groups: 200, groupsPerUser: 101 }],
         ["more tree levels than groups", { groups: 3, groupsPerUser: 3, groupDepth: 4 }],
         ["a tree without groups", { groups: 0, groupsPerUser: 0 }],
         ["a tree deeper than ten levels", { groups: 11, groupDepth: 11 }],

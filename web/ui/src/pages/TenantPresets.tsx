@@ -240,7 +240,7 @@ function TenantPresetForm({
                     <NumberField
                         {...limits.groupsPerUser}
                         help="Direct memberships of each user; a few groups end up large"
-                        max={spec.groups}
+                        max={Math.min(spec.groups, limits.groupsPerUser.max)}
                         value={spec.groupsPerUser}
                         onChange={(groupsPerUser) => patch({ groupsPerUser })}
                     />
