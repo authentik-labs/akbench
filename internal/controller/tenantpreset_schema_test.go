@@ -58,6 +58,7 @@ var _ = Describe("TenantPreset schema", func() {
 		Entry("the deepest tree", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupDepth = 10, 10 }),
 		Entry("as many tree levels as groups", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupsPerUser, s.GroupDepth = 3, 3, 3 }),
 		Entry("every user in every group", func(s *benchv1alpha1.TenantPresetSpec) { s.GroupsPerUser = s.Groups }),
+		Entry("the most groups per user", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupsPerUser = 200, 100 }),
 		Entry("the largest seed", func(s *benchv1alpha1.TenantPresetSpec) { s.Seed = 2147483647 }),
 	)
 
@@ -77,6 +78,7 @@ var _ = Describe("TenantPreset schema", func() {
 		Entry("a negative group count", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups = -1 }),
 		Entry("a group tree with no levels", func(s *benchv1alpha1.TenantPresetSpec) { s.GroupDepth = 0 }),
 		Entry("more groups per user than groups", func(s *benchv1alpha1.TenantPresetSpec) { s.GroupsPerUser = 11 }),
+		Entry("more than a hundred groups per user", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupsPerUser = 200, 101 }),
 		Entry("more tree levels than groups", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupsPerUser, s.GroupDepth = 3, 3, 4 }),
 		Entry("a tree without groups", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupsPerUser = 0, 0 }),
 		Entry("a tree deeper than ten levels", func(s *benchv1alpha1.TenantPresetSpec) { s.Groups, s.GroupDepth = 11, 11 }),

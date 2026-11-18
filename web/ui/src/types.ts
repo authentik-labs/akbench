@@ -386,7 +386,7 @@ export const tenantPresetLimits = {
     users: { label: "Users", min: 1, max: 1_000_000 },
     groups: { label: "Groups", min: 0, max: 1_000_000 },
     groupDepth: { label: "Group tree depth", min: 1, max: 10 },
-    groupsPerUser: { label: "Groups per user", min: 0, max: undefined },
+    groupsPerUser: { label: "Groups per user", min: 0, max: 100 },
     seed: { label: "Seed", min: 1, max: 2_147_483_647 },
 } as const;
 

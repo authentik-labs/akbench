@@ -91,7 +91,10 @@ spec:
                 description: |-
                   groupsPerUser is how many groups each user is a direct member of. A
                   few groups end up large and most small, the way real directories are.
+                  Capped because the tenant gets users times this many memberships: a
+                  million users in a hundred groups each is already 100 million rows.
                 format: int32
+                maximum: 100
                 minimum: 0
                 type: integer
               seed:
