@@ -42,6 +42,18 @@ export function configDiffNotices(
 }
 
 /**
+ * configDiffFor is diff if it is testid's, else undefined. useResource keeps
+ * the previous test's result until the new one lands, and that one must not
+ * be shown under this test's name.
+ */
+export function configDiffFor(
+    testid: string,
+    diff: ConfigDiff | undefined,
+): ConfigDiff | undefined {
+    return diff?.testid === testid ? diff : undefined;
+}
+
+/**
  * ConfigDiffWarning warns when the deployments a test case compares differ in
  * anything but the build under test: a setting that reached only one side
  * makes the comparison measure that setting too. Renders nothing while they
@@ -51,11 +63,12 @@ export function ConfigDiffWarning({ testid }: { testid: string }) {
     // Configuration only changes when someone edits a deployment, so a slow
     // poll is enough, with a reload as soon as a deployment changes.
     const diff = useResource(() => api.configDiff(testid), [testid], 30000, "AuthentikDeployment");
-    const notices = configDiffNotices(testid, diff.data, diff.error);
+    const data = configDiffFor(testid, diff.data);
+    const notices = configDiffNotices(testid, data, diff.error);
     // useResource keeps the last data when a fetch fails; that data may be
     // out of date, so it is not shown as a warning.
-    const differences = diff.error ? [] : (diff.data?.differences ?? []);
-    const targets = diff.data?.targets ?? [];
+    const differences = diff.error ? [] : (data?.differences ?? []);
+    const targets = data?.targets ?? [];
     return (
         <>
             {notices.map((notice) => (

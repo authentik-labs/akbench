@@ -1,5 +1,5 @@
 import { ConfigDiff } from "../types";
-import { configDiffNotices, formatDatabase } from "./ConfigDiff";
+import { configDiffFor, configDiffNotices, formatDatabase } from "./ConfigDiff";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +13,14 @@ describe("formatDatabase", () => {
             "ak@db:5432/authentik",
         );
         expect(formatDatabase({ host: "db" })).toBe("db");
+    });
+});
+
+describe("configDiffFor", () => {
+    it("keeps a diff only for the test it was fetched for", () => {
+        expect(configDiffFor("t", diff())).toEqual(diff());
+        expect(configDiffFor("other", diff())).toBeUndefined();
+        expect(configDiffFor("t", undefined)).toBeUndefined();
     });
 });
 
