@@ -150,7 +150,10 @@ func (r *TestCaseReconciler) archiveChildren(ctx context.Context, desired []*ben
 // updateParentStatus fills status.children from the children's own phases
 // and rolls them up into the parent's Ready condition.
 func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1alpha1.TestCase) error {
-	var notReady, failed []string
+	// storageFull is every failed child that stopped its burn because a
+	// target ran out of postgres storage, with why: unlike other failures
+	// it says what to do about it.
+	var notReady, failed, storageFull []string
 	phaseOf := func(obj client.Object, conditions func() []metav1.Condition) (benchv1alpha1.ReconcilePhase, error) {
 		err := r.Get(ctx, types.NamespacedName{Name: obj.GetName(), Namespace: tc.Namespace}, obj)
 		if apierrors.IsNotFound(err) {
@@ -165,6 +168,9 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 		case benchv1alpha1.PhaseReady, benchv1alpha1.PhaseArchived:
 		case benchv1alpha1.PhaseFailed:
 			failed = append(failed, obj.GetName())
+			if ready := meta.FindStatusCondition(conditions(), benchv1alpha1.ConditionReady); ready.Reason == benchv1alpha1.ReasonPostgresStorageFull {
+				storageFull = append(storageFull, obj.GetName()+": "+ready.Message)
+			}
 		default:
 			notReady = append(notReady, obj.GetName())
 		}
@@ -209,9 +215,12 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 	case tc.Spec.Archived:
 		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonArchived, "test cases are archived")
+	case len(failed) > 0 && len(failed) == len(storageFull):
+		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonPostgresStorageFull, strings.Join(storageFull, "; "))
 	case len(failed) > 0:
 		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-			benchv1alpha1.ReasonReconcileError, "failed: "+strings.Join(failed, ", "))
+			benchv1alpha1.ReasonReconcileError, strings.Join(append([]string{"failed: " + strings.Join(failed, ", ")}, storageFull...), "; "))
 	case len(notReady) > 0:
 		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonDependencyNotReady, "waiting for: "+strings.Join(notReady, ", "))

@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -51,10 +52,13 @@ func newBreakdownCache[T any]() *breakdownCache[T] {
 }
 
 // breakdownEnd is when tc's trailing breakdown window ends: now, or for an
-// archived TestCase a minute past when archiving stopped it (the same end
-// the UI's charts use), since nothing reaches its telemetry after that.
+// archived TestCase, or one stopped because postgres ran out of storage, a
+// minute past when it was stopped (the same end the UI's charts use), since
+// nothing reaches its telemetry after that.
 func breakdownEnd(tc *benchv1alpha1.TestCase) time.Time {
-	if !tc.Spec.Archived {
+	ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
+	storageFull := ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == benchv1alpha1.ReasonPostgresStorageFull
+	if !tc.Spec.Archived && !storageFull {
 		return time.Now()
 	}
 	var stopped time.Time
@@ -64,7 +68,6 @@ func breakdownEnd(tc *benchv1alpha1.TestCase) time.Time {
 		}
 	}
 	if stopped.IsZero() {
-		ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
 		if ready == nil || ready.Reason != benchv1alpha1.ReasonArchived {
 			return time.Now()
 		}

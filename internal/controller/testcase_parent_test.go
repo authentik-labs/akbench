@@ -133,6 +133,36 @@ var _ = Describe("Parent TestCase", func() {
 		Expect(m.Status.BurnStartAt.After(time.Now())).To(BeTrue())
 	})
 
+	It("says why a child stopped for lack of postgres storage", func() {
+		reconcileOnce()
+		fail := func(template, reason, message string) {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-" + template, Namespace: "default"}, &tc)).To(Succeed())
+			meta.SetStatusCondition(&tc.Status.Conditions, metav1.Condition{
+				Type: benchv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: reason, Message: message,
+			})
+			Expect(k8sClient.Status().Update(ctx, &tc)).To(Succeed())
+		}
+		ready := func() *metav1.Condition {
+			reconcileOnce()
+			var m benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+			Expect(m.Status.Phase).To(Equal(benchv1alpha1.PhaseFailed))
+			return meta.FindStatusCondition(m.Status.Conditions, benchv1alpha1.ConditionReady)
+		}
+
+		fail("login", benchv1alpha1.ReasonPostgresStorageFull, "k6 load stopped until postgres has room again: x: full")
+		cond := ready()
+		Expect(cond.Reason).To(Equal(benchv1alpha1.ReasonPostgresStorageFull))
+		Expect(cond.Message).To(Equal(name + "-login: k6 load stopped until postgres has room again: x: full"))
+
+		fail("oauth-oidc", benchv1alpha1.ReasonReconcileError, "boom")
+		cond = ready()
+		Expect(cond.Reason).To(Equal(benchv1alpha1.ReasonReconcileError))
+		Expect(cond.Message).To(ContainSubstring("failed: " + name + "-login, " + name + "-oauth-oidc"))
+		Expect(cond.Message).To(ContainSubstring(name + "-login: k6 load stopped"))
+	})
+
 	It("archives its children without recreating deleted deployments", func() {
 		reconcileOnce()
 		adKey := types.NamespacedName{Name: name + "-pr-login", Namespace: "default"}

@@ -337,19 +337,29 @@ export function earliestBurnStart(
 
 /**
  * archivedBurnWindow is when an archived test burned, in unix seconds: from
- * its earliest target's burn start to its latest burn stop. Test cases
- * archived before the operator kept burningSince only know the end, taken
- * from when their Ready condition turned Archived. Undefined for a test
- * that isn't archived, or whose end isn't known.
+ * its earliest target's burn start to its latest burn stop. The same goes
+ * for a test whose burn the operator stopped because a target's postgres
+ * ran out of storage, while it stays stopped. Test cases archived before
+ * the operator kept burningSince only know the end, taken from when their
+ * Ready condition turned Archived. Undefined for a test that isn't archived
+ * or stopped, or whose end isn't known.
  */
 export function archivedBurnWindow(tc: {
     spec: { archived?: boolean };
     status?: {
-        conditions?: { type: string; reason?: string; lastTransitionTime?: string }[];
+        conditions?: {
+            type: string;
+            status?: string;
+            reason?: string;
+            lastTransitionTime?: string;
+        }[];
         deployments?: { burningSince?: string; burnStoppedAt?: string }[];
     };
 }): { start?: number; end: number } | undefined {
-    if (!tc.spec.archived) {
+    const storageFull = tc.status?.conditions?.some(
+        (c) => c.type === "Ready" && c.status === "False" && c.reason === "PostgresStorageFull",
+    );
+    if (!tc.spec.archived && !storageFull) {
         return undefined;
     }
     const deployments = tc.status?.deployments ?? [];
