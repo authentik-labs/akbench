@@ -250,6 +250,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/metrics/compare", s.compare)
 			r.Get("/metrics/range", s.metricsRange)
 			r.Get("/metrics/resources", s.listResourceMetrics)
+			r.Get("/metrics/restarts", s.listRestarts)
 
 			r.Get("/infrastructure", s.getInfrastructure)
 			r.Get("/infrastructure/update", s.getUpdate)
