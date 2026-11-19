@@ -409,6 +409,15 @@ export interface WorkloadClusterSpec {
     controlPlane: MachineSpec;
     workerPools: WorkerPoolSpec[];
     incus?: IncusProviderSpec;
+    prometheus?: PrometheusSpec;
+}
+
+export interface PrometheusSpec {
+    // retention is a Prometheus duration, e.g. "60d" (the default).
+    retention?: string;
+    // storageSize defaults to 100Gi; metrics older than retention are
+    // also dropped once the volume is 85% full.
+    storageSize?: string;
 }
 
 export type AddonState = "Ready" | "Progressing" | "Waiting" | "Failed";
