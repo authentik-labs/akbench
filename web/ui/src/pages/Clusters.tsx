@@ -333,6 +333,48 @@ function ClusterForm({ existing }: { existing?: WorkloadCluster }) {
                 </fieldset>
 
                 <fieldset>
+                    <legend>Prometheus</legend>
+                    <div className="fields">
+                        <Field
+                            label="Retention"
+                            help='How long metrics are kept, e.g. "60d" or "1y"'
+                        >
+                            <input
+                                placeholder="60d"
+                                pattern="([0-9]+[ywdhms])+"
+                                value={spec.prometheus?.retention ?? ""}
+                                onChange={(e) =>
+                                    patch({
+                                        prometheus: {
+                                            ...spec.prometheus,
+                                            retention: e.target.value,
+                                        },
+                                    })
+                                }
+                            />
+                        </Field>
+                        <Field
+                            label="Volume size"
+                            help="Older metrics are dropped early once it's 85% full - roughly 1Gi per day of history"
+                        >
+                            <input
+                                placeholder="100Gi"
+                                disabled={locked}
+                                value={spec.prometheus?.storageSize ?? ""}
+                                onChange={(e) =>
+                                    patch({
+                                        prometheus: {
+                                            ...spec.prometheus,
+                                            storageSize: e.target.value,
+                                        },
+                                    })
+                                }
+                            />
+                        </Field>
+                    </div>
+                </fieldset>
+
+                <fieldset>
                     <legend>Worker pools</legend>
                     <p className="muted">
                         A role reserves a pool for one of this project's own workloads: its nodes
