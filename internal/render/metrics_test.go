@@ -312,7 +312,7 @@ func TestPrometheusResourcesFollowMonitoringPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(values.Raw), `"retentionSize":"16GB"`) || !strings.Contains(string(values.Raw), `"memory":"4915Mi"`) {
+	if !strings.Contains(string(values.Raw), `"retentionSize":"87040MB"`) || !strings.Contains(string(values.Raw), `"memory":"4915Mi"`) {
 		t.Errorf("values missing resources/retentionSize: %s", values.Raw)
 	}
 }

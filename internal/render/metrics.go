@@ -206,16 +206,16 @@ func KubePrometheusStackHelmValues(wc *benchv1alpha1.WorkloadCluster) (*apiexten
 	// its own subchart values.yaml - so scoping it here would defeat the
 	// entire point of it).
 	poolSelector, poolTolerations := MonitoringPoolPlacement(wc)
+	storageSize, retention, retentionSize := prometheusStorage(wc)
 	prometheusSpec := map[string]any{
 		"enableRemoteWriteReceiver":               true,
 		"serviceMonitorSelectorNilUsesHelmValues": false,
 		"podMonitorSelectorNilUsesHelmValues":     false,
 		"ruleSelectorNilUsesHelmValues":           false,
 		"resources":                               prometheusResources(wc),
-		// Persistent, and capped below the volume's size so a long Burn run
-		// can't fill it.
-		"storageSpec":   volumeClaimTemplate(wc, PrometheusStorageSize),
-		"retentionSize": prometheusRetentionSize,
+		"storageSpec":                             volumeClaimTemplate(wc, storageSize),
+		"retention":                               retention,
+		"retentionSize":                           retentionSize,
 	}
 	alertmanagerSpec := map[string]any{
 		// Silences and notification state survive a restart.

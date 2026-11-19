@@ -121,6 +121,23 @@ spec:
                   "v1.36.1".
                 pattern: ^v[0-9]+\.[0-9]+\.[0-9]+$
                 type: string
+              prometheus:
+                description: prometheus sizes this cluster's own Prometheus.
+                properties:
+                  retention:
+                    description: |-
+                      retention is how long metrics are kept, as a Prometheus duration
+                      (e.g. "60d", "1y"). Defaults to 60d.
+                    pattern: ^(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?$
+                    type: string
+                  storageSize:
+                    description: |-
+                      storageSize is the Prometheus volume's size (default 100Gi). Older
+                      metrics are dropped before retention once the volume is 85% full.
+                      Raising it later doesn't resize an existing volume - expand its PVC
+                      by hand (needs a StorageClass with allowVolumeExpansion).
+                    type: string
+                type: object
               provider:
                 default: Incus
                 description: provider selects the Cluster API infrastructure provider
