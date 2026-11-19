@@ -17,6 +17,7 @@ import {
     PodPlacement,
     PostgresMetric,
     RangeResponse,
+    RestartsResponse,
     TestCase,
     TestCaseSpec,
     TenantPreset,
@@ -293,6 +294,13 @@ export const api = {
     compare: (testids: string[], window: string, atSeconds?: number) =>
         request<CompareResponse>(
             `/api/v1/metrics/compare?testids=${seg(testids.join(","))}&window=${seg(window)}` +
+                (atSeconds !== undefined ? `&time=${atSeconds}` : ""),
+        ),
+    // Container restarts of each testid's deployments, over the same window
+    // and anchor as compare.
+    restarts: (testids: string[], window: string, atSeconds?: number) =>
+        request<RestartsResponse>(
+            `/api/v1/metrics/restarts?testids=${seg(testids.join(","))}&window=${seg(window)}` +
                 (atSeconds !== undefined ? `&time=${atSeconds}` : ""),
         ),
     metricsRange: (

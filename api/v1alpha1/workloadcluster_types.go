@@ -206,6 +206,27 @@ type WorkloadClusterSpec struct {
 	// incus configures provisioning when provider is Incus.
 	// +optional
 	Incus *IncusProviderSpec `json:"incus,omitempty"`
+
+	// prometheus sizes this cluster's own Prometheus.
+	// +optional
+	Prometheus *PrometheusSpec `json:"prometheus,omitempty"`
+}
+
+// PrometheusSpec configures how much metrics history a WorkloadCluster's
+// Prometheus keeps.
+type PrometheusSpec struct {
+	// retention is how long metrics are kept, as a Prometheus duration
+	// (e.g. "60d", "1y"). Defaults to 60d.
+	// +kubebuilder:validation:Pattern=`^(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?$`
+	// +optional
+	Retention string `json:"retention,omitempty"`
+
+	// storageSize is the Prometheus volume's size (default 100Gi). Older
+	// metrics are dropped before retention once the volume is 85% full.
+	// Raising it later doesn't resize an existing volume - expand its PVC
+	// by hand (needs a StorageClass with allowVolumeExpansion).
+	// +optional
+	StorageSize string `json:"storageSize,omitempty"`
 }
 
 // WorkloadClusterStatus mirrors the underlying CAPI Cluster's readiness, plus
