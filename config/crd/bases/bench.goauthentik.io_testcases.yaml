@@ -426,6 +426,29 @@ spec:
                       the `target` label Prometheus attaches to its metrics, and the `target`
                       a TestCase names. Defaults to metadata.name.
                     type: string
+                  tenant:
+                    description: |-
+                      tenant, when set, seeds a synthetic tenant from a TenantPreset once
+                      the deployment is up. Changing it after seeding needs a reset.
+                    properties:
+                      presetRef:
+                        description: presetRef names a TenantPreset in the deployment's
+                          namespace.
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - presetRef
+                    type: object
                   worker:
                     description: |-
                       WorkloadSpec sizes one of the authentik chart's workloads (server or
@@ -968,6 +991,52 @@ spec:
                       type: string
                     target:
                       type: string
+                    tenant:
+                      description: |-
+                        tenant is the seeded tenant this target's k6 workload was last given,
+                        for a template with the seeded-tenant dependency. Kept while the
+                        target can't be resolved, like cluster and namespace.
+                      properties:
+                        params:
+                          description: params are the numbers it was seeded with.
+                          properties:
+                            groupDepth:
+                              description: groupDepth is how many levels the group
+                                tree has.
+                              format: int32
+                              type: integer
+                            groups:
+                              description: groups is how many groups the tenant has.
+                              format: int32
+                              type: integer
+                            groupsPerUser:
+                              description: groupsPerUser is how many groups each user
+                                is a direct member of.
+                              format: int32
+                              type: integer
+                            seed:
+                              description: seed is the TenantPreset's seed.
+                              format: int32
+                              type: integer
+                            users:
+                              description: users is how many users the tenant has.
+                              format: int32
+                              type: integer
+                          required:
+                          - groupDepth
+                          - groups
+                          - groupsPerUser
+                          - seed
+                          - users
+                          type: object
+                        preset:
+                          description: preset is the TenantPreset the tenant was seeded
+                            from.
+                          type: string
+                      required:
+                      - params
+                      - preset
+                      type: object
                   required:
                   - name
                   - ready

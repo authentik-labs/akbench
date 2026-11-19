@@ -380,6 +380,29 @@ spec:
                   the `target` label Prometheus attaches to its metrics, and the `target`
                   a TestCase names. Defaults to metadata.name.
                 type: string
+              tenant:
+                description: |-
+                  tenant, when set, seeds a synthetic tenant from a TenantPreset once
+                  the deployment is up. Changing it after seeding needs a reset.
+                properties:
+                  presetRef:
+                    description: presetRef names a TenantPreset in the deployment's
+                      namespace.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - presetRef
+                type: object
               worker:
                 description: |-
                   WorkloadSpec sizes one of the authentik chart's workloads (server or
@@ -485,7 +508,9 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               conditions:
-                description: conditions report Ready, PostgresReady and HelmReleaseReady.
+                description: |-
+                  conditions report Ready, PostgresReady, HelmReleaseReady,
+                  BlueprintApplied and TenantSeeded.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -604,6 +629,83 @@ spec:
                   serviceEndpoint is the in-cluster host:port a TestCase drives, e.g.
                   <release>-server.<namespace>.svc.cluster.local:80.
                 type: string
+              tenant:
+                description: |-
+                  tenant is what spec.tenant was seeded with, once seeding has started.
+                  It stays after spec.tenant is removed, since the data is still in the
+                  database; a reset clears it.
+                properties:
+                  jobName:
+                    description: |-
+                      jobName is the seeding Job this attempt created, set once it exists.
+                      A failed attempt is only tried again by itself once spec.tenant, its
+                      preset or the image would run a Job by another name: the same one
+                      would fail the same way.
+                    type: string
+                  message:
+                    description: message is the seeder's own last line on failure.
+                    type: string
+                  params:
+                    description: |-
+                      params are the numbers, copied from the preset when seeding started,
+                      so a later edit of the preset can't change what a result was measured
+                      against.
+                    properties:
+                      groupDepth:
+                        description: groupDepth is how many levels the group tree
+                          has.
+                        format: int32
+                        type: integer
+                      groups:
+                        description: groups is how many groups the tenant has.
+                        format: int32
+                        type: integer
+                      groupsPerUser:
+                        description: groupsPerUser is how many groups each user is
+                          a direct member of.
+                        format: int32
+                        type: integer
+                      seed:
+                        description: seed is the TenantPreset's seed.
+                        format: int32
+                        type: integer
+                      users:
+                        description: users is how many users the tenant has.
+                        format: int32
+                        type: integer
+                    required:
+                    - groupDepth
+                    - groups
+                    - groupsPerUser
+                    - seed
+                    - users
+                    type: object
+                  passwordFingerprint:
+                    description: |-
+                      passwordFingerprint identifies the password the users were given
+                      (the first 12 hex characters of its SHA-256), so a replaced password
+                      Secret is noticed instead of every k6 login failing.
+                    type: string
+                  preset:
+                    description: preset is the TenantPreset the numbers were taken
+                      from.
+                    type: string
+                  seededAt:
+                    description: seededAt is when seeding finished.
+                    format: date-time
+                    type: string
+                  state:
+                    description: state is how far seeding has got.
+                    enum:
+                    - Seeding
+                    - Seeded
+                    - Failed
+                    type: string
+                required:
+                - params
+                - preset
+                - state
+                type: object
             type: object
         required:
         - spec

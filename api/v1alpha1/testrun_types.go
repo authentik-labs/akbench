@@ -59,6 +59,11 @@ type TestRunStatus struct {
 	// +optional
 	ResolvedSpec *TestCaseSpec `json:"resolvedSpec,omitempty"`
 
+	// tenant is the seeded tenant the run's k6 Job was given, for a
+	// template with the seeded-tenant dependency.
+	// +optional
+	Tenant *TenantRecord `json:"tenant,omitempty"`
+
 	// +optional
 	JobRef *corev1.LocalObjectReference `json:"jobRef,omitempty"`
 	// +optional

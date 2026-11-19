@@ -158,7 +158,9 @@ function TestCaseTemplateForm({ existing }: { existing?: TestCaseTemplate }) {
                     </Field>
                 </div>
                 <p className="muted" style={{ marginTop: 8 }}>
-                    Dependencies, provisioned for every test case using this template:
+                    Dependencies, provisioned for every test case using this template. A seeded
+                    tenant is the exception: it is not provisioned, but required of the target
+                    deployment (pick a tenant preset on it).
                 </p>
                 <div className="row" style={{ marginBottom: 16 }}>
                     {(Object.keys(testCaseDependencies) as TestCaseDependency[]).map((dep) => (
@@ -254,7 +256,7 @@ export function TestCaseTemplateViewPage() {
                     />
                     {t.spec.dependencies?.length ? (
                         <span className="muted">
-                            Provisions {dependencyLabels(t.spec.dependencies)}
+                            Depends on {dependencyLabels(t.spec.dependencies)}
                         </span>
                     ) : null}
                 </div>

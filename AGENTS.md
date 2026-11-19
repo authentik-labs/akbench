@@ -21,6 +21,8 @@ internal/api/                  HTTP handlers behind cmd/apiserver
 internal/appliance/            Appliance bootstrap logic and its embedded stack template
 internal/incus/, grafana/      Incus provider helpers; TestRun Grafana annotations
 k6/scripts/*.ts                Built-in k6 scripts, embedded and seeded as TestCaseTemplates
+seeder/seed.py                 Fills an authentik with a synthetic tenant (users, groups); runs
+                               inside the authentik image via `ak shell`, hence Python, not Go
 web/ui/                        Vite + React SPA (TypeScript)
 test/contract/                 k6 tag/env contract between render and k6 scripts
 test/e2e/                      Kind smoke test: deploys the manager, checks metrics
@@ -77,6 +79,13 @@ done - CI's Lint job fails on any issue, including ones that predate your
 change. On macOS also run `GOOS=linux bin/golangci-lint run`: CI lints on
 Linux, and `*_linux.go` files (e.g. `internal/api/shell_session_linux.go`)
 aren't checked by a local `make lint` otherwise.
+
+**After editing `seeder/`:**
+```
+make seeder-test # unit tests for the generation logic; needs python3 only
+```
+The half of `seeder/seed.py` that writes to the database only runs inside
+authentik; check a change to it against a real instance.
 
 **After editing `web/ui`:**
 ```

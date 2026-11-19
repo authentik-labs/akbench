@@ -33,15 +33,17 @@ const resetPollInterval = 2 * time.Second
 //  2. (CNPG mode) delete the CNPG Cluster, which owns its own PVCs;
 //  3. delete every PVC in spec.namespace except the BlueprintPVC (a staging
 //     area for blueprint files, not state) and wait until they're gone;
-//  4. delete every blueprint import Job and the postgres role-fix Job, so
-//     reconcileBlueprint, TestCaseReconciler.ensureDependencies and
-//     reconcilePostgresRoleFix all run them again against the new database.
+//  4. delete every blueprint import Job, tenant seeding Job and the postgres
+//     role-fix Job, so reconcileBlueprint, TestCaseReconciler.ensureDependencies,
+//     reconcileTenant and reconcilePostgresRoleFix all run them again against
+//     the new database.
 //
 // Each step waits until the remote cluster client's (cached) reads no longer
 // see what it deleted: a stale cached Job reading as Complete after the
 // annotation is gone would otherwise skip re-applying that blueprint.
-// Generated Secrets (AUTHENTIK_SECRET_KEY, the embedded postgres password)
-// are kept - a fresh volume is initialised with the same password.
+// Generated Secrets (AUTHENTIK_SECRET_KEY, the embedded postgres password,
+// the tenant password) are kept - a fresh volume is initialised with the
+// same password, and a tenant is seeded again with the same one.
 //
 // Once everything is gone the annotation is removed, and the Update that
 // does so triggers the normal reconcile, which reinstalls from scratch.
@@ -68,15 +70,17 @@ func (r *AuthentikDeploymentReconciler) reconcileReset(ctx context.Context, rc c
 	}
 
 	// The volumes auto-growth enlarged are gone; the new ones start at
-	// spec's storageSize again.
-	if topo.Status.PostgresStorage != nil {
+	// spec's storageSize again. So is the tenant, which is seeded again
+	// from whatever spec.tenant names now.
+	if topo.Status.PostgresStorage != nil || topo.Status.Tenant != nil {
 		topo.Status.PostgresStorage = nil
+		topo.Status.Tenant = nil
 		if err := r.Status().Update(ctx, topo); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	r.Recorder.Eventf(topo, corev1.EventTypeNormal, "Reset", "deleted the database and blueprint import jobs, reinstalling")
+	r.Recorder.Eventf(topo, corev1.EventTypeNormal, "Reset", "deleted the database and blueprint import and seeding jobs, reinstalling")
 	log.Info("Reset AuthentikDeployment", "name", topo.Name)
 	return ctrl.Result{}, r.clearResetAnnotation(ctx, topo)
 }
@@ -141,7 +145,8 @@ func (r *AuthentikDeploymentReconciler) resetStep(ctx context.Context, rc client
 	remainingJobs := 0
 	for i := range jobs.Items {
 		job := &jobs.Items[i]
-		if !strings.HasPrefix(job.Name, render.BlueprintJobNamePrefix) && job.Name != render.PostgresRoleFixJobName(topo) {
+		if !strings.HasPrefix(job.Name, render.BlueprintJobNamePrefix) && !strings.HasPrefix(job.Name, render.TenantSeedJobNamePrefix) &&
+			job.Name != render.PostgresRoleFixJobName(topo) {
 			continue
 		}
 		remainingJobs++
@@ -152,7 +157,7 @@ func (r *AuthentikDeploymentReconciler) resetStep(ctx context.Context, rc client
 		}
 	}
 	if remainingJobs > 0 {
-		return fmt.Sprintf("resetting: waiting for %d blueprint job(s) to be deleted", remainingJobs), nil
+		return fmt.Sprintf("resetting: waiting for %d blueprint or seeding job(s) to be deleted", remainingJobs), nil
 	}
 	return "", nil
 }

@@ -138,6 +138,10 @@ ui-dev: ## Run the web UI's Vite dev server on :5173, proxying the API to BENCH_
 ui-test: ## Typecheck and unit-test the web UI.
 	cd web/ui && npm run typecheck && npm test
 
+.PHONY: seeder-test
+seeder-test: ## Unit-test the tenant seeder (needs python3, not an authentik deployment).
+	python3 -m unittest discover -s seeder
+
 .PHONY: ui-lint
 ui-lint: ## Lint (oxlint) and check formatting (oxfmt) of the web UI.
 	cd web/ui && npm run lint && npm run format:check

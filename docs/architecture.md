@@ -2,8 +2,8 @@
 
 What each component does.
 
-- **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TestCase`,
-  `TestCaseTemplate`, `TestRun`, `WorkloadCluster`.
+- **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TenantPreset`,
+  `TestCase`, `TestCaseTemplate`, `TestRun`, `WorkloadCluster`.
 - **Parent `TestCase`s**: a `TestCase` with `spec.templates` drives nested
   `TestCase`s instead of deployments. It crosses authentik builds
   (`spec.variants`) with those templates: one child `TestCase` per template
@@ -87,6 +87,27 @@ What each component does.
   they're already loaded - 50 by default (`BENCH_FIXTURE_USERS`), a random
   directory per install unless `BENCH_FIXTURE_SEED` is set.
   `make fixtures` (the original script) still replaces them on demand.
+- **Tenant presets**: `TenantPreset` is a named size for the test data a
+  deployment is to be seeded with: how many users and groups it gets, how
+  deep the group tree is and how many groups each user is in. It is
+  UI-editable like a template, and the operator seeds five built-in ones at
+  startup (`tiny` to `huge`), resetting them on every start; copy one to
+  change it. A preset someone created under a built-in's name is left alone,
+  and a built-in a later release drops loses its built-in label and becomes
+  an ordinary preset.
+- **Tenant seeding**: a deployment's `spec.tenant.presetRef` names a preset
+  to seed it with. Once its HelmRelease is Ready, the operator runs
+  `seeder/seed.py` in a Job using the deployment's own authentik image and
+  database settings (`render.TenantSeedJob`), with a password generated once
+  per namespace (Secret `bench-tenant-password`). `status.tenant` records the
+  preset, a copy of its numbers and a fingerprint of the password when
+  seeding starts, and isn't changed after: a different preset, an edited one
+  or a replaced password shows as `TenantSeeded=False` with reason
+  `TenantResetRequired` (the deployment stays Ready), and a reset seeds
+  again. A failed run makes the deployment `Failed` with the seeder's own
+  message; it is not retried until a reset, a different preset or image,
+  or the tenant being removed and chosen again. A seeding pod that is
+  evicted or preempted is replaced instead of failing the run.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
   seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
@@ -134,6 +155,12 @@ What each component does.
   Secret) and `policy-flows` (the two login flows the `*-policy-login`
   templates walk; no service). Their addresses, source slugs and IdP
   test credentials reach k6 as env vars (`render.DependencyEndpoints`).
+  `seeded-tenant` provisions nothing: it requires the target deployment to
+  have a seeded tenant (a test case refuses to run on one without, on one
+  needing a reset or whose password changed since, or on targets seeded
+  differently), and k6 gets its numbers and password as `TENANT_*` env
+  vars. Which tenant each target ran against is recorded in the test case's
+  `status.deployments[].tenant` and a Quick run's `status.tenant`.
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source
   of truth), proxies PromQL for the compare view (resolved per-testid

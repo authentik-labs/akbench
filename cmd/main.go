@@ -184,10 +184,11 @@ func main() {
 	}
 
 	if err := (&controller.AuthentikDeploymentReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Tracker:  tracker,
-		Recorder: mgr.GetEventRecorderFor("authentikdeployment-controller"),
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		Tracker:   tracker,
+		Recorder:  mgr.GetEventRecorderFor("authentikdeployment-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "authentikdeployment")
 		os.Exit(1)
@@ -260,6 +261,14 @@ func main() {
 	if err := controller.SeedDefaultTestCaseTemplates(ctx, seedClient, envOr("BENCH_NAMESPACE", "default")); err != nil {
 		setupLog.Error(err, "Failed to seed default TestCaseTemplates")
 		os.Exit(1)
+	}
+	// Not fatal: a deployment only reads a preset once it names one, and says
+	// so if the preset is missing; and the chart pulls :latest, so an install
+	// whose CRDs predate TenantPreset can restart into this binary - it should
+	// keep running (AuthentikDeploymentReconciler skips its preset watch
+	// then), and seeds them on a start after the CRD is installed.
+	if err := controller.SeedDefaultTenantPresets(ctx, seedClient, envOr("BENCH_NAMESPACE", "default")); err != nil {
+		setupLog.Error(err, "Failed to seed default TenantPresets")
 	}
 	// Synthetic test users, unless already loaded (e.g. by `make fixtures`).
 	// Not fatal: without them only test cases are blocked, and they say so.

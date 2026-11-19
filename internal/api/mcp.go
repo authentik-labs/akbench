@@ -295,7 +295,7 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 			Kind string `json:"kind" jsonschema:"deployments, testcases, testruns or workloadclusters"`
 			Name string `json:"name" jsonschema:"the object's name"`
 		}) (*mcp.CallToolResult, any, error) {
-			if _, ok := resourceKinds[in.Kind]; !ok || in.Kind == "testcasetemplates" || in.Name == "" {
+			if _, ok := resourceKinds[in.Kind]; !ok || in.Kind == "testcasetemplates" || in.Kind == "tenantpresets" || in.Name == "" {
 				return nil, nil, fmt.Errorf("kind (deployments, testcases, testruns or workloadclusters) and name are required")
 			}
 			return mcpJSON(ctx, read, "/"+in.Kind+"/"+url.PathEscape(in.Name)+"/events", nil)

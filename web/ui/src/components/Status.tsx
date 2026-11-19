@@ -13,6 +13,7 @@ function phaseClass(phase?: string): string {
         case "Ready":
         case "Succeeded":
         case "Provisioned":
+        case "Seeded":
         case "True":
             return "ok";
         case "Failed":
@@ -21,11 +22,13 @@ function phaseClass(phase?: string): string {
         case "Not ready":
             return "warn";
         case "Waiting":
+        case "Reset required":
             return "warn";
         case "Reconciling":
         case "Progressing":
         case "Running":
         case "Provisioning":
+        case "Seeding":
         case "Pending":
             return "info";
         default:

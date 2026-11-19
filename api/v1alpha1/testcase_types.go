@@ -260,6 +260,12 @@ type TestCaseDeploymentStatus struct {
 	// burn Deployment. Cleared again once it is unarchived.
 	// +optional
 	BurnStoppedAt *metav1.Time `json:"burnStoppedAt,omitempty"`
+
+	// tenant is the seeded tenant this target's k6 workload was last given,
+	// for a template with the seeded-tenant dependency. Kept while the
+	// target can't be resolved, like cluster and namespace.
+	// +optional
+	Tenant *TenantRecord `json:"tenant,omitempty"`
 }
 
 // TestCaseStatus defines the observed state of TestCase.

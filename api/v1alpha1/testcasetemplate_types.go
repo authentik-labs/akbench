@@ -39,6 +39,8 @@ type TestCaseTemplateSpec struct {
 	// decoupled from "what it's being tested against" the same way the k6
 	// workload itself already is. Templates can combine several (e.g. an
 	// oidc-idp federating into authentik while an oidc-client logs in).
+	// seeded-tenant is the exception: it provisions nothing, and instead
+	// requires the target deployment itself to have a seeded tenant.
 	// +listType=set
 	// +optional
 	Dependencies []TestCaseDependency `json:"dependencies,omitempty"`
@@ -46,7 +48,7 @@ type TestCaseTemplateSpec struct {
 
 // TestCaseDependency names one extra service a TestCaseTemplate needs
 // provisioned next to its target AuthentikDeployment.
-// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token;policy-flows
+// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token;policy-flows;seeded-tenant
 type TestCaseDependency string
 
 const (
@@ -70,6 +72,11 @@ const (
 	// before a prompt stage: one through the prompt stage's
 	// validation_policies, one through its FlowStageBinding.
 	DependencyPolicyFlows TestCaseDependency = "policy-flows"
+	// DependencySeededTenant is not provisioned per test case: it requires
+	// the target AuthentikDeployment to have a seeded tenant (spec.tenant),
+	// whose numbers and password k6 then receives. A test case refuses to
+	// run against a deployment without one.
+	DependencySeededTenant TestCaseDependency = "seeded-tenant"
 )
 
 // HasDependency reports whether this template lists dep.

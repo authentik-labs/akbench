@@ -7,6 +7,7 @@ import { NodePlacement } from "../components/Placement";
 import { PullRequestLink } from "../components/PullRequestLink";
 import { Rollout } from "../components/Rollout";
 import { ConditionList, StatusBadge } from "../components/Status";
+import { TenantCell, TenantDetails, TenantSelect, tenantSpec } from "../components/Tenant";
 import { toast } from "../components/Toast";
 import {
     Alert,
@@ -38,6 +39,7 @@ import {
     AuthentikDeploymentSpec,
     PlacementMode,
     PostgresMode,
+    TenantStatus,
     testCaseDeployments,
 } from "../types";
 import { useResource } from "../useResource";
@@ -74,6 +76,7 @@ export function DeploymentsPage() {
                     { label: "Cluster", render: (d) => d.spec.clusterRef?.name ?? "management" },
                     { label: "Namespace", render: (d) => <code>{d.spec.namespace}</code> },
                     { label: "Postgres", render: (d) => d.spec.postgres.mode },
+                    { label: "Tenant", render: (d) => <TenantCell deployment={d} /> },
                     {
                         label: "Replicas",
                         render: (d) =>
@@ -173,9 +176,9 @@ function duplicateLink(name: string): string {
 /**
  * duplicateSpec copies a deployment's spec for a new one. The namespace and
  * target name are cleared so they follow the new name instead of colliding
- * with the source's.
+ * with the source's. The tenant is kept, so the copy holds the same data.
  */
-function duplicateSpec(source: AuthentikDeployment): AuthentikDeploymentSpec {
+export function duplicateSpec(source: AuthentikDeployment): AuthentikDeploymentSpec {
     const spec = structuredClone(source.spec);
     spec.namespace = "";
     delete spec.targetName;
@@ -303,6 +306,7 @@ function DeploymentForm({
                     patch={patch}
                     extraValuesYAML={extraValuesYAML}
                     onExtraValuesChange={setExtraValuesYAML}
+                    seededTenant={existing?.status?.tenant}
                 />
 
                 {existing && <GeneratedHelmValues name={existing.metadata.name} />}
@@ -365,9 +369,9 @@ export function ClusterSelect({
 
 /**
  * DeploymentSpecFields is every fieldset of the deployment form after its
- * identity: workloads, observability, placement, Postgres and extra Helm
- * values. Shared with the PR comparison flow, which picks the image itself
- * (showImage=false) and applies one spec to both of its deployments.
+ * identity: workloads, observability, placement, Postgres, tenant and extra
+ * Helm values. Shared with the PR comparison flow, which picks the image
+ * itself (showImage=false) and applies one spec to both of its deployments.
  */
 export function DeploymentSpecFields({
     spec,
@@ -375,12 +379,18 @@ export function DeploymentSpecFields({
     extraValuesYAML,
     onExtraValuesChange,
     showImage = true,
+    seededTenant,
+    tenantNote,
 }: {
     spec: AuthentikDeploymentSpec;
     patch: (changes: Partial<AuthentikDeploymentSpec>) => void;
     extraValuesYAML: string;
     onExtraValuesChange: (value: string) => void;
     showImage?: boolean;
+    /** The tenant an existing deployment was seeded with. */
+    seededTenant?: TenantStatus;
+    /** A note on the tenant for a form editing deployments it can't see. */
+    tenantNote?: string;
 }) {
     const authentik = spec.authentik ?? {};
     const errorReporting = authentik.errorReporting ?? {};
@@ -812,6 +822,16 @@ export function DeploymentSpecFields({
             </fieldset>
 
             <fieldset>
+                <legend>Test data</legend>
+                <TenantSelect
+                    value={spec.tenant?.presetRef.name}
+                    onChange={(preset) => patch({ tenant: tenantSpec(preset) })}
+                    seeded={seededTenant}
+                    note={tenantNote}
+                />
+            </fieldset>
+
+            <fieldset>
                 <legend>Advanced: extra Helm values</legend>
                 <p className="muted">
                     Raw values.yaml for the authentik chart, deep-merged over everything above last
@@ -989,6 +1009,9 @@ export function DeploymentViewPage() {
                             )}
                         </div>
                         <ConditionList conditions={d.status?.conditions} />
+                        <div style={{ marginTop: 8 }}>
+                            <TenantDetails deployment={d} />
+                        </div>
                         <ActivityLog path="deployments" name={name} />
                         <Rollout deployments={[d]} />
                     </div>

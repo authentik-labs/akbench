@@ -3,6 +3,7 @@ import { ActivityLog } from "../components/ActivityLog";
 import { MetricsGrid } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { Badge, ConditionList } from "../components/Status";
+import { tenantRecordText } from "../components/Tenant";
 import { Alert, confirmAndRun, Empty, formatTimestamp, Page, Table } from "../components/ui";
 import { metricsAnchorFromRuns, newestFirst } from "../format";
 import { shellLinkForCluster } from "../shell/links";
@@ -201,6 +202,9 @@ export function TestRunViewPage() {
                             {formatTimestamp(status?.startTime)} →{" "}
                             {formatTimestamp(status?.completionTime)}
                         </span>
+                        {status?.tenant && (
+                            <span className="muted">tenant {tenantRecordText(status.tenant)}</span>
+                        )}
                         {jobName && namespace && (
                             <Link
                                 className="button small"

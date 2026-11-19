@@ -71,6 +71,8 @@ spec:
                   decoupled from "what it's being tested against" the same way the k6
                   workload itself already is. Templates can combine several (e.g. an
                   oidc-idp federating into authentik while an oidc-client logs in).
+                  seeded-tenant is the exception: it provisions nothing, and instead
+                  requires the target deployment itself to have a seeded tenant.
                 items:
                   description: |-
                     TestCaseDependency names one extra service a TestCaseTemplate needs
@@ -82,6 +84,7 @@ spec:
                   - saml-idp
                   - oauth-token
                   - policy-flows
+                  - seeded-tenant
                   type: string
                 type: array
                 x-kubernetes-list-type: set

@@ -36,6 +36,7 @@ const page = <T extends Record<string, unknown>>(load: () => Promise<T>, name: k
 const deployments = () => import("./pages/Deployments");
 const testCases = () => import("./pages/TestCases");
 const templates = () => import("./pages/TestCaseTemplates");
+const presets = () => import("./pages/TenantPresets");
 const clusters = () => import("./pages/Clusters");
 const testRuns = () => import("./pages/TestRuns");
 const grafana = () => import("./pages/Grafana");
@@ -129,6 +130,21 @@ const router = createBrowserRouter([
                 path: "testcasetemplates/:name/edit",
                 handle: t((p) => `Edit test case template ${p.name}`),
                 element: page(templates, "TestCaseTemplateEditPage"),
+            },
+            {
+                path: "tenantpresets",
+                handle: t("Tenant presets"),
+                element: page(presets, "TenantPresetsPage"),
+            },
+            {
+                path: "tenantpresets/new",
+                handle: t("New tenant preset"),
+                element: page(presets, "TenantPresetCreatePage"),
+            },
+            {
+                path: "tenantpresets/:name/edit",
+                handle: t((p) => `Edit tenant preset ${p.name}`),
+                element: page(presets, "TenantPresetEditPage"),
             },
             { path: "clusters", handle: t("Clusters"), element: page(clusters, "ClustersPage") },
             {

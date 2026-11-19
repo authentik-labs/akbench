@@ -24,7 +24,7 @@ BENCH_GROUP="bench.goauthentik.io"
 # Everything but WorkloadClusters, in owner-before-dependent order -
 # WorkloadClusters (and the whole CAPI tree under them) go through
 # `clusterctl move` instead.
-COPIED_KINDS=(testcasetemplates authentikdeployments testcases testruns)
+COPIED_KINDS=(testcasetemplates tenantpresets authentikdeployments testcases testruns)
 ALL_KINDS=(workloadclusters "${COPIED_KINDS[@]}")
 TARGET_OPERATOR_NS="authentik-bench"
 # The appliance's provider contract with the web UI (internal/appliance/providers.go).
@@ -192,6 +192,18 @@ move_args=(--kubeconfig "$FROM_KUBECONFIG" --to-kubeconfig "$TO_KUBECONFIG")
 step "Preflight"
 src version >/dev/null || die "source cluster unreachable"
 dst version >/dev/null || die "target cluster unreachable"
+# A source older than a kind (e.g. one from before TenantPresets) has none
+# of it to copy, and `src get` on it would fail mid-copy.
+served_kinds=()
+for kind in "${COPIED_KINDS[@]}"; do
+    if src get crd "$kind.$BENCH_GROUP" >/dev/null 2>&1; then
+        served_kinds+=("$kind")
+    else
+        info "the source has no $kind - skipping them"
+    fi
+done
+[[ ${#served_kinds[@]} -gt 0 ]] || die "the source has no akbench CRDs"
+COPIED_KINDS=("${served_kinds[@]}")
 [[ "$(dst get crd "workloadclusters.$BENCH_GROUP" -o jsonpath='{.metadata.labels.clusterctl\.cluster\.x-k8s\.io/move-hierarchy}' 2>/dev/null)" == true ]] ||
     die "target's WorkloadCluster CRD lacks the clusterctl move-hierarchy label - is it an appliance with an akbench version that supports migration, and has it finished bootstrapping?"
 dst -n "$TARGET_OPERATOR_NS" get deploy "$TARGET_OPERATOR_DEPLOY" >/dev/null ||

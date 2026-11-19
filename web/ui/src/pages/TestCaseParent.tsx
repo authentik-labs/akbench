@@ -173,6 +173,7 @@ export function ParentFields({
                 extraValuesYAML={spec.extraValues ?? ""}
                 onExtraValuesChange={(v) => patch({ extraValues: v })}
                 showImage={false}
+                tenantNote="Changing the tenant of deployments this test case has already created takes effect once each of them is reset."
             />
         </>
     );

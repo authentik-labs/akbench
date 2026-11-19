@@ -21,11 +21,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -75,6 +77,11 @@ type AuthentikDeploymentReconciler struct {
 	Scheme   *runtime.Scheme
 	Tracker  *multicluster.Tracker
 	Recorder record.EventRecorder
+	// APIReader reads the management cluster without the manager's cache,
+	// for kinds this controller only looks up now and then and has no
+	// business caching cluster-wide (the seeding Job's pods; RBAC grants no
+	// watch on them). Nil skips those lookups.
+	APIReader client.Reader
 	// VolumeUsage reads postgres volume usage for auto-growth; nil asks
 	// the workload cluster's kubelets. Overridden in tests, which have none.
 	VolumeUsage volumeUsageFunc
@@ -420,6 +427,8 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresRoleFix(ctx context.Con
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups=bench.goauthentik.io,resources=tenantpresets,verbs=get;list;watch
 
 func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -554,31 +563,55 @@ func (r *AuthentikDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.
 	setCondition(r.Recorder, &topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionBlueprintApplied, blueprintReady,
 		benchv1alpha1.ReasonReady, blueprintMessage)
 
+	tenant, err := r.reconcileTenant(ctx, rc, &topo, wc, helmReleaseReady)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconcile tenant: %w", err)
+	}
+	setCondition(r.Recorder, &topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionTenantSeeded, tenant.status,
+		tenant.reason, tenant.message)
+
 	r.reconcilePostgresRoleFix(ctx, rc, &topo, wc)
 
-	ready := helmReleaseReady == metav1.ConditionTrue && blueprintReady == metav1.ConditionTrue
-	if ready {
-		setCondition(r.Recorder, &topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionReady, metav1.ConditionTrue,
-			benchv1alpha1.ReasonReady, "authentik chart installed and ready")
-	} else {
-		msg := helmReleaseMessage
-		if helmReleaseReady == metav1.ConditionTrue {
-			msg = blueprintMessage
-		}
-		setCondition(r.Recorder, &topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-			benchv1alpha1.ReasonReconciling, msg)
-	}
-
+	ready := r.setReady(&topo, helmReleaseReady, helmReleaseMessage, blueprintReady, blueprintMessage, tenant)
 	topo.Status.Phase = benchv1alpha1.PhaseFor(topo.Status.Conditions)
 
 	if err := r.Status().Update(ctx, &topo); err != nil {
 		return ctrl.Result{}, err
 	}
 	log.Info("reconciled AuthentikDeployment", "ready", ready)
+	storageRecheck = soonest(storageRecheck, tenant.requeueAfter)
 	if requeueForBlueprint || requeueForWorker {
 		return ctrl.Result{RequeueAfter: soonest(10*time.Second, storageRecheck)}, nil
 	}
 	return ctrl.Result{RequeueAfter: storageRecheck}, nil
+}
+
+// setReady sets the deployment's Ready condition from the HelmRelease, the
+// fixtures blueprint and the tenant, in the order they happen, and returns
+// whether it is Ready. A failed seeding run makes the deployment Failed
+// rather than just not Ready yet, whatever else is going on (a chart
+// upgrade, say): it fails the same way until a reset or another preset.
+func (r *AuthentikDeploymentReconciler) setReady(topo *benchv1alpha1.AuthentikDeployment, helmReleaseReady metav1.ConditionStatus, helmReleaseMessage string,
+	blueprintReady metav1.ConditionStatus, blueprintMessage string, tenant tenantOutcome,
+) bool {
+	reason, message := benchv1alpha1.ReasonReconciling, ""
+	switch {
+	case tenant.reason == benchv1alpha1.ReasonSeedingFailed:
+		reason, message = benchv1alpha1.ReasonSeedingFailed, tenant.message
+	case helmReleaseReady != metav1.ConditionTrue:
+		message = helmReleaseMessage
+	case blueprintReady != metav1.ConditionTrue:
+		message = blueprintMessage
+	case tenant.blocksReady():
+		message = tenant.message
+	default:
+		setCondition(r.Recorder, topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionReady, metav1.ConditionTrue,
+			benchv1alpha1.ReasonReady, "authentik chart installed and ready")
+		return true
+	}
+	setCondition(r.Recorder, topo, &topo.Status.Conditions, topo.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+		reason, message)
+	return false
 }
 
 func (r *AuthentikDeploymentReconciler) reconcileDelete(ctx context.Context, topo *benchv1alpha1.AuthentikDeployment) (ctrl.Result, error) {
@@ -771,9 +804,30 @@ func ensureNamespace(ctx context.Context, rc client.Client, name string) error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AuthentikDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	// A preset created after the deployment naming it, or edited after
+	// seeding, is only noticed through this watch (see
+	// tenantPresetsInstalled for when it is skipped).
+	presets, err := tenantPresetsInstalled(mgr.GetRESTMapper())
+	if err != nil {
+		return err
+	}
+	if presets {
+		b = b.Watches(&benchv1alpha1.TenantPreset{}, handler.EnqueueRequestsFromMapFunc(r.deploymentsForTenantPreset))
+	} else {
+		mgr.GetLogger().Info("Skipped watching TenantPresets: the CRD is not installed")
+	}
+	return b.
 		For(&benchv1alpha1.AuthentikDeployment{}).
 		Owns(&helmv2.HelmRelease{}).
+		// A replaced or deleted tenant password means a seeded tenant's
+		// users no longer have it. Nothing else would bring the deployment
+		// back to say so in time: without postgres auto-growth it may not
+		// be reconciled again for hours.
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.deploymentsForTenantPassword),
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				return obj.GetName() == render.TenantPasswordSecretName
+			}))).
 		// Without this, a deployment whose extraValuesRef/fixtures blueprint
 		// ConfigMap didn't exist yet only notices it was created on its own
 		// next unrelated reconcile - the same staleness TestCaseReconciler's
