@@ -2,8 +2,8 @@
 
 What each component does.
 
-- **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TestCase`,
-  `TestCaseTemplate`, `TestRun`, `WorkloadCluster`.
+- **CRDs** (`bench.goauthentik.io/v1alpha1`): `AuthentikDeployment`, `TenantPreset`,
+  `TestCase`, `TestCaseTemplate`, `TestRun`, `WorkloadCluster`.
 - **Parent `TestCase`s**: a `TestCase` with `spec.templates` drives nested
   `TestCase`s instead of deployments. It crosses authentik builds
   (`spec.variants`) with those templates: one child `TestCase` per template
@@ -87,6 +87,14 @@ What each component does.
   they're already loaded - 50 by default (`BENCH_FIXTURE_USERS`), a random
   directory per install unless `BENCH_FIXTURE_SEED` is set.
   `make fixtures` (the original script) still replaces them on demand.
+- **Tenant presets**: `TenantPreset` is a named size for the test data a
+  deployment is to be seeded with: how many users and groups it gets, how
+  deep the group tree is and how many groups each user is in. It is
+  UI-editable like a template, and the operator seeds five built-in ones at
+  startup (`tiny` to `huge`), resetting them on every start; copy one to
+  change it. A preset someone created under a built-in's name is left alone,
+  and a built-in a later release drops loses its built-in label and becomes
+  an ordinary preset. Nothing seeds a deployment from a preset yet.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
   seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a

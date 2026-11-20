@@ -1,0 +1,13 @@
+apiVersion: bench.goauthentik.io/v1alpha1
+kind: TenantPreset
+metadata:
+  labels:
+    app.kubernetes.io/name: authentik-bench
+    app.kubernetes.io/managed-by: kustomize
+  name: two-thousand-users
+spec:
+  description: A directory of 2,000 users in 60 groups, three levels deep.
+  users: 2000
+  groups: 60
+  groupDepth: 3
+  groupsPerUser: 4

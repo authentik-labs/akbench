@@ -248,3 +248,57 @@ func TestListRespectsLabelSelector(t *testing.T) {
 		t.Fatalf("got %d items, want only login-a's run", len(body.Items))
 	}
 }
+
+// Tenant presets are served by the generic resource handlers; this guards the
+// path the web UI's preset page uses, and that saving a preset from a form
+// (which submits no labels) leaves the operator's built-in mark in place.
+func TestTenantPresetCRUD(t *testing.T) {
+	builtIn := &benchv1alpha1.TenantPreset{
+		Name: "small", Namespace: testNamespace,
+		Labels: map[string]string{benchv1alpha1.LabelBuiltIn: "true"},
+		Spec:   benchv1alpha1.TenantPresetSpec{Seed: 1, Users: 5000, Groups: 100, GroupDepth: 3, GroupsPerUser: 5},
+	}
+	s, c := newServer(t, Config{}, builtIn)
+	spec := map[string]any{"seed": 1, "users": 2000, "groups": 60, "groupDepth": 3, "groupsPerUser": 4}
+
+	rec := do(t, s, http.MethodPost, "/api/v1/tenantpresets", map[string]any{
+		"metadata": map[string]any{"name": "ours"},
+		"spec":     spec,
+	})
+	requireStatus(t, rec, http.StatusCreated)
+
+	rec = do(t, s, http.MethodGet, "/api/v1/tenantpresets", nil)
+	requireStatus(t, rec, http.StatusOK)
+	list := decodeBody[struct {
+		Items []map[string]any `json:"items"`
+	}](t, rec)
+	if len(list.Items) != 2 {
+		t.Fatalf("got %d presets, want the built-in one and the new one", len(list.Items))
+	}
+
+	spec["users"] = 3000
+	for _, name := range []string{"ours", "small"} {
+		rec = do(t, s, http.MethodPut, "/api/v1/tenantpresets/"+name, map[string]any{"spec": spec})
+		requireStatus(t, rec, http.StatusOK)
+	}
+	var stored benchv1alpha1.TenantPreset
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "ours", Namespace: testNamespace}, &stored); err != nil {
+		t.Fatalf("get after update: %v", err)
+	}
+	if stored.Spec.Users != 3000 {
+		t.Fatalf("got %d users, want 3000", stored.Spec.Users)
+	}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "small", Namespace: testNamespace}, &stored); err != nil {
+		t.Fatalf("get built-in after update: %v", err)
+	}
+	if stored.Labels[benchv1alpha1.LabelBuiltIn] != "true" {
+		t.Fatalf("saving a built-in preset dropped its mark: labels %v", stored.Labels)
+	}
+
+	rec = do(t, s, http.MethodDelete, "/api/v1/tenantpresets/ours", nil)
+	requireStatus(t, rec, http.StatusNoContent)
+	err := c.Get(context.Background(), types.NamespacedName{Name: "ours", Namespace: testNamespace}, &stored)
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("got error %v, want NotFound", err)
+	}
+}
