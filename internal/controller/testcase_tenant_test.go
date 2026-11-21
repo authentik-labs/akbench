@@ -87,7 +87,8 @@ func TestTenantSeedingFailure(t *testing.T) {
 }
 
 var _ = Describe("Test cases on a seeded tenant", func() {
-	const templateName = "tenant-login"
+	// Not "tenant-login": the suite seeds the built-in template of that name.
+	const templateName = "seeded-tenant-test"
 	ctx := context.Background()
 	params := benchv1alpha1.TenantParams{Seed: 4, Users: 50, Groups: 20, GroupDepth: 2, GroupsPerUser: 3}
 	var topo *benchv1alpha1.AuthentikDeployment
@@ -239,7 +240,7 @@ var _ = Describe("Test cases on a seeded tenant", func() {
 		tc := testCase("tenant-none", benchv1alpha1.ProfileBurn)
 		ready := reconcileTestCase(tc)
 		Expect(ready.Status).To(Equal(metav1.ConditionFalse))
-		Expect(ready.Message).To(ContainSubstring("template tenant-login needs a seeded tenant; deployment tenant-target has none"))
+		Expect(ready.Message).To(ContainSubstring("template seeded-tenant-test needs a seeded tenant; deployment tenant-target has none"))
 		err := k8sClient.Get(ctx, types.NamespacedName{Name: render.BurnDeploymentName(tc.Name, topo.Name), Namespace: "default"}, &appsv1.Deployment{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
@@ -290,7 +291,7 @@ var _ = Describe("Test cases on a seeded tenant", func() {
 
 	It("holds a quick run on a deployment without a tenant", func() {
 		run, result := startQuickRun(testCase("tenant-quick-none", benchv1alpha1.ProfileQuick))
-		expectRunHeld(run, result, "template tenant-login needs a seeded tenant")
+		expectRunHeld(run, result, "template seeded-tenant-test needs a seeded tenant")
 		Expect(run.Status.Tenant).To(BeNil())
 	})
 
