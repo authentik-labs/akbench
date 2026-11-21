@@ -110,8 +110,9 @@ func TestK6EnvVarValues(t *testing.T) {
 
 // TestBuiltinScriptsReadOnlyRenderedEnv guards the other direction: every
 // __ENV name a built-in script reads must be one the k6 Job can actually
-// set, with every test dependency in use. A script reading a renamed or
-// never-rendered dependency var would otherwise only fail at run time.
+// set, with every test dependency in use and a seeded tenant. A script
+// reading a renamed or never-rendered dependency var would otherwise only
+// fail at run time.
 func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 	p := params(exampleTestCase(benchv1alpha1.ProfileQuick))
 	p.Dependencies = render.DependencyEndpoints{
@@ -123,6 +124,7 @@ func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 		OAuthExchangeClientID: "oauth-te", OAuthExchangeSecretName: "oauth-te",
 		PolicyPromptFlow: "policy-prompt", PolicyBindingFlow: "policy-binding",
 	}
+	p.Tenant = &benchv1alpha1.TenantParams{Seed: 1, Users: 50, Groups: 20, GroupDepth: 2, GroupsPerUser: 3}
 	rendered := envValueMap(p.EnvVars())
 
 	scripts, err := filepath.Glob("../../k6/scripts/*.ts")
@@ -147,7 +149,7 @@ func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 // quick TestRun fails only when k6 exits non-zero, and fail() aborts never
 // reach the built-in checks rate. bench.ts records iteration_failed and puts
 // a threshold on it, so every built-in script must take its options and its
-// default function from there.
+// default function from there. The libraries themselves are not scripts.
 func TestBuiltinScriptsHaveIterationVerdict(t *testing.T) {
 	lib, err := os.ReadFile("../../k6/scripts/" + render.LibFileName)
 	if err != nil {
@@ -164,7 +166,7 @@ func TestBuiltinScriptsHaveIterationVerdict(t *testing.T) {
 		t.Fatalf("no built-in k6 scripts found: %v", err)
 	}
 	for _, script := range scripts {
-		if filepath.Base(script) == render.LibFileName {
+		if slices.Contains(render.LibFileNames, filepath.Base(script)) {
 			continue
 		}
 		content, err := os.ReadFile(script)

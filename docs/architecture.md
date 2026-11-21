@@ -159,7 +159,11 @@ What each component does.
   have a seeded tenant (a test case refuses to run on one without, on one
   needing a reset or whose password changed since, or on targets seeded
   differently), and k6 gets its numbers and password as `TENANT_*` env
-  vars. Which tenant each target ran against is recorded in the test case's
+  vars. `k6/scripts/tenant.ts`, mounted next to `bench.ts`, turns those into
+  users and groups by index (`tenantUser`, `tenantGroup`) and walks the whole
+  tenant one user per iteration (`tenantUserFor`); the seeder's naming it
+  relies on is checked by `test/contract`. Which tenant each target ran
+  against is recorded in the test case's
   `status.deployments[].tenant` and a Quick run's `status.tenant`.
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source
