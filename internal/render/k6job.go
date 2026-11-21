@@ -244,6 +244,15 @@ const scriptFileName = "script.ts"
 // every script, which imports it as "./bench.ts".
 const LibFileName = "bench.ts"
 
+// TenantLibFileName is the k6 library for scripts that run against a seeded
+// tenant (k6/scripts/tenant.ts), which they import as "./tenant.ts". It is
+// mounted next to every script like LibFileName, so an inline or BYO script
+// can import it too.
+const TenantLibFileName = "tenant.ts"
+
+// LibFileNames are the k6 libraries mounted next to every script.
+var LibFileNames = []string{LibFileName, TenantLibFileName}
+
 // StartAtFileName is the script ConfigMap key holding the unix time a Burn
 // TestCase's k6 pods start their load at. The operator only writes it once
 // every target's k6 pod is up, so all targets start at the same moment
@@ -295,10 +304,11 @@ func (p K6WorkloadParams) volumes() ([]corev1.Volume, []corev1.VolumeMount) {
 	if p.UserScriptConfigMapName != "" {
 		// Optional, since StartAtFileName only exists once a burn's start
 		// gate opened.
-		sources[0].ConfigMap.Items = []corev1.KeyToPath{
-			{Key: LibFileName, Path: LibFileName},
-			{Key: StartAtFileName, Path: StartAtFileName},
+		items := make([]corev1.KeyToPath, 0, len(LibFileNames)+1)
+		for _, lib := range LibFileNames {
+			items = append(items, corev1.KeyToPath{Key: lib, Path: lib})
 		}
+		sources[0].ConfigMap.Items = append(items, corev1.KeyToPath{Key: StartAtFileName, Path: StartAtFileName})
 		sources[0].ConfigMap.Optional = ptr.To(true)
 		sources = append(sources, corev1.VolumeProjection{
 			ConfigMap: &corev1.ConfigMapProjection{Name: p.UserScriptConfigMapName},

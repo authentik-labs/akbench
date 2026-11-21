@@ -266,6 +266,7 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(k8sClient.Get(context.Background(), cmKey, &cm)).To(Succeed())
 			Expect(cm.Data).To(HaveKeyWithValue("script.ts", inlineBody))
 			Expect(cm.Data).To(HaveKey(render.LibFileName), "the shared k6 library is mounted next to every script")
+			Expect(cm.Data).To(HaveKey(render.TenantLibFileName), "and so is the seeded-tenant library")
 		})
 	})
 

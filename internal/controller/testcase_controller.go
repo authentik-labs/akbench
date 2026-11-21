@@ -827,20 +827,23 @@ func (r *TestCaseReconciler) reconcileBurn(ctx context.Context, rc client.Client
 	return existing, nil
 }
 
-// ensureScriptConfigMap mirrors the shared k6 library and the resolved
+// ensureScriptConfigMap mirrors the shared k6 libraries and the resolved
 // script - inline content stored on the TestCase itself, else the resolved
 // TestCaseTemplate's own script - into the ConfigMap the k6 pod mounts on
 // rc, returning its name. A user-supplied scriptConfigMapRef (BYO) is
-// mounted as is next to it, so only the library goes here then. tmpl is nil
+// mounted as is next to it, so only the libraries go here then. tmpl is nil
 // when scriptConfigMapRef or inline already won upstream (see Reconcile's
 // usingTemplate). startAt, once a burn's start gate opened, releases its
 // waiting k6 pods (render.StartAtFileName).
 func (r *TestCaseReconciler) ensureScriptConfigMap(ctx context.Context, rc client.Client, remote bool, tc *benchv1alpha1.TestCase, tmpl *benchv1alpha1.TestCaseTemplate, startAt *metav1.Time) (string, error) {
-	lib, ok := k6scripts.Get(render.LibFileName)
-	if !ok {
-		return "", fmt.Errorf("embedded k6 library %q is missing", render.LibFileName)
+	data := make(map[string]string, len(render.LibFileNames)+2)
+	for _, name := range render.LibFileNames {
+		lib, ok := k6scripts.Get(name)
+		if !ok {
+			return "", fmt.Errorf("embedded k6 library %q is missing", name)
+		}
+		data[name] = lib
 	}
-	data := map[string]string{render.LibFileName: lib}
 	switch {
 	case tc.Spec.ScriptConfigMapRef != nil:
 	case tc.Spec.Inline != "":
