@@ -110,7 +110,9 @@ What each component does.
   evicted or preempted is replaced instead of failing the run.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds sixteen built-in ones at startup (`login`; `tenant-login`, the same
+  login as a different seeded user every iteration, walking the whole
+  tenant of a deployment with a tenant preset; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through

@@ -41,6 +41,15 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "tenant-login", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "The same login as a different seeded user every iteration, walking the whole tenant, so what authentik " +
+					"caches per user stays cold and lookups run against tables of the preset's size. Needs a deployment with a tenant preset.",
+				Script:       mustEmbeddedScript("tenant-login.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencySeededTenant},
+			},
+		},
+		{
 			Name: "oauth-oidc", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description:  "Drives an OAuth2/OIDC authorization-code flow through an oidc-test-client relying party, reusing the same flow-executor walk as login.",
