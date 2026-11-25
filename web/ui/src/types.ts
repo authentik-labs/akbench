@@ -208,7 +208,8 @@ export interface TestCaseDeploymentStatus {
     ready: boolean;
     burnWorkloadRef?: { name: string };
     burningSince?: string;
-    // Set once archiving stopped this target's burn; burningSince is then kept.
+    // Set once archiving, or postgres running out of storage, stopped this
+    // target's burn; burningSince is then kept until the burn starts again.
     burnStoppedAt?: string;
 }
 

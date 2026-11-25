@@ -306,6 +306,31 @@ describe("archivedBurnWindow", () => {
         });
     });
 
+    it("spans the burn of a test stopped because postgres ran out of storage", () => {
+        const deployments = [
+            { burningSince: "2026-10-14T10:00:00Z", burnStoppedAt: "2026-10-16T00:00:00Z" },
+        ];
+        const stopped = {
+            type: "Ready",
+            status: "False",
+            reason: "PostgresStorageFull",
+            lastTransitionTime: "2026-10-16T00:00:00Z",
+        };
+        expect(
+            archivedBurnWindow({ spec: {}, status: { conditions: [stopped], deployments } }),
+        ).toEqual({ start: s("2026-10-14T10:00:00Z"), end: s("2026-10-16T00:00:00Z") });
+        // Restarting, the stop is still recorded but no longer the end.
+        expect(
+            archivedBurnWindow({
+                spec: {},
+                status: {
+                    conditions: [{ ...stopped, reason: "DependencyNotReady" }],
+                    deployments,
+                },
+            }),
+        ).toBeUndefined();
+    });
+
     it("is undefined for an active test", () => {
         expect(
             archivedBurnWindow({

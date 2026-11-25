@@ -251,13 +251,15 @@ type TestCaseDeploymentStatus struct {
 	// starts on every target at once, set once all of them and their k6
 	// pods are ready (a target added later starts right away). Unaffected
 	// by operator restarts or Ready flaps.
-	// Kept once the TestCase is archived, alongside burnStoppedAt, so its
-	// metrics can still be shown for exactly the time it burned.
+	// Kept once the burn is stopped, alongside burnStoppedAt, so its
+	// metrics can still be shown for exactly the time it burned; replaced
+	// once the burn starts again.
 	// +optional
 	BurningSince *metav1.Time `json:"burningSince,omitempty"`
 
-	// burnStoppedAt is when archiving the TestCase stopped this target's
-	// burn Deployment. Cleared again once it is unarchived.
+	// burnStoppedAt is when archiving the TestCase, or a target's postgres
+	// running out of storage, stopped this target's burn Deployment.
+	// Cleared again once the burn starts again.
 	// +optional
 	BurnStoppedAt *metav1.Time `json:"burnStoppedAt,omitempty"`
 }

@@ -26,6 +26,12 @@ const (
 	// TestCase opens its children's shared start gate once all of them
 	// report it.
 	ConditionBurnStaged = "BurnStaged"
+	// ConditionPostgresStorageExhausted is True while an AuthentikDeployment's
+	// postgres volume is too full to keep putting load on it; its reason says
+	// why (ReasonPostgresStorageAtMax, ReasonPostgresStorageGrowFailed or
+	// ReasonPostgresStorageHardLimit). A Burn TestCase stops its k6 load
+	// while any of its targets has it.
+	ConditionPostgresStorageExhausted = "PostgresStorageExhausted"
 )
 
 // Condition reasons shared across bench.goauthentik.io kinds.
@@ -37,4 +43,21 @@ const (
 	ReasonDependencyNotReady = "DependencyNotReady"
 	ReasonResetting          = "Resetting"
 	ReasonArchived           = "Archived"
+	// ReasonPostgresStorageFull is a Burn TestCase whose k6 load was stopped
+	// because a target's postgres volume is full and cannot grow any further.
+	ReasonPostgresStorageFull = "PostgresStorageFull"
+)
+
+// Reasons of ConditionPostgresStorageExhausted.
+const (
+	// ReasonPostgresStorageAtMax is a volume that is full and has finished
+	// growing to its maxStorageSize. Only a usage reading of the volume at
+	// that size counts, never one taken while it was still growing to it.
+	ReasonPostgresStorageAtMax = "AtMaxStorageSize"
+	// ReasonPostgresStorageGrowFailed is a volume that is full and could not
+	// be grown, e.g. because its StorageClass doesn't allow expansion.
+	ReasonPostgresStorageGrowFailed = "GrowFailed"
+	// ReasonPostgresStorageHardLimit is a volume nearly out of space whatever
+	// its size or maximum: growing it hasn't kept up or never completes.
+	ReasonPostgresStorageHardLimit = "HardLimit"
 )
