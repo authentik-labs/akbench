@@ -53,6 +53,19 @@ type TestCaseSpec struct {
 	// +optional
 	BaselineRef corev1.LocalObjectReference `json:"baselineRef,omitzero"`
 
+	// configUnderTest lists the settings this test compares on purpose, by
+	// the paths the config diff reports them under (e.g.
+	// values.authentik.postgresql.use_pool). A path covers the settings
+	// below it too. Where the deployments differ on one, the difference is
+	// shown as under test instead of warned about; where they don't, that is
+	// warned about instead. Only views read it - it doesn't change how the
+	// test runs. A parent's list is copied to its children.
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:items:MinLength=1
+	// +optional
+	ConfigUnderTest []string `json:"configUnderTest,omitempty"`
+
 	// runnerClusterRef names the cluster.x-k8s.io/v1beta1 Cluster the k6
 	// workload itself runs on. Defaults to the deployment's clusterRef.
 	// +optional

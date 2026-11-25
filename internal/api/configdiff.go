@@ -48,6 +48,11 @@ type ConfigDiff struct {
 	// so these differ on every healthy pair: they are shown, not compared.
 	Databases   map[string]ConfigDatabase `json:"databases,omitempty"`
 	Differences []ConfigDifference        `json:"differences"`
+	// UnchangedUnderTest are the entries of the test case's configUnderTest
+	// that no difference falls under: the deployments are configured the
+	// same there, so the comparison doesn't test what it says it does. Only
+	// set when every deployment could be compared.
+	UnchangedUnderTest []string `json:"unchangedUnderTest,omitempty"`
 }
 
 // ConfigPending is a deployment that could not be compared.
@@ -67,11 +72,13 @@ type ConfigDatabase struct {
 // ConfigDifference is one setting that is not the same on every target of a
 // TestCase. Values is keyed by deployment name; a deployment without an
 // entry does not set it at all. A credential's value is never returned: it
-// is shown as configSet, with Note saying the values differ.
+// is shown as configSet, with Note saying the values differ. UnderTest
+// marks a difference the test case compares on purpose (configUnderTest).
 type ConfigDifference struct {
-	Path   string            `json:"path"`
-	Values map[string]string `json:"values"`
-	Note   string            `json:"note,omitempty"`
+	Path      string            `json:"path"`
+	Values    map[string]string `json:"values"`
+	Note      string            `json:"note,omitempty"`
+	UnderTest bool              `json:"underTest,omitempty"`
 }
 
 // testCaseConfigDiff answers GET /testcases/{name}/config-diff. A test case
@@ -106,8 +113,42 @@ func (s *Server) testCaseConfigDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(diff.Targets) > 1 {
 		diff.Differences = diffConfig(diff.Targets, configs)
+		unchanged := markUnderTest(diff.Differences, tc.Spec.ConfigUnderTest)
+		// A pending deployment may be the one that differs there.
+		if len(diff.Pending) == 0 {
+			diff.UnchangedUnderTest = unchanged
+		}
 	}
 	writeJSON(w, r, http.StatusOK, diff)
+}
+
+// markUnderTest sets UnderTest on the differences that fall under one of
+// listed, the test case's configUnderTest, and returns the entries of listed
+// that none falls under.
+func markUnderTest(differences []ConfigDifference, listed []string) []string {
+	used := make([]bool, len(listed))
+	for i := range differences {
+		for j, entry := range listed {
+			if configPathUnder(differences[i].Path, entry) {
+				differences[i].UnderTest = true
+				used[j] = true
+			}
+		}
+	}
+	var unchanged []string
+	for j, entry := range listed {
+		if !used[j] {
+			unchanged = append(unchanged, entry)
+		}
+	}
+	return unchanged
+}
+
+// configPathUnder reports whether path is entry or a setting below it: a
+// key (entry.key) or a list item (entry[name], entry[0]).
+func configPathUnder(path, entry string) bool {
+	rest, ok := strings.CutPrefix(path, entry)
+	return ok && (rest == "" || rest[0] == '.' || rest[0] == '[')
 }
 
 // deploymentConfig reads the named deployment's configuration. Its error

@@ -457,3 +457,97 @@ func TestNamedListFallsBackToIndex(t *testing.T) {
 		t.Fatalf("expected index keys, got %v", out)
 	}
 }
+
+// A setting the test case lists in configUnderTest is reported as under
+// test, not hidden; one it lists that doesn't differ is reported as
+// unchanged; anything else still differs as before.
+func TestTestCaseConfigDiffUnderTest(t *testing.T) {
+	tc := &benchv1alpha1.TestCase{
+		Name: "pool-login", Namespace: testNamespace,
+		Spec: benchv1alpha1.TestCaseSpec{
+			DeploymentRefs:  []corev1.LocalObjectReference{{Name: "pool-on"}, {Name: "pool-off"}},
+			Profile:         benchv1alpha1.ProfileBurn,
+			ConfigUnderTest: []string{"values.authentik.postgresql", "values.authentik.cache"},
+		},
+	}
+	on, off := sampleDeployment("pool-on"), sampleDeployment("pool-off")
+	s, _ := newServer(t, Config{}, tc, on, off,
+		helmRelease(on, renderedValues(t, on, "authentik:\n  postgresql:\n    use_pool: true\nworker:\n  replicas: 3\n")),
+		helmRelease(off, renderedValues(t, off, "")))
+
+	rec := do(t, s, http.MethodGet, "/api/v1/testcases/pool-login/config-diff", nil)
+	requireStatus(t, rec, http.StatusOK)
+	got := decodeBody[ConfigDiff](t, rec)
+	want := ConfigDiff{
+		TestID:  "pool-login",
+		Targets: []string{"pool-on", "pool-off"},
+		Differences: []ConfigDifference{
+			{Path: "values.authentik.postgresql.use_pool", Values: map[string]string{"pool-on": "true"}, UnderTest: true},
+			{Path: "values.worker.replicas", Values: map[string]string{"pool-on": "3", "pool-off": "1"}},
+		},
+		UnchangedUnderTest: []string{"values.authentik.cache"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestConfigPathUnder(t *testing.T) {
+	for _, c := range []struct {
+		path, entry string
+		want        bool
+	}{
+		{"values.authentik.postgresql.use_pool", "values.authentik.postgresql.use_pool", true},
+		{"values.authentik.postgresql.use_pool", "values.authentik.postgresql", true},
+		{"values.server.env[AUTHENTIK_X].value", "values.server.env", true},
+		{"values.server.env[AUTHENTIK_X].value", "values.server.env[AUTHENTIK_X]", true},
+		{"values.authentik.postgresql_extra", "values.authentik.postgresql", false},
+		{"values.authentik.postgresql", "values.authentik.postgresql.use_pool", false},
+		{"values.worker.replicas", "values.server", false},
+	} {
+		if got := configPathUnder(c.path, c.entry); got != c.want {
+			t.Errorf("configPathUnder(%q, %q) = %v, want %v", c.path, c.entry, got, c.want)
+		}
+	}
+}
+
+// A deployment that couldn't be compared may be the one that differs on a
+// listed setting, so nothing is reported as unchanged then.
+func TestTestCaseConfigDiffUnderTestPending(t *testing.T) {
+	tc := &benchv1alpha1.TestCase{
+		Name: "pool-login", Namespace: testNamespace,
+		Spec: benchv1alpha1.TestCaseSpec{
+			DeploymentRefs:  []corev1.LocalObjectReference{{Name: "pool-a"}, {Name: "pool-b"}, {Name: "pool-new"}},
+			Profile:         benchv1alpha1.ProfileBurn,
+			ConfigUnderTest: []string{"values.authentik.postgresql"},
+		},
+	}
+	a, b := sampleDeployment("pool-a"), sampleDeployment("pool-b")
+	s, _ := newServer(t, Config{}, tc, a, b, sampleDeployment("pool-new"),
+		helmRelease(a, renderedValues(t, a, "")), helmRelease(b, renderedValues(t, b, "")))
+	rec := do(t, s, http.MethodGet, "/api/v1/testcases/pool-login/config-diff", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[ConfigDiff](t, rec); len(got.Pending) != 1 || got.UnchangedUnderTest != nil {
+		t.Fatalf("got %+v, want pool-new pending and nothing unchanged", got)
+	}
+}
+
+// With fewer than two deployments to compare, nothing is compared, so
+// nothing listed is reported as unchanged either.
+func TestTestCaseConfigDiffUnderTestSingleTarget(t *testing.T) {
+	tc := &benchv1alpha1.TestCase{
+		Name: "solo", Namespace: testNamespace,
+		Spec: benchv1alpha1.TestCaseSpec{
+			DeploymentRefs:  []corev1.LocalObjectReference{{Name: "solo-a"}},
+			Profile:         benchv1alpha1.ProfileBurn,
+			ConfigUnderTest: []string{"values.authentik.postgresql"},
+		},
+	}
+	a := sampleDeployment("solo-a")
+	s, _ := newServer(t, Config{}, tc, a, helmRelease(a, renderedValues(t, a, "")))
+	rec := do(t, s, http.MethodGet, "/api/v1/testcases/solo/config-diff", nil)
+	requireStatus(t, rec, http.StatusOK)
+	if got := decodeBody[ConfigDiff](t, rec); got.UnchangedUnderTest != nil || len(got.Differences) != 0 {
+		t.Fatalf("got %+v, want no differences and nothing unchanged", got)
+	}
+}

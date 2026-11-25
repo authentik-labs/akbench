@@ -523,6 +523,11 @@ func (in *TestCaseSpec) DeepCopyInto(out *TestCaseSpec) {
 		copy(*out, *in)
 	}
 	out.BaselineRef = in.BaselineRef
+	if in.ConfigUnderTest != nil {
+		in, out := &in.ConfigUnderTest, &out.ConfigUnderTest
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.RunnerClusterRef != nil {
 		in, out := &in.RunnerClusterRef, &out.RunnerClusterRef
 		*out = new(v1.LocalObjectReference)
