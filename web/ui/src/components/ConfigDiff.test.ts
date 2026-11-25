@@ -1,5 +1,13 @@
-import { ConfigDiff } from "../types";
-import { configDiffFor, configDiffNotices, formatDatabase } from "./ConfigDiff";
+import { ConfigDiff, PARENT_LABEL, TestCase } from "../types";
+import {
+    configDiffFor,
+    configDiffNotices,
+    configPathUnder,
+    configUnderTestOwner,
+    formatDatabase,
+    withoutUnderTest,
+    withUnderTest,
+} from "./ConfigDiff";
 
 import { describe, expect, it } from "vitest";
 
@@ -60,5 +68,40 @@ describe("configDiffNotices", () => {
         expect(configDiffNotices("t", diff({ pending }), "Forbidden")).toEqual([
             "Could not compare the deployments of t: Forbidden",
         ]);
+    });
+});
+
+describe("configPathUnder", () => {
+    it("matches the path itself and the settings below it", () => {
+        expect(configPathUnder("values.a.b", "values.a.b")).toBe(true);
+        expect(configPathUnder("values.a.b", "values.a")).toBe(true);
+        expect(configPathUnder("values.env[X].value", "values.env")).toBe(true);
+        expect(configPathUnder("values.ab", "values.a")).toBe(false);
+        expect(configPathUnder("values.a", "values.a.b")).toBe(false);
+    });
+});
+
+describe("withUnderTest and withoutUnderTest", () => {
+    it("adds a path only when nothing listed covers it", () => {
+        expect(withUnderTest(undefined, "values.a.b")).toEqual(["values.a.b"]);
+        expect(withUnderTest(["values.a"], "values.a.b")).toEqual(["values.a"]);
+        expect(withUnderTest(["values.c"], "values.a.b")).toEqual(["values.c", "values.a.b"]);
+    });
+    it("drops every entry that covers a path", () => {
+        expect(withoutUnderTest(["values.a", "values.a.b", "values.c"], "values.a.b")).toEqual([
+            "values.c",
+        ]);
+        expect(withoutUnderTest(undefined, "values.a")).toEqual([]);
+    });
+});
+
+describe("configUnderTestOwner", () => {
+    it("is a child's parent, else the test case itself", () => {
+        const tc = (labels?: Record<string, string>): TestCase => ({
+            metadata: { name: "child", labels },
+            spec: { profile: "Quick", vus: 1 },
+        });
+        expect(configUnderTestOwner(tc())).toBe("child");
+        expect(configUnderTestOwner(tc({ [PARENT_LABEL]: "parent" }))).toBe("parent");
     });
 });

@@ -159,6 +159,9 @@ export interface TestCaseSpec {
     // baselineRef is the deployment the others are compared against; unset or
     // stale means the first one (testCaseBaseline).
     baselineRef?: { name: string };
+    // Settings the deployments differ on by design; only the config diff
+    // reads it (ConfigDiffWarning).
+    configUnderTest?: string[];
     runnerClusterRef?: { name: string };
     template?: string;
     inline?: string;
@@ -469,6 +472,8 @@ export interface ConfigDifference {
     values: Record<string, string>;
     // Set for a credential, whose values are only ever shown as "(set)".
     note?: string;
+    // The test case compares this setting on purpose (configUnderTest).
+    underTest?: boolean;
 }
 
 /** A deployment the config diff could not compare, and why. */
@@ -493,6 +498,8 @@ export interface ConfigDiff {
     // External databases by deployment: shown, not compared.
     databases?: Record<string, ConfigDatabase>;
     differences: ConfigDifference[];
+    // configUnderTest entries no difference falls under.
+    unchangedUnderTest?: string[];
 }
 
 export interface RangePoint {
