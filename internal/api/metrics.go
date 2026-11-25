@@ -129,7 +129,24 @@ var compareMetrics = []CompareMetric{
 			` / sum by (target) (sum_over_time(` + render.RecordedHTTPReqs + `{%[1]s}[%[2]s]))`,
 	},
 	{
-		Key: "checks", Label: "Passing checks", Unit: unitRatio, Better: betterHigher,
+		Key: "iteration_failed", Label: "Failed transactions", Unit: unitRatio, Better: betterLower,
+		// From bench.ts's iteration_outcomes counter, so it covers the
+		// selected window - unlike "checks" below. bench.ts adds to both
+		// outcomes on every iteration, so the failed series exists as soon
+		// as the test does and a window without failures reads 0. No data
+		// means the window predates the counter, or the script doesn't wrap
+		// its default function in bench.ts's iteration().
+		Query: `sum by (target) (rate(k6_iteration_outcomes_total{%[1]s, outcome="failed"}[%[2]s]))` +
+			` / sum by (target) (rate(k6_iteration_outcomes_total{%[1]s}[%[2]s]))`,
+		Recorded: `sum by (target) (sum_over_time(` + render.RecordedIterationsFailed + `{%[1]s}[%[2]s]))` +
+			` / sum by (target) (sum_over_time(` + render.RecordedIterationOutcomes + `{%[1]s}[%[2]s]))`,
+	},
+	{
+		// k6 exports a check's pass rate only as its ratio since the k6 pod
+		// started, so this ignores the selected window - a test that failed
+		// for a day and has been fine since still reads low. "Failed
+		// transactions" above is the windowed figure.
+		Key: "checks", Label: "Passing checks (since start)", Unit: unitRatio, Better: betterHigher,
 		Query: `avg by (target) (k6_checks_rate{%s})`,
 	},
 	{
