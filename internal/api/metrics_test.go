@@ -124,6 +124,36 @@ func TestCompare(t *testing.T) {
 // outcome's rate over the rate of all outcomes. No "or 0" fallback - bench.ts
 // keeps the failed series alive with zeros, so an empty result is missing
 // data and shows as "-" like "Failed requests", not as a confident 0%.
+// "Peak VUs" has to be the highest VU count within the window: read as an
+// instant gauge it is only the count at the window's end.
+func TestComparePeakVUsCoversWindow(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheus(t, func(query string) (string, string, bool) {
+		seen[query] = true
+		if strings.Contains(query, "k6_vus") {
+			return "64", "", true
+		}
+		return "", "", false
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet, "/api/v1/metrics/compare?testids=ramp&window=15m", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	want := `max by (target) (max_over_time(k6_vus{testid="ramp"}[15m]))`
+	if !seen[want] {
+		t.Fatalf("peak VUs query %q was not sent; saw %v", want, seen)
+	}
+	body := decodeBody[struct {
+		Results []struct {
+			Values map[string]float64 `json:"values"`
+		} `json:"results"`
+	}](t, rec)
+	if got := body.Results[0].Values["vus"]; got != 64 {
+		t.Fatalf("vus is %v, want 64", got)
+	}
+}
+
 func TestCompareFailedTransactionsUsesWindow(t *testing.T) {
 	seen := map[string]bool{}
 	prom := fakePrometheus(t, func(query string) (string, string, bool) {

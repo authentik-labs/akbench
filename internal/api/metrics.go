@@ -150,8 +150,11 @@ var compareMetrics = []CompareMetric{
 		Query: `avg by (target) (k6_checks_rate{%s})`,
 	},
 	{
+		// max_over_time: the gauge read at one instant is only the VU count
+		// at the window's end, which is the peak for a fixed-VU test but
+		// not for a ramping one, and is gone once the k6 pod has exited.
 		Key: metricKeyVUs, Label: "Peak VUs", Unit: metricKeyVUs, Better: betterHigher,
-		Query: `max by (target) (k6_vus{%s})`,
+		Query: `max by (target) (max_over_time(k6_vus{%s}[%s]))`,
 	},
 }
 
