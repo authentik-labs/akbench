@@ -46,7 +46,7 @@ type TestCaseTemplateSpec struct {
 
 // TestCaseDependency names one extra service a TestCaseTemplate needs
 // provisioned next to its target AuthentikDeployment.
-// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token;policy-flows
+// +kubebuilder:validation:Enum=oidc-client;saml-client;oidc-idp;saml-idp;oauth-token;policy-flows;oauth-policies
 type TestCaseDependency string
 
 const (
@@ -70,6 +70,11 @@ const (
 	// before a prompt stage: one through the prompt stage's
 	// validation_policies, one through its FlowStageBinding.
 	DependencyPolicyFlows TestCaseDependency = "policy-flows"
+	// DependencyOAuthPolicies is a confidential OAuth2 client k6 logs in to
+	// with an authorization-code grant, whose application only admits
+	// users who pass a group binding and an expression policy. The group
+	// is one of the fixture's (render.OAuthPoliciesGroup).
+	DependencyOAuthPolicies TestCaseDependency = "oauth-policies"
 )
 
 // HasDependency reports whether this template lists dep.

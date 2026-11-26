@@ -134,6 +134,10 @@ type DependencyEndpoints struct {
 	OAuthSecretName         string
 	OAuthExchangeClientID   string
 	OAuthExchangeSecretName string
+	// OAuthPoliciesClientID: the oauth-policies client, its secret under
+	// OAuthClientSecretKey of the OAuthPoliciesSecretName Secret.
+	OAuthPoliciesClientID   string
+	OAuthPoliciesSecretName string
 	// PolicyPromptFlow/PolicyBindingFlow: the policy-flows login flow slugs,
 	// with the policies in the prompt stage's validation_policies and on its
 	// FlowStageBinding.
@@ -147,6 +151,12 @@ const OAuthClientSecretKey = "client-secret"
 // OAuthRedirectURI is the oauth-token client's authorization-code redirect
 // URI. k6 reads the code off the redirect and never requests it.
 const OAuthRedirectURI = "http://localhost/akbench/callback"
+
+// OAuthPoliciesGroup is the fixture group the oauth-policies application is
+// bound to. Every fixture user is a member through one of its child groups
+// (internal/fixtures: baselineAccess sits under it), so the binding passes
+// for all of them and has to walk the group tree to find that out.
+const OAuthPoliciesGroup = "Application Access"
 
 // EnvVars renders the env vars for the dependencies in use.
 func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
@@ -190,6 +200,20 @@ func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_ID", Value: d.OAuthExchangeClientID},
 			corev1.EnvVar{Name: "OAUTH_EXCHANGE_CLIENT_SECRET", ValueFrom: secretRef(d.OAuthExchangeSecretName)},
 		)
+	}
+	if d.OAuthPoliciesClientID != "" {
+		vars = append(vars,
+			corev1.EnvVar{Name: "OAUTH_POLICIES_CLIENT_ID", Value: d.OAuthPoliciesClientID},
+			corev1.EnvVar{Name: "OAUTH_POLICIES_CLIENT_SECRET", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				Name: d.OAuthPoliciesSecretName, Key: OAuthClientSecretKey,
+			}}},
+		)
+		// Appended here, not hoisted above: the oauth-token block's own
+		// variables must keep their order, or every running oauth-token
+		// burn would be rolled.
+		if d.OAuthClientID == "" {
+			vars = append(vars, corev1.EnvVar{Name: "OAUTH_REDIRECT_URI", Value: OAuthRedirectURI})
+		}
 	}
 	if d.PolicyPromptFlow != "" {
 		vars = append(vars,

@@ -77,6 +77,8 @@ var allDependencies = dependencyBlueprint{
 	SAMLSource:  &samlSourceBlueprint{"saml-idp-c-d", "http://idp/sso"},
 	OAuthToken:  &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2", "http://localhost/cb"},
 	PolicyFlows: &policyFlowsBlueprint{"policy-c-d"},
+
+	OAuthPolicies: &oauthPoliciesBlueprint{"oauth-pol-c-d", "secret3", "http://localhost/cb", "Application Access"},
 }
 
 func renderBlueprint(t *testing.T, b dependencyBlueprint) []byte {
@@ -111,6 +113,9 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"authentik_sources_saml.samlsource",
 		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
 		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
+		"authentik_providers_oauth2.oauth2provider", "authentik_core.application",
+		"authentik_policies_expression.expressionpolicy",
+		"authentik_policies.policybinding", "authentik_policies.policybinding",
 		"authentik_policies_expression.expressionpolicy", "authentik_policies_expression.expressionpolicy",
 		"authentik_policies_expression.expressionpolicy", "authentik_stages_prompt.prompt",
 		"authentik_stages_prompt.promptstage", "authentik_stages_prompt.promptstage",
@@ -132,6 +137,10 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 		"sso_url: \"http://idp/sso\"",
 		"[slug, default-source-pre-authentication]",
 		"- client_credentials",
+		"policy_engine_mode: all",
+		"group: !Find [authentik_core.group, [name, \"Application Access\"]]",
+		"policy: !KeyOf \"oauth-pol-c-d-employee\"",
+		"target: !KeyOf \"oauth-pol-c-d-app\"",
 		"- authorization_code\n        - refresh_token",
 		"url: \"http://localhost/cb\"",
 		"[managed, goauthentik.io/providers/oauth2/scope-offline_access]",
@@ -176,6 +185,12 @@ func TestDependencyEndpoints(t *testing.T) {
 	}})
 	if got.PolicyPromptFlow != "policy-c-d-prompt" || got.PolicyBindingFlow != "policy-c-d-binding" {
 		t.Errorf("policy flows = %q, %q", got.PolicyPromptFlow, got.PolicyBindingFlow)
+	}
+	got = dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{Dependencies: []benchv1alpha1.TestCaseDependency{
+		benchv1alpha1.DependencyOAuthPolicies,
+	}})
+	if got.OAuthPoliciesClientID != "oauth-pol-c-d" || got.OAuthPoliciesSecretName != got.OAuthPoliciesClientID || got.OAuthClientID != "" {
+		t.Errorf("oauth policies client = %+v", got)
 	}
 	if empty := dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{}); empty.EnvVars() != nil {
 		t.Errorf("no dependencies should render no env vars, got %v", empty.EnvVars())

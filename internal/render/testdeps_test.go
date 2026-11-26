@@ -1,6 +1,7 @@
 package render
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -113,5 +114,56 @@ func TestDependencyEnvVars(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("%s = %q, want %q", k, got[k], v)
 		}
+	}
+}
+
+func envNames(d DependencyEndpoints) []string {
+	vars := d.EnvVars()
+	names := make([]string, 0, len(vars))
+	for _, e := range vars {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// The oauth-token variables keep their order whatever else is listed: a
+// reordered env is a changed pod template, which would roll every running
+// oauth-token burn when the operator is upgraded.
+func TestDependencyEnvVarsOAuthTokenOrderIsStable(t *testing.T) {
+	token := DependencyEndpoints{
+		OAuthClientID: "cc", OAuthSecretName: "cc", OAuthExchangeClientID: "te", OAuthExchangeSecretName: "te",
+	}
+	want := []string{
+		"OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET", "OAUTH_REDIRECT_URI",
+		"OAUTH_EXCHANGE_CLIENT_ID", "OAUTH_EXCHANGE_CLIENT_SECRET",
+	}
+	if got := envNames(token); !slices.Equal(got, want) {
+		t.Errorf("oauth-token env = %v, want %v", got, want)
+	}
+
+	both := token
+	both.OAuthPoliciesClientID, both.OAuthPoliciesSecretName = "pol", "pol"
+	wantBoth := slices.Concat(want, []string{"OAUTH_POLICIES_CLIENT_ID", "OAUTH_POLICIES_CLIENT_SECRET"})
+	if got := envNames(both); !slices.Equal(got, wantBoth) {
+		t.Errorf("oauth-token and oauth-policies env = %v, want %v (one OAUTH_REDIRECT_URI)", got, wantBoth)
+	}
+}
+
+func TestDependencyEnvVarsOAuthPolicies(t *testing.T) {
+	d := DependencyEndpoints{OAuthPoliciesClientID: "pol", OAuthPoliciesSecretName: "pol-secret"}
+	want := []string{"OAUTH_POLICIES_CLIENT_ID", "OAUTH_POLICIES_CLIENT_SECRET", "OAUTH_REDIRECT_URI"}
+	if got := envNames(d); !slices.Equal(got, want) {
+		t.Fatalf("oauth-policies env = %v, want %v", got, want)
+	}
+	vars := d.EnvVars()
+	if vars[0].Value != "pol" {
+		t.Errorf("OAUTH_POLICIES_CLIENT_ID = %q, want pol", vars[0].Value)
+	}
+	ref := vars[1].ValueFrom
+	if ref == nil || ref.SecretKeyRef == nil || ref.SecretKeyRef.Name != "pol-secret" || ref.SecretKeyRef.Key != OAuthClientSecretKey {
+		t.Errorf("OAUTH_POLICIES_CLIENT_SECRET source = %+v", ref)
+	}
+	if vars[2].Value != OAuthRedirectURI {
+		t.Errorf("OAUTH_REDIRECT_URI = %q, want %q", vars[2].Value, OAuthRedirectURI)
 	}
 }
