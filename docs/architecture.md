@@ -100,6 +100,10 @@ What each component does.
   `oauth-client-credentials` and `oauth-token-exchange`, which only hit the
   OAuth2 token endpoint (a `client_credentials` grant, and an RFC 8693
   exchange of that token for another provider's);
+  `oauth-introspection` and `oauth-userinfo`, what a resource server does
+  with an access token on every call it serves (RFC 7662 introspection, and
+  the OIDC UserInfo endpoint), each VU reusing one `client_credentials`
+  token until it expires;
   `oauth-refresh-rotation`, an authorization-code login once per VU and
   then one refresh token rotation per iteration;
   `user-settings`, a login and an unchanged save of the user settings form,

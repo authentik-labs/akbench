@@ -66,6 +66,24 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "oauth-introspection", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Asks authentik's token introspection endpoint (RFC 7662) whether an access token is still active, " +
+					"as a resource server does on every API call. Each VU reuses its token until it expires.",
+				Script:       mustEmbeddedScript("oauth-introspect.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
+			Name: "oauth-userinfo", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Fetches the claims for an access token from authentik's OpenID Connect UserInfo endpoint, " +
+					"as a relying party or API gateway does per request. Each VU reuses its token until it expires.",
+				Script:       mustEmbeddedScript("oauth-userinfo.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
 			Name: "oauth-refresh-rotation", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description: "Logs each VU in once through an authorization-code grant with offline_access, then rotates its " +

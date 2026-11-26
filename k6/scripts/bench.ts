@@ -320,6 +320,28 @@ export function requestToken(trace: Trace, grant: string, form: Record<string, s
     return res.json() as unknown as TokenResponse;
 }
 
+// introspectURL and userinfoURL are authentik's token introspection
+// (RFC 7662) and OpenID Connect UserInfo endpoints, shared by every
+// provider like tokenURL.
+export const introspectURL = `${authentikBase}/application/o/introspect/`;
+export const userinfoURL = `${authentikBase}/application/o/userinfo/`;
+
+// reusableToken wraps a grant so each VU asks for a new access token only
+// shortly before its last one expires: a script measuring what a resource
+// server does with a token keeps issuing them out of its iterations.
+export function reusableToken(issue: (trace: Trace) => TokenResponse): (trace: Trace) => string {
+    let token = "";
+    let expires = 0;
+    return (trace: Trace) => {
+        if (Date.now() >= expires) {
+            const res = issue(trace);
+            token = res.access_token;
+            expires = Date.now() + (res.expires_in - 30) * 1000;
+        }
+        return token;
+    };
+}
+
 // The oidc-client and saml-client dependencies' relying parties; empty when
 // the template doesn't list them.
 export const oidcTestClient = __ENV.OAUTH_TEST_CLIENT_HOST ? `http://${__ENV.OAUTH_TEST_CLIENT_HOST}:${__ENV.OAUTH_TEST_CLIENT_PORT || "9009"}` : "";
