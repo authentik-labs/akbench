@@ -106,6 +106,21 @@ export function stepFor(rangeSeconds: number): string {
 }
 
 /**
+ * windowFor is what each point of a chart over rangeSeconds should
+ * aggregate over, or undefined for the server's default (1m). Up to four
+ * hours stepFor's points are at most a minute apart, so 1m windows cover
+ * the range. Beyond that they would sample one minute out of each step -
+ * one in 42 over a week - so the window grows with the step and a point
+ * covers everything since the previous one. Not below two minutes: the
+ * server answers those from its 1m recording rules
+ * (internal/api/metrics.go's recordedRangeMinWindow).
+ */
+export function windowFor(rangeSeconds: number): string | undefined {
+    const step = stepFor(rangeSeconds);
+    return Number.parseInt(step, 10) >= 120 ? step : undefined;
+}
+
+/**
  * shortTag abbreviates an image tag that ends in a full git commit hash
  * ("gh-ccd5f45863edfb003c4dd876fabfcb...") to its first 7 characters, the
  * way git itself does; any other tag is returned unchanged.

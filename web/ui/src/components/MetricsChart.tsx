@@ -6,6 +6,7 @@ import {
     relativeDelta,
     seriesAverage,
     stepFor,
+    windowFor,
     topActors,
 } from "../format";
 import { useDarkTheme } from "../theme";
@@ -278,6 +279,8 @@ export function MetricsChart({
                     window.start,
                     window.end,
                     step ?? stepFor(rangeSeconds),
+                    // A caller's own step keeps the server's default window.
+                    step === undefined ? windowFor(rangeSeconds) : undefined,
                 )
                 .then((response) => ({ response, window }));
         },
@@ -516,6 +519,7 @@ export function ResourceCharts({
                         window.end,
                         stepFor(rangeSeconds),
                         component,
+                        windowFor(rangeSeconds),
                     ),
                 ),
             ).then((responses) => ({ responses, window }));

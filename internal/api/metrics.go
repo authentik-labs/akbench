@@ -50,6 +50,14 @@ type CompareMetric struct {
 // resolution would show up as lag.
 const recordedMinWindow = model.Duration(time.Hour)
 
+// recordedRangeMinWindow is the shortest per-point window metricsRange
+// answers from the recording rules. A chart over more than a few hours asks
+// for a window as long as its step, so that a point covers everything since
+// the previous one; over the raw series that reads every sample in the
+// range, which is what the rules exist to avoid. Shorter than this and a
+// point would average fewer than two of the rules' 1m samples.
+const recordedRangeMinWindow = model.Duration(2 * time.Minute)
+
 // fill renders Query for one label selector and range window. A query with
 // a range selector ("[%s]" or "[%[2]s]") takes both; one without (a plain
 // gauge) takes only the selector.
@@ -551,7 +559,8 @@ type rangeResponse struct {
 }
 
 // metricsRange answers GET
-// /metrics/range?testids=a,b&metric=<key>&start=&end=[&window=][&step=], the
+// /metrics/range?testids=a,b&metric=<key>&start=&end=[&window=][&step=]
+// (window is what each point aggregates over, default 1m), the
 // per-test time series behind the compare view's charts and a TestCase's own
 // metrics panel. It is the only place a Burn TestCase's metrics can be
 // viewed at all: Burn has no TestRun history the way Quick does, since it
@@ -621,10 +630,9 @@ func (s *Server) metricsRange(w http.ResponseWriter, r *http.Request) {
 	var errs promErrors
 	for _, id := range testids {
 		selector := fmt.Sprintf("testid=%q", id)
-		query := metric.fill(selector, window)
 		var series []promSeries
 		for _, baseURL := range s.prometheusURLsForTestID(r.Context(), id) {
-			got, err := s.promRangeMulti(r.Context(), baseURL, query, start, end, step)
+			got, err := s.rangeSeries(r.Context(), baseURL, *metric, selector, window, start, end, step)
 			if err != nil {
 				errs.add(id, baseURL, err)
 				continue
@@ -672,6 +680,28 @@ func (s *Server) metricsRange(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Errors = errs.byTestID
 	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// rangeSeries answers one metric of metricsRange for one Prometheus, from
+// the recording rules when each point covers a long enough window. Like
+// compareSamples, a recorded result without a single point falls back to
+// the raw query: a Prometheus without the rules, or data that predates
+// them.
+func (s *Server) rangeSeries(
+	ctx context.Context, baseURL string, m CompareMetric, selector, window, start, end, step string,
+) ([]promSeries, error) {
+	if d, err := model.ParseDuration(window); err == nil && m.Recorded != "" && d >= recordedRangeMinWindow {
+		series, err := s.promRangeMulti(ctx, baseURL, fmt.Sprintf(m.Recorded, selector, window), start, end, step)
+		if err != nil {
+			return nil, err
+		}
+		for _, ser := range series {
+			if len(ser.Points) > 0 {
+				return series, nil
+			}
+		}
+	}
+	return s.promRangeMulti(ctx, baseURL, m.fill(selector, window), start, end, step)
 }
 
 // promMatrixResponse is the query_range shape: one entry per distinct label

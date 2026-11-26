@@ -21,6 +21,7 @@ import {
     targetNameOf,
     timeRangeSeconds,
     topActors,
+    windowFor,
 } from "./format";
 
 import { describe, expect, it } from "vitest";
@@ -184,6 +185,23 @@ describe("stepFor", () => {
 
     it("keeps long ranges to about 240 points", () => {
         expect(stepFor(7 * 86400)).toBe("2520s");
+    });
+});
+
+describe("windowFor", () => {
+    it("leaves the default window while points are at most a minute apart", () => {
+        expect(windowFor(900)).toBeUndefined();
+        expect(windowFor(4 * 3600)).toBeUndefined();
+    });
+
+    it("leaves the default just past that, where a window would be under two minutes", () => {
+        expect(windowFor(6 * 3600)).toBeUndefined();
+    });
+
+    it("covers the whole step on a long range", () => {
+        expect(windowFor(12 * 3600)).toBe("180s");
+        expect(windowFor(7 * 86400)).toBe("2520s");
+        expect(windowFor(7 * 86400)).toBe(stepFor(7 * 86400));
     });
 });
 
