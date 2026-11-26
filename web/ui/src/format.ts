@@ -72,6 +72,18 @@ export function relativeDelta(
 }
 
 /**
+ * deltaTone says how a relative change reads for a metric where `better` is
+ * the good direction. Under half a percent either way is "flat": it rounds
+ * to 0.0% or so, and coloring it would claim a win or a loss.
+ */
+export function deltaTone(delta: number, better: "higher" | "lower"): "flat" | "better" | "worse" {
+    if (Math.abs(delta) < 0.005) {
+        return "flat";
+    }
+    return (better === "lower" ? delta < 0 : delta > 0) ? "better" : "worse";
+}
+
+/**
  * stepFor picks a range query step that keeps a chart around 240 points,
  * never finer than 15s - a 7 day range at a fixed 15s step would be ~40k
  * points per series, past Prometheus' own 11k-point limit.

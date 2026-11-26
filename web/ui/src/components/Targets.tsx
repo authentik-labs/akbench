@@ -1,5 +1,6 @@
 import {
     colorFor,
+    deltaTone,
     formatDuration,
     readableTextOn,
     formatMetricValue,
@@ -284,14 +285,10 @@ export function Delta({
     if (value === undefined) {
         return <span className="muted">-</span>;
     }
-    const improved = better === "lower" ? value < 0 : value > 0;
+    const tone = deltaTone(value, better);
     const arrow = value > 0 ? "▲" : value < 0 ? "▼" : "";
     return (
-        <span
-            className={
-                Math.abs(value) < 0.005 ? "muted" : improved ? "delta better" : "delta worse"
-            }
-        >
+        <span className={tone === "flat" ? "muted" : `delta ${tone}`}>
             {arrow} {Math.abs(value * 100).toFixed(1)}%
         </span>
     );
