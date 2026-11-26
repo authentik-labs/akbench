@@ -30,10 +30,11 @@ const chartName = "authentik"
 // Helm values map keys the chart's own schema defines, repeated across
 // server/worker/postgresql sections of HelmValues below.
 const (
-	valuesKeyReplicas = "replicas"
-	valuesKeyPassword = "password"
-	valuesKeyName     = "name"
-	valuesKeyHost     = "host"
+	valuesKeyReplicas  = "replicas"
+	valuesKeyResources = "resources"
+	valuesKeyPassword  = "password"
+	valuesKeyName      = "name"
+	valuesKeyHost      = "host"
 
 	valuesKeyRelabelings = "relabelings"
 )
@@ -72,6 +73,23 @@ type AuthentikDeploymentHelmValues struct {
 	Worker           map[string]any `json:"worker"`
 	Authentik        map[string]any `json:"authentik"`
 	Postgres         map[string]any `json:"postgresql"`
+}
+
+// workloadResources is a WorkloadSpec's resources as the chart's
+// server.resources/worker.resources value (a container's requests and
+// limits), or nil when neither is set.
+func workloadResources(r corev1.ResourceRequirements) map[string]any {
+	out := map[string]any{}
+	if len(r.Requests) > 0 {
+		out["requests"] = r.Requests
+	}
+	if len(r.Limits) > 0 {
+		out["limits"] = r.Limits
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // HelmValues builds the authentik chart values for a deployment, per the
@@ -169,6 +187,15 @@ func HelmValues(t *benchv1alpha1.AuthentikDeployment, wc *benchv1alpha1.Workload
 			"enabled":          embedded,
 			"fullnameOverride": embeddedPostgresFullname(t),
 		},
+	}
+	// Only when set: a deployment without them keeps rendering the same
+	// values, so rolling this out does not upgrade (and restart) releases
+	// that never asked for requests or limits.
+	if r := workloadResources(t.Spec.Server.Resources); r != nil {
+		values.Server[valuesKeyResources] = r
+	}
+	if r := workloadResources(t.Spec.Worker.Resources); r != nil {
+		values.Worker[valuesKeyResources] = r
 	}
 	if embedded {
 		// The bundled postgresql subchart is Bitnami-style: commonLabels
