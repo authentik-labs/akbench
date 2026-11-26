@@ -1,4 +1,11 @@
-import { nestChildren, PARENT_LABEL, TestCase, TestCaseSpec, testCaseBaseline } from "./types";
+import {
+    nestChildren,
+    PARENT_LABEL,
+    TestCase,
+    TestCaseSpec,
+    testCaseBaseline,
+    testCaseBaselineTarget,
+} from "./types";
 
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +33,34 @@ describe("testCaseBaseline", () => {
 
     it("is undefined without deployments", () => {
         expect(testCaseBaseline(spec({}))).toBeUndefined();
+    });
+});
+
+describe("testCaseBaselineTarget", () => {
+    const testCase = (status?: TestCase["status"]): TestCase => ({
+        metadata: { name: "t" },
+        spec: spec({ deploymentRefs: [{ name: "a" }, { name: "b" }], baselineRef: { name: "b" } }),
+        status,
+    });
+
+    it("is the target recorded for the baseline deployment", () => {
+        expect(
+            testCaseBaselineTarget(
+                testCase({
+                    deployments: [
+                        { name: "a", ready: true, target: "head" },
+                        { name: "b", ready: true, target: "main" },
+                    ],
+                }),
+            ),
+        ).toBe("main");
+    });
+
+    it("falls back to the deployment's name, the default target", () => {
+        expect(testCaseBaselineTarget(testCase())).toBe("b");
+        expect(
+            testCaseBaselineTarget(testCase({ deployments: [{ name: "b", ready: true }] })),
+        ).toBe("b");
     });
 });
 

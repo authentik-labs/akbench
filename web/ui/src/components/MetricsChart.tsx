@@ -1,5 +1,6 @@
 import { api } from "../api";
 import {
+    baselineRows,
     colorFor,
     formatMetricValue,
     onlyTargets,
@@ -400,28 +401,32 @@ interface AverageColumn {
 interface AverageRow {
     key: string;
     label: string;
+    /** Rows are only compared within one group (default: all in one). */
+    group?: string;
     /** One per column. */
     values: (number | undefined)[];
 }
 
 /**
  * AverageTable is a section's charts boiled down to one average per line
- * over the window, each with its change relative to the baseline row (the
- * first row unless baseline names another).
+ * over the window, each with its change relative to its group's baseline
+ * row (format.ts's baselineRows: the group's first row unless baselines
+ * names another).
  */
 function AverageTable({
     columns,
     rows,
-    baseline,
+    baselines,
 }: {
     columns: AverageColumn[];
     rows: AverageRow[];
-    baseline?: string;
+    /** Keys of the rows to compare the others in their group against. */
+    baselines?: string[];
 }) {
     if (rows.length === 0) {
         return null;
     }
-    const base = rows.find((r) => r.key === baseline) ?? rows[0];
+    const bases = baselineRows(rows, baselines);
     return (
         <div
             className="panel table-scroll"
@@ -440,30 +445,34 @@ function AverageTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {rows.map((row) => (
-                        <tr key={row.key}>
-                            <td>
-                                {row.label}
-                                {rows.length > 1 && row === base && (
-                                    <span className="muted"> (baseline)</span>
-                                )}
-                            </td>
-                            {columns.map((c, i) => (
-                                <td key={c.label} className="mono num">
-                                    {formatMetricValue(row.values[i], c.unit)}
-                                    {rows.length > 1 && row !== base && (
-                                        <>
-                                            {" "}
-                                            <Delta
-                                                value={relativeDelta(row.values[i], base.values[i])}
-                                                better={c.better}
-                                            />
-                                        </>
-                                    )}
+                    {rows.map((row) => {
+                        const base = bases.get(row.key);
+                        return (
+                            <tr key={row.key}>
+                                <td>
+                                    {row.label}
+                                    {row === base && <span className="muted"> (baseline)</span>}
                                 </td>
-                            ))}
-                        </tr>
-                    ))}
+                                {columns.map((c, i) => (
+                                    <td key={c.label} className="mono num">
+                                        {formatMetricValue(row.values[i], c.unit)}
+                                        {base && row !== base && (
+                                            <>
+                                                {" "}
+                                                <Delta
+                                                    value={relativeDelta(
+                                                        row.values[i],
+                                                        base.values[i],
+                                                    )}
+                                                    better={c.better}
+                                                />
+                                            </>
+                                        )}
+                                    </td>
+                                ))}
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
         </div>
@@ -499,8 +508,12 @@ export function ResourceCharts({
     rangeSeconds?: number;
     /** Fewer, wider charts per row. */
     wide?: boolean;
-    /** The k6 target the averages' Δ is relative to (default: the first line). */
-    baseline?: string;
+    /**
+     * The k6 target the averages' Δ is relative to: one for every test, or
+     * one per testid. Lines are only compared with their own test's
+     * baseline (default: that test's first line).
+     */
+    baseline?: string | Record<string, string | undefined>;
     refreshMs?: number;
 }) {
     const { data, error } = useResource(
@@ -548,6 +561,7 @@ export function ResourceCharts({
     const rows = lines.map((line, i) => ({
         key: `${line.testid}::${line.target}`,
         label: labels[i],
+        group: line.testid,
         values: charts.map((c) =>
             seriesAverage(
                 c.series.filter((s) => s.testid === line.testid && s.target === line.target),
@@ -560,7 +574,13 @@ export function ResourceCharts({
             <AverageTable
                 columns={charts.map((c) => ({ label: c.title, unit: c.unit, better: "lower" }))}
                 rows={rows}
-                baseline={baseline && rows[lines.findIndex((l) => l.target === baseline)]?.key}
+                baselines={lines
+                    .filter(
+                        (l) =>
+                            l.target ===
+                            (typeof baseline === "string" ? baseline : baseline?.[l.testid]),
+                    )
+                    .map((l) => `${l.testid}::${l.target}`)}
             />
             <div className={wide ? "grid2 wide" : "grid2"}>
                 {charts.map((c) => (
@@ -994,7 +1014,7 @@ export function WorkerCharts({
                     better: a.better,
                 }))}
                 rows={rows}
-                baseline={baseline}
+                baselines={baseline === undefined ? undefined : [baseline]}
             />
             <div className="grid2">
                 {charts.map((c) => (

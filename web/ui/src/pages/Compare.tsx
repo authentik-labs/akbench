@@ -10,7 +10,7 @@ import {
     parseTimeRange,
     timeRangeSeconds,
 } from "../format";
-import { CompareResponse, isParent } from "../types";
+import { CompareResponse, isParent, testCaseBaselineTarget } from "../types";
 import { useResource } from "../useResource";
 
 // Side-by-side comparison of test cases: an instant-query summary table
@@ -269,10 +269,16 @@ export function ComparePage() {
                     <h2>Resource usage</h2>
                     <p className="muted">
                         CPU and memory of each test's authentik server and worker pods, summed per
-                        target - one line per test, same as the charts above.
+                        target - one line per test, same as the charts above. Δ is relative to a
+                        test's own baseline target, never to another test.
                     </p>
                     <ResourceCharts
                         testids={selected}
+                        baseline={Object.fromEntries(
+                            (testCases.data ?? [])
+                                .filter((tc) => selected.includes(tc.metadata.name))
+                                .map((tc) => [tc.metadata.name, testCaseBaselineTarget(tc)]),
+                        )}
                         rangeSeconds={rangeSeconds}
                         endSeconds={anchor?.endSeconds}
                     />

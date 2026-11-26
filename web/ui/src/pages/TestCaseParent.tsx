@@ -29,7 +29,7 @@ import {
     timeRangeSeconds,
 } from "../format";
 import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
-import { AuthentikDeploymentSpec, TestCase, TestCaseSpec } from "../types";
+import { AuthentikDeploymentSpec, TestCase, testCaseBaselineTarget, TestCaseSpec } from "../types";
 import { useResource } from "../useResource";
 import { ClusterSelect, DeploymentSpecFields, emptySpec } from "./Deployments";
 
@@ -429,9 +429,17 @@ export function TestCaseParentView({
             <Section
                 id="resources"
                 title="Resources"
-                description="CPU and memory of every deployment's server and worker pods over the same range."
+                description="CPU and memory of every deployment's server and worker pods over the same range. Δ is relative to the baseline variant of the same template."
             >
-                <ResourceCharts testids={testids} endSeconds={burnEnd} rangeSeconds={range} wide />
+                <ResourceCharts
+                    testids={testids}
+                    baseline={Object.fromEntries(
+                        rowTestCases.map((tc) => [tc.metadata.name, testCaseBaselineTarget(tc)]),
+                    )}
+                    endSeconds={burnEnd}
+                    rangeSeconds={range}
+                    wide
+                />
             </Section>
 
             <Section

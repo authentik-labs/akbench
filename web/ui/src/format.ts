@@ -71,6 +71,36 @@ export function summaryWindowNote(seconds: number, ended = false): string {
 }
 
 /**
+ * baselineRows picks, for each row of a table of averages, the row its Δ is
+ * relative to. Rows are only compared within their own group (a test case):
+ * two tests run different scripts, so one's CPU against the other's says
+ * nothing. A group's baseline is its row named in baselineKeys, else its
+ * first; a baseline row maps to itself, and a row alone in its group to
+ * undefined, since it has nothing to be compared with.
+ */
+export function baselineRows<T extends { key: string; group?: string }>(
+    rows: T[],
+    baselineKeys: string[] = [],
+): Map<string, T | undefined> {
+    const groups = new Map<string, T[]>();
+    for (const row of rows) {
+        const group = row.group ?? "";
+        groups.set(group, [...(groups.get(group) ?? []), row]);
+    }
+    const result = new Map<string, T | undefined>();
+    for (const members of groups.values()) {
+        const base =
+            members.length > 1
+                ? (members.find((r) => baselineKeys.includes(r.key)) ?? members[0])
+                : undefined;
+        for (const row of members) {
+            result.set(row.key, base);
+        }
+    }
+    return result;
+}
+
+/**
  * relativeDelta is value's change relative to baseline (0.1 = 10% higher),
  * or undefined when either side is missing or the baseline is zero.
  */

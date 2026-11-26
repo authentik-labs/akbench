@@ -1,6 +1,7 @@
 import {
     smoothPoints,
     archivedBurnWindow,
+    baselineRows,
     buildLabel,
     colorFor,
     deltaTone,
@@ -146,6 +147,44 @@ describe("summaryWindowNote", () => {
 
     it("names the end of a burn that has stopped", () => {
         expect(summaryWindowNote(900, true)).toBe("Values cover the final 15m of the burn.");
+    });
+});
+
+describe("baselineRows", () => {
+    const row = (key: string, group?: string) => ({ key, group });
+
+    it("compares every row with the first when there are no groups", () => {
+        const rows = [row("a"), row("b"), row("c")];
+        const bases = baselineRows(rows);
+        expect(bases.get("a")).toBe(rows[0]);
+        expect(bases.get("b")).toBe(rows[0]);
+        expect(bases.get("c")).toBe(rows[0]);
+    });
+
+    it("uses the named baseline row", () => {
+        const rows = [row("a"), row("b")];
+        expect(baselineRows(rows, ["b"]).get("a")).toBe(rows[1]);
+    });
+
+    it("never compares a row with another group's baseline", () => {
+        const rows = [
+            row("login::head", "login"),
+            row("login::main", "login"),
+            row("oidc::head", "oidc"),
+            row("oidc::main", "oidc"),
+        ];
+        const bases = baselineRows(rows, ["login::main", "oidc::main"]);
+        expect(bases.get("login::head")).toBe(rows[1]);
+        expect(bases.get("oidc::head")).toBe(rows[3]);
+        // Without a named baseline each group falls back to its own first row.
+        expect(baselineRows(rows).get("oidc::main")).toBe(rows[2]);
+    });
+
+    it("gives a row alone in its group nothing to compare with", () => {
+        const rows = [row("login::a", "login"), row("oidc::a", "oidc")];
+        const bases = baselineRows(rows, ["login::a"]);
+        expect(bases.get("login::a")).toBeUndefined();
+        expect(bases.get("oidc::a")).toBeUndefined();
     });
 });
 
