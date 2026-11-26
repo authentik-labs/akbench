@@ -578,7 +578,10 @@ function TestCaseForm({ existing, kindStep }: { existing?: TestCase; kindStep?: 
                                 </Field>
                             </>
                         ) : (
-                            <Field label="Time limit">
+                            <Field
+                                label="Time limit"
+                                help="The load stops after this long under load"
+                            >
                                 <input
                                     value={spec.burnDuration ?? ""}
                                     placeholder="8760h"
@@ -816,7 +819,8 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
     const rollingOut =
         !!tc &&
         !tc.spec.archived &&
-        (tc.status?.phase !== "Ready" ||
+        // Completed is where a burn ends, not a rollout in progress.
+        ((tc.status?.phase !== "Ready" && tc.status?.phase !== "Completed") ||
             targetDeployments.some((d) => d.status?.phase !== "Ready"));
     // pendingBaseline shows a picked baseline (a deployment name) right away,
     // until the reloaded TestCase carries it.

@@ -358,6 +358,16 @@ describe("archivedBurnWindow", () => {
         });
     });
 
+    it("spans the burn of a test that finished at its time limit", () => {
+        const finished = { type: "Ready", status: "False", reason: "BurnFinished" };
+        const deployments = [
+            { burningSince: "2026-10-14T10:00:00Z", burnStoppedAt: "2026-10-14T11:00:00Z" },
+        ];
+        expect(
+            archivedBurnWindow({ spec: {}, status: { conditions: [finished], deployments } }),
+        ).toEqual({ start: s("2026-10-14T10:00:00Z"), end: s("2026-10-14T11:00:00Z") });
+    });
+
     it("spans the burn of a test stopped because postgres ran out of storage", () => {
         const deployments = [
             { burningSince: "2026-10-14T10:00:00Z", burnStoppedAt: "2026-10-16T00:00:00Z" },
