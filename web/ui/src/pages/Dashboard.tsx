@@ -2,6 +2,7 @@ import { api } from "../api";
 import { MatrixGrid } from "../components/Matrix";
 import { NodePlacement } from "../components/Placement";
 import { PullRequestLink } from "../components/PullRequestLink";
+import { QueryErrors } from "../components/QueryErrors";
 import { Badge } from "../components/Status";
 import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets";
 import { Alert, Empty, formatTimestamp, Loading, Page, Stat, Table } from "../components/ui";
@@ -126,6 +127,7 @@ export function DashboardPage() {
             }
         >
             <Alert>{deployments.error ?? testCases.error ?? runs.error ?? live.error}</Alert>
+            <QueryErrors errors={live.data?.errors} />
             {monitoringAlerts.map((a) => (
                 <Alert key={`${a.cluster}/${a.labels.alertname}`}>
                     <Link to="/alerts">{a.labels.alertname}</Link> on{" "}

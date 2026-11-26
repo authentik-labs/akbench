@@ -12,6 +12,7 @@ import {
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
+import { QueryErrors } from "../components/QueryErrors";
 import { RestartsWarning } from "../components/Restarts";
 import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
@@ -975,6 +976,7 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
             />
             {rollingOut && statusSection}
 
+            <QueryErrors errors={summary.data?.errors} />
             <RestartsWarning testids={[name]} period={summaryWindow} endSeconds={metricsEnd} />
             <Section
                 id="targets"
