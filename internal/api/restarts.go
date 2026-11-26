@@ -190,12 +190,21 @@ func (s *Server) listRestarts(w http.ResponseWriter, r *http.Request) {
 // come from the same version of it. The error names what could not be
 // checked; the checks that could be made are returned with it.
 func (s *Server) restartsChecks(ctx context.Context, testid string, windowStart, end time.Time) ([]restartsCheck, error) {
+	_, _, checks, err := s.loadChecks(ctx, testid, windowStart, end)
+	return checks, err
+}
+
+// loadChecks is restartsChecks together with the TestCase and, for a Quick
+// one, the TestRuns the checks were worked out from.
+func (s *Server) loadChecks(
+	ctx context.Context, testid string, windowStart, end time.Time,
+) (*benchv1alpha1.TestCase, []benchv1alpha1.TestRun, []restartsCheck, error) {
 	var tc benchv1alpha1.TestCase
 	if err := s.client.Get(ctx, types.NamespacedName{Name: testid, Namespace: s.cfg.Namespace}, &tc); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, errors.New("test case not found")
+			return nil, nil, nil, errors.New("test case not found")
 		}
-		return nil, fmt.Errorf("read test case: %w", err)
+		return nil, nil, nil, fmt.Errorf("read test case: %w", err)
 	}
 	targets, skipped := s.resolveDeploymentTargets(ctx, &tc)
 
@@ -203,7 +212,7 @@ func (s *Server) restartsChecks(ctx context.Context, testid string, windowStart,
 	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
 		var list benchv1alpha1.TestRunList
 		if err := s.client.List(ctx, &list, client.InNamespace(s.cfg.Namespace)); err != nil {
-			return nil, fmt.Errorf("list test runs: %w", err)
+			return nil, nil, nil, fmt.Errorf("list test runs: %w", err)
 		}
 		for _, run := range list.Items {
 			if run.Spec.TestCaseRef.Name == testid {
@@ -237,9 +246,9 @@ func (s *Server) restartsChecks(ctx context.Context, testid string, windowStart,
 		for i, name := range skipped {
 			quoted[i] = strconv.Quote(name)
 		}
-		return checks, fmt.Errorf("could not check deployment(s) %s: gone, or their cluster has no Prometheus yet", strings.Join(quoted, ", "))
+		return &tc, runs, checks, fmt.Errorf("could not check deployment(s) %s: gone, or their cluster has no Prometheus yet", strings.Join(quoted, ", "))
 	}
-	return checks, nil
+	return &tc, runs, checks, nil
 }
 
 // loadStart is when k6 started loading deployment, for a window from

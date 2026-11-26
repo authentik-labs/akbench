@@ -196,6 +196,7 @@ type mcpCompareInput struct {
 	TestIDs []string `json:"testids" jsonschema:"TestCase names (k6 testids) to compare"`
 	Window  string   `json:"window,omitempty" jsonschema:"trailing window the rates and quantiles are computed over, a Prometheus duration like 5m (default) or 30m"`
 	Time    int64    `json:"time,omitempty" jsonschema:"unix timestamp (seconds) the window ends at; defaults to now. Set it to a TestRun's completion time to summarize a finished run"`
+	Cost    bool     `json:"cost,omitempty" jsonschema:"also report server, worker and postgres CPU seconds per passed transaction for each target (derived values, a few extra queries per target). One test's cost only while that test is its deployment's only load"`
 }
 
 type mcpSeriesInput struct {
@@ -329,6 +330,9 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 			}
 			if in.Time != 0 {
 				params.Set("time", strconv.FormatInt(in.Time, 10))
+			}
+			if in.Cost {
+				params.Set("cost", "true")
 			}
 			return mcpJSON(ctx, read, "/metrics/compare", params)
 		})

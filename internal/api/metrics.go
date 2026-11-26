@@ -43,6 +43,10 @@ type CompareMetric struct {
 	// two verbs, used for windows of at least recordedMinWindow. Empty for
 	// the instant gauges, which are cheap at any window.
 	Recorded string `json:"-"`
+	// Derived marks a metric computed from others rather than read from a
+	// series of its own (costMetrics): compare reports it, metricsRange has
+	// no time series for it.
+	Derived bool `json:"derived,omitempty"`
 }
 
 // recordedMinWindow is the shortest compare window answered from the
@@ -465,7 +469,15 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	}
 	at := r.URL.Query().Get("time")
 
-	resp := compareResponse{Window: window, Metrics: compareMetrics}
+	// &cost=true adds the derived costs (costMetrics). They are extra
+	// queries per target, so only for callers that show them.
+	withCost := r.URL.Query().Get("cost") == "true"
+	if at != "" && !safeUnixTime.MatchString(at) {
+		writeError(w, r, http.StatusBadRequest, "time must be a unix timestamp")
+		return
+	}
+
+	resp := compareResponse{Window: window, Metrics: compareResponseMetrics(withCost)}
 	var errs promErrors
 	for _, id := range testids {
 		baseURLs := s.prometheusURLsForTestID(r.Context(), id)
@@ -500,6 +512,11 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 					ensureRow(sample.Target).Values[m.Key] = sample.Value
 				}
 			}
+		}
+		// Not for a test whose own numbers could not be read: its
+		// Prometheus is the one the costs would wait on next.
+		if _, k6Failed := errs.byTestID[id]; withCost && !k6Failed {
+			s.addCostValues(r.Context(), id, rows, window, at, &errs)
 		}
 		if len(order) == 0 {
 			// Neither a known deployment nor any actual data: still emit one
