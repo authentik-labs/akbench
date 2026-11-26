@@ -121,6 +121,11 @@ export function TargetKey({ index }: { index: number }) {
     );
 }
 
+/**
+ * The metrics a targets table compares. Not "checks": k6 only reports it as
+ * the pass rate since its pod started, so it does not cover the window the
+ * rest of the table does. "iteration_failed" is the windowed failure figure.
+ */
 export const TARGET_METRICS = [
     "iterations",
     "http_reqs",
@@ -128,7 +133,6 @@ export const TARGET_METRICS = [
     "http_req_duration_p99",
     "http_req_failed",
     "iteration_failed",
-    "checks",
 ];
 
 export function TargetTable({
