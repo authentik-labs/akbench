@@ -76,7 +76,8 @@ interface WindowedRange {
  * /metrics/compare call, rather than hardcoding a list here that would
  * silently go stale whenever the backend adds or renames one. Only the
  * definitions are used; the testid is just to get a real response. Fetched
- * once - they are static for a running backend.
+ * once - they are static for a running backend. Derived metrics are left
+ * out: every caller charts what this returns.
  */
 export function useAvailableMetrics(testids: string[]): CompareMetric[] {
     const primary = testids[0];
@@ -85,7 +86,7 @@ export function useAvailableMetrics(testids: string[]): CompareMetric[] {
         [primary],
         0,
     );
-    return result.data?.metrics ?? [];
+    return (result.data?.metrics ?? []).filter((m) => !m.derived);
 }
 
 /**

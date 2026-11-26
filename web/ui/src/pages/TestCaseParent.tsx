@@ -304,7 +304,7 @@ export function TestCaseParentView({
     const comparison = useResource(
         () =>
             testids.length
-                ? api.compare(testids, `${range}s`, burnEnd)
+                ? api.compare(testids, `${range}s`, burnEnd, true)
                 : Promise.resolve(undefined),
         [testids.join(","), range, burnEnd],
         15000,

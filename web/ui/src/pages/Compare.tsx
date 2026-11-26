@@ -133,7 +133,7 @@ export function ComparePage() {
     const comparison = useResource(
         () =>
             selected.length
-                ? api.compare(selected, summaryWindow, anchor?.endSeconds)
+                ? api.compare(selected, summaryWindow, anchor?.endSeconds, true)
                 : Promise.resolve(undefined),
         [selected.join(","), summaryWindow, anchor?.endSeconds],
         10000,
@@ -255,15 +255,18 @@ export function ComparePage() {
 
                     <h2>Over time</h2>
                     <div className="grid2">
-                        {metrics.map((m) => (
-                            <MetricsChart
-                                key={m.key}
-                                metric={m.key}
-                                testids={selected}
-                                rangeSeconds={rangeSeconds}
-                                endSeconds={anchor?.endSeconds}
-                            />
-                        ))}
+                        {/* Derived metrics have no time series to chart. */}
+                        {metrics
+                            .filter((m) => !m.derived)
+                            .map((m) => (
+                                <MetricsChart
+                                    key={m.key}
+                                    metric={m.key}
+                                    testids={selected}
+                                    rangeSeconds={rangeSeconds}
+                                    endSeconds={anchor?.endSeconds}
+                                />
+                            ))}
                     </div>
 
                     <h2>Resource usage</h2>

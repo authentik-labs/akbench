@@ -805,7 +805,9 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
     const summaryWindow = profile === "Quick" ? "5m" : `${timelineRange}s`;
     const summary = useResource(
         () =>
-            profile ? api.compare([name], summaryWindow, metricsEnd) : Promise.resolve(undefined),
+            profile
+                ? api.compare([name], summaryWindow, metricsEnd, true)
+                : Promise.resolve(undefined),
         [name, profile, summaryWindow, metricsEnd],
         15000,
     );

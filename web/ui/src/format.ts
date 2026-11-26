@@ -13,6 +13,13 @@ export function formatMetricValue(value: number | undefined, unit: string): stri
     if (unit === "s") {
         return value < 1 ? `${(value * 1000).toFixed(0)} ms` : `${value.toFixed(2)} s`;
     }
+    // CPU time, never to be read as a duration: "61.2 CPU-ms".
+    if (unit === "cpu-s") {
+        // Decided on the rounded figure, so 0.9996 is "1.00 CPU-s" and not
+        // "1000 CPU-ms".
+        const ms = Number((value * 1000).toPrecision(3));
+        return ms < 1000 ? `${ms} CPU-ms` : `${value.toFixed(2)} CPU-s`;
+    }
     if (unit === "cores") {
         return value < 1 ? `${Math.round(value * 1000)}m` : `${value.toFixed(2)} cores`;
     }
