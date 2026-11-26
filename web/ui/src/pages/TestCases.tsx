@@ -43,6 +43,7 @@ import {
     parseTimeRange,
     shortTag,
     SINCE_START,
+    summaryWindowNote,
     timeRangeSeconds,
     newestFirst,
 } from "../format";
@@ -984,7 +985,7 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
                         ? anchor
                             ? `The last 5 minutes of the latest completed run (${new Date(anchor.endSeconds * 1000).toLocaleString()}).`
                             : "Shows once a run has completed."
-                        : "Same script and load on each target. Δ is relative to the baseline target."
+                        : `Same script and load on each target. ${summaryWindowNote(timelineRange, burnEnd !== undefined)} Δ is relative to the baseline target.`
                 }
                 actions={
                     profile === "Burn" && (

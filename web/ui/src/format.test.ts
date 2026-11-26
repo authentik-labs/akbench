@@ -16,6 +16,7 @@ import {
     seriesAverage,
     SINCE_START,
     stepFor,
+    summaryWindowNote,
     targetNameOf,
     timeRangeSeconds,
     topActors,
@@ -127,6 +128,22 @@ describe("formatDuration", () => {
 
     it("clamps a negative duration (clock skew) to zero", () => {
         expect(formatDuration(-5)).toBe("0s");
+    });
+});
+
+describe("summaryWindowNote", () => {
+    it("names the stretch up to now", () => {
+        expect(summaryWindowNote(4 * 3600 + 120)).toBe("Values cover the last 4h 2m.");
+        expect(summaryWindowNote(3 * 86400 + 4 * 3600)).toBe("Values cover the last 3d 4h.");
+    });
+
+    it("drops a zero second unit from a round span", () => {
+        expect(summaryWindowNote(3600)).toBe("Values cover the last 1h.");
+        expect(summaryWindowNote(7 * 86400)).toBe("Values cover the last 7d.");
+    });
+
+    it("names the end of a burn that has stopped", () => {
+        expect(summaryWindowNote(900, true)).toBe("Values cover the final 15m of the burn.");
     });
 });
 

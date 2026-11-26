@@ -58,6 +58,19 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * summaryWindowNote says which stretch of time a summary table's values
+ * cover, e.g. "Values cover the last 3d 4h." A table of rates and
+ * percentiles reads very differently over a minute than over days, and
+ * each page picks its own window. ended is for a burn that has stopped,
+ * whose window ends when it did rather than now.
+ */
+export function summaryWindowNote(seconds: number, ended = false): string {
+    // "1h", not formatDuration's "1h 0m": the picker's ranges are round.
+    const span = formatDuration(seconds).replace(/ 0[hm]$/, "");
+    return ended ? `Values cover the final ${span} of the burn.` : `Values cover the last ${span}.`;
+}
+
+/**
  * relativeDelta is value's change relative to baseline (0.1 = 10% higher),
  * or undefined when either side is missing or the baseline is zero.
  */
