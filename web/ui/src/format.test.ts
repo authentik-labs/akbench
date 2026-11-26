@@ -3,6 +3,7 @@ import {
     archivedBurnWindow,
     buildLabel,
     colorFor,
+    deltaTone,
     earliestBurnStart,
     formatDuration,
     formatMetricValue,
@@ -157,6 +158,22 @@ describe("relativeDelta", () => {
         expect(relativeDelta(undefined, 1)).toBeUndefined();
         expect(relativeDelta(1, undefined)).toBeUndefined();
         expect(relativeDelta(1, 0)).toBeUndefined();
+    });
+});
+
+describe("deltaTone", () => {
+    it("follows the metric's good direction", () => {
+        expect(deltaTone(0.1, "higher")).toBe("better");
+        expect(deltaTone(-0.1, "higher")).toBe("worse");
+        expect(deltaTone(-0.1, "lower")).toBe("better");
+        expect(deltaTone(0.1, "lower")).toBe("worse");
+    });
+
+    it("is flat under half a percent either way", () => {
+        expect(deltaTone(0, "higher")).toBe("flat");
+        expect(deltaTone(0.0049, "lower")).toBe("flat");
+        expect(deltaTone(-0.0049, "higher")).toBe("flat");
+        expect(deltaTone(0.005, "higher")).toBe("better");
     });
 });
 
