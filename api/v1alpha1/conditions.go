@@ -46,6 +46,9 @@ const (
 	// ReasonPostgresStorageFull is a Burn TestCase whose k6 load was stopped
 	// because a target's postgres volume is full and cannot grow any further.
 	ReasonPostgresStorageFull = "PostgresStorageFull"
+	// ReasonBurnFinished is a Burn TestCase whose k6 load was stopped
+	// because it ran for its spec.burnDuration.
+	ReasonBurnFinished = "BurnFinished"
 )
 
 // Reasons of ConditionPostgresStorageExhausted.

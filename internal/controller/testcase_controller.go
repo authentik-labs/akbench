@@ -73,6 +73,23 @@ type TestCaseReconciler struct {
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create
 
 func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	result, err := r.reconcile(ctx, req)
+	if err != nil {
+		return result, err
+	}
+	// Whichever way the pass ended, come back when a running burn uses up
+	// its burnDuration. Read again rather than threaded through every
+	// return above: the pass may have just written the clock.
+	var tc benchv1alpha1.TestCase
+	if err := r.Get(ctx, req.NamespacedName, &tc); err != nil {
+		return result, client.IgnoreNotFound(err)
+	}
+	return requeueByBurnDeadline(&tc, result), nil
+}
+
+// reconcile is one pass over a TestCase; Reconcile adds the requeue that
+// ends a burn on time.
+func (r *TestCaseReconciler) reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	var tc benchv1alpha1.TestCase
@@ -102,6 +119,12 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	refs := tc.Deployments()
+	// Before anything that can end the pass early: a burn must stop on time
+	// (and stay stopped) even while its test case is not otherwise in a
+	// state to reconcile, such as one whose deployments were all removed.
+	if stopped, result, err := r.stopBurn(ctx, &tc, refs); stopped {
+		return result, err
+	}
 	if len(refs) == 0 {
 		setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonDependencyNotReady, "neither deploymentRef nor deploymentRefs is set")
@@ -109,10 +132,6 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			benchv1alpha1.ReasonDependencyNotReady, "waiting for a deployment to be named")
 		tc.Status.Phase = benchv1alpha1.PhaseFor(tc.Status.Conditions)
 		return ctrl.Result{}, r.Status().Update(ctx, &tc)
-	}
-
-	if stopped, result, err := r.stopOnExhaustedStorage(ctx, &tc, refs); stopped {
-		return result, err
 	}
 
 	var tmpl *benchv1alpha1.TestCaseTemplate
@@ -195,6 +214,7 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	tc.Status.Deployments = statuses
 	if !allReady {
+		syncBurnClock(&tc, time.Now())
 		reason := benchv1alpha1.ReasonDependencyNotReady
 		setBurnStaged(r.Recorder, &tc, false)
 		setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionFalse,
@@ -212,6 +232,7 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	setBurnStaged(r.Recorder, &tc, burnStaged)
 	result := openBurnStartGate(ctx, &tc, startAt, burnStaged, parentGated)
+	syncBurnClock(&tc, time.Now())
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionDeploymentReady, metav1.ConditionTrue,
 		benchv1alpha1.ReasonReady, "every deployment is Ready")
 	setCondition(r.Recorder, &tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionScriptReady, metav1.ConditionTrue,
@@ -573,6 +594,19 @@ func (r *TestCaseReconciler) reconcileArchived(ctx context.Context, tc *benchv1a
 	return r.reconcileStopped(ctx, tc, benchv1alpha1.ReasonArchived, "test case is archived")
 }
 
+// stopBurn stops a Burn TestCase's k6 load when it must not run: it has run
+// for its burnDuration, or a target's postgres has no room left. The
+// duration is checked first, so a finished burn stays finished whatever its
+// storage does afterwards.
+func (r *TestCaseReconciler) stopBurn(
+	ctx context.Context, tc *benchv1alpha1.TestCase, refs []corev1.LocalObjectReference,
+) (stopped bool, _ ctrl.Result, _ error) {
+	if stopped, result, err := r.stopOnElapsedDuration(ctx, tc); stopped {
+		return true, result, err
+	}
+	return r.stopOnExhaustedStorage(ctx, tc, refs)
+}
+
 // stopOnExhaustedStorage stops a Burn TestCase's k6 load when a target's
 // postgres volume is too full to keep putting load on: full at its maximum
 // size, full and unable to grow, or past the hard limit. A Burn keeps
@@ -642,6 +676,7 @@ func (r *TestCaseReconciler) reconcileStopped(ctx context.Context, tc *benchv1al
 			}
 		}
 	}
+	syncBurnClock(tc, time.Now())
 	meta.RemoveStatusCondition(&tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
 	setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 		reason, message)

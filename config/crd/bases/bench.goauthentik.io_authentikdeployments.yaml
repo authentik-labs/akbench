@@ -573,6 +573,7 @@ spec:
                 - Ready
                 - Failed
                 - Archived
+                - Completed
                 type: string
               postgresStorage:
                 description: |-

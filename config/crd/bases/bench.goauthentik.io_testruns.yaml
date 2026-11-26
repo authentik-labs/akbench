@@ -235,8 +235,13 @@ spec:
                     type: string
                   burnDuration:
                     default: 8760h
-                    description: burnDuration caps a Burn run - effectively unlimited
-                      by default.
+                    description: |-
+                      burnDuration is how long a Burn is under load in total: once its k6
+                      load has run that long, it is stopped and the test case is Completed.
+                      Time spent stopped (archived, or waiting for postgres storage) does
+                      not count, and the count carries on when the load resumes. Raising
+                      it on a completed test case runs the load for the difference.
+                      Effectively unlimited by default. A k6 duration ("90m", "36h", "7d").
                     type: string
                   deployment:
                     description: |-

@@ -302,6 +302,206 @@ var _ = Describe("TestCase Controller", func() {
 			Expect(startAtFile()).To(Equal(strconv.FormatInt(resumed.BurningSince.Unix(), 10)))
 		})
 
+		// backdate moves the running stretch's start into the past, as if
+		// the burn had been under load for that long already.
+		backdate := func(ago time.Duration) metav1.Time {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			started := metav1.NewTime(time.Now().Add(-ago).Truncate(time.Second))
+			for i := range tc.Status.Deployments {
+				tc.Status.Deployments[i].BurningSince = &started
+			}
+			tc.Status.BurnStretchSince = &started
+			Expect(k8sClient.Status().Update(context.Background(), &tc)).To(Succeed())
+			return started
+		}
+		setBurnDuration := func(d string) {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.BurnDuration = d
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+		}
+		setArchived := func(archived bool) {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.Archived = archived
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+		}
+		expectCompleted := func(tc benchv1alpha1.TestCase) {
+			GinkgoHelper()
+			Expect(burnDeployments()).To(BeEmpty())
+			Expect(tc.Status.Phase).To(Equal(benchv1alpha1.PhaseCompleted))
+			ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(benchv1alpha1.ReasonBurnFinished))
+		}
+
+		It("stops the k6 load once it has been under load for its burnDuration, and keeps it stopped", func() {
+			startBurn()
+			Expect(burnDeployments()).To(HaveLen(1))
+			setBurnDuration("1h")
+			started := backdate(2 * time.Hour)
+
+			tc := reconcileOnce()
+			expectCompleted(tc)
+			Expect(meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady).Message).
+				To(ContainSubstring("burnDuration of 1h"))
+			stopped := findDeploymentStatus(tc.Status.Deployments, topo.Name)
+			Expect(stopped.BurningSince.Equal(&started)).To(BeTrue())
+			Expect(stopped.BurnStoppedAt).NotTo(BeNil())
+			Expect(tc.Status.BurnStretchSince).To(BeNil())
+			Expect(tc.Status.BurnConsumedSeconds).To(BeNumerically(">=", 2*3600))
+
+			// Finished, not waiting to start over: the stopped k6 used to be
+			// restarted here.
+			expectCompleted(reconcileOnce())
+		})
+
+		It("keeps a finished burn finished through archiving and unarchiving", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(2 * time.Hour)
+			expectCompleted(reconcileOnce())
+
+			setArchived(true)
+			tc := reconcileOnce()
+			Expect(tc.Status.Phase).To(Equal(benchv1alpha1.PhaseArchived))
+			setArchived(false)
+			expectCompleted(reconcileOnce())
+			expectCompleted(reconcileOnce())
+		})
+
+		It("runs only the time a raised burnDuration adds", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(2 * time.Hour)
+			tc := reconcileOnce()
+			expectCompleted(tc)
+			used := time.Duration(tc.Status.BurnConsumedSeconds) * time.Second
+
+			// Still less than what was used: nothing to run.
+			setBurnDuration("90m")
+			expectCompleted(reconcileOnce())
+
+			// Three hours against about two used: about one more.
+			setBurnDuration("3h")
+			tc = startBurn()
+			Expect(burnDeployments()).To(HaveLen(1))
+			Expect(tc.Status.Phase).To(Equal(benchv1alpha1.PhaseReady))
+			Expect(tc.Status.BurnStretchSince).NotTo(BeNil())
+			deadline, ok := burnDeadline(&tc)
+			Expect(ok).To(BeTrue())
+			Expect(deadline.Sub(tc.Status.BurnStretchSince.Time)).To(Equal(3*time.Hour - used))
+		})
+
+		It("carries the clock on when the load was paused", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(40 * time.Minute)
+
+			// Paused by a full volume 40 minutes in.
+			setStorage(topo, "12Gi", 10<<30, 12<<30, true)
+			tc := reconcileOnce()
+			Expect(burnDeployments()).To(BeEmpty())
+			Expect(tc.Status.Phase).To(Equal(benchv1alpha1.PhaseFailed))
+			Expect(tc.Status.BurnStretchSince).To(BeNil())
+			Expect(tc.Status.BurnConsumedSeconds).To(BeNumerically("~", 40*60, 5))
+
+			// Resumed: 20 minutes are left, not a fresh hour.
+			setStorage(topo, "12Gi", 2<<30, 12<<30, false)
+			reconcileOnce()
+			tc = startBurn()
+			Expect(burnDeployments()).To(HaveLen(1))
+			deadline, ok := burnDeadline(&tc)
+			Expect(ok).To(BeTrue())
+			Expect(deadline.Sub(tc.Status.BurnStretchSince.Time)).To(BeNumerically("~", 20*time.Minute, 5*time.Second))
+		})
+
+		It("does not move the end of a burn when a target joins late", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(50 * time.Minute)
+
+			other := createReadyDeployment(context.Background(), "testcase-deployment-late", "authentik-late", "authentik-late-server.ns.svc.cluster.local")
+			DeferCleanup(forceDelete, context.Background(), other)
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.DeploymentRefs = append(tc.Spec.DeploymentRefs, corev1.LocalObjectReference{Name: other.Name})
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+			tc = startBurn()
+			Expect(burnDeployments()).To(HaveLen(2))
+			late := findDeploymentStatus(tc.Status.Deployments, other.Name)
+			Expect(late.BurningSince).NotTo(BeNil(), "the late target is under load")
+			Expect(late.BurningSince.After(tc.Status.BurnStretchSince.Time)).To(BeTrue())
+
+			// Ten more minutes on: the hour is up, late target or not.
+			backdateStretch := metav1.NewTime(time.Now().Add(-61 * time.Minute).Truncate(time.Second))
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Status.BurnStretchSince = &backdateStretch
+			Expect(k8sClient.Status().Update(context.Background(), &tc)).To(Succeed())
+			expectCompleted(reconcileOnce())
+			expectCompleted(reconcileOnce())
+		})
+
+		It("stops at its burnDuration even after every deployment was removed from it", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(2 * time.Hour)
+
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.DeploymentRefs = nil
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+
+			result, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero(), "stopped, with nothing left to come back for")
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			expectCompleted(tc)
+		})
+
+		It("counts the load a running burn used before it was archived", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(40 * time.Minute)
+
+			setArchived(true)
+			tc := reconcileOnce()
+			Expect(burnDeployments()).To(BeEmpty())
+			Expect(tc.Status.BurnConsumedSeconds).To(BeNumerically("~", 40*60, 5))
+			used := tc.Status.BurnConsumedSeconds
+			Expect(reconcileOnce().Status.BurnConsumedSeconds).To(Equal(used), "an archived pass counts nothing twice")
+
+			setArchived(false)
+			reconcileOnce()
+			tc = startBurn()
+			deadline, ok := burnDeadline(&tc)
+			Expect(ok).To(BeTrue())
+			Expect(deadline.Sub(tc.Status.BurnStretchSince.Time)).To(BeNumerically("~", 20*time.Minute, 5*time.Second))
+		})
+
+		It("comes back at the deadline, also when the pass ended early", func() {
+			startBurn()
+			setBurnDuration("1h")
+			backdate(50 * time.Minute)
+
+			result, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 9*time.Minute))
+			Expect(result.RequeueAfter).To(BeNumerically("<=", 10*time.Minute))
+
+			// A template that no longer exists ends the pass before the
+			// targets are looked at; the burn still has to end on time.
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.Template = "no-such-template"
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+			result, err = r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 9*time.Minute))
+			Expect(result.RequeueAfter).To(BeNumerically("<=", 10*time.Minute))
+		})
+
 		It("stops every target's load when one target is full", func() {
 			other := createReadyDeployment(context.Background(), "testcase-deployment-2", "authentik-2", "authentik-2-server.ns.svc.cluster.local")
 			DeferCleanup(forceDelete, context.Background(), other)

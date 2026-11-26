@@ -93,8 +93,13 @@ spec:
                 type: string
               burnDuration:
                 default: 8760h
-                description: burnDuration caps a Burn run - effectively unlimited
-                  by default.
+                description: |-
+                  burnDuration is how long a Burn is under load in total: once its k6
+                  load has run that long, it is stopped and the test case is Completed.
+                  Time spent stopped (archived, or waiting for postgres storage) does
+                  not count, and the count carries on when the load resumes. Raising
+                  it on a completed test case runs the load for the difference.
+                  Effectively unlimited by default. A k6 duration ("90m", "36h", "7d").
                 type: string
               deployment:
                 description: |-
@@ -769,12 +774,26 @@ spec:
           status:
             description: TestCaseStatus defines the observed state of TestCase.
             properties:
+              burnConsumedSeconds:
+                description: |-
+                  burnConsumedSeconds is how long this Burn test case has been under
+                  load in stretches that have ended (stopped by archiving, a full
+                  postgres volume, its burnDuration, or a switch away from Burn). With
+                  burnStretchSince it is the clock spec.burnDuration is measured on.
+                format: int64
+                type: integer
               burnStartAt:
                 description: |-
                   burnStartAt is when every child of a Burn parent starts its k6 load,
                   set once all of them are staged (see ConditionBurnStaged), so the
                   children's burns line up like their targets do. Cleared while
                   archived or not Burn.
+                format: date-time
+                type: string
+              burnStretchSince:
+                description: |-
+                  burnStretchSince is when the stretch of load running now started: the
+                  shared start of its targets. Unset while no k6 load is running.
                 format: date-time
                 type: string
               children:
@@ -807,6 +826,7 @@ spec:
                             - Ready
                             - Failed
                             - Archived
+                            - Completed
                             type: string
                           variant:
                             type: string
@@ -828,6 +848,7 @@ spec:
                       - Ready
                       - Failed
                       - Archived
+                      - Completed
                       type: string
                     template:
                       type: string
@@ -988,6 +1009,7 @@ spec:
                 - Ready
                 - Failed
                 - Archived
+                - Completed
                 type: string
             type: object
         required:

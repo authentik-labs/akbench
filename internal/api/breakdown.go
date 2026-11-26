@@ -52,13 +52,14 @@ func newBreakdownCache[T any]() *breakdownCache[T] {
 }
 
 // breakdownEnd is when tc's trailing breakdown window ends: now, or for an
-// archived TestCase, or one stopped because postgres ran out of storage, a
-// minute past when it was stopped (the same end the UI's charts use), since
-// nothing reaches its telemetry after that.
+// archived TestCase, or one stopped because postgres ran out of storage or
+// its burnDuration was up, a minute past when it was stopped (the same end
+// the UI's charts use), since nothing reaches its telemetry after that.
 func breakdownEnd(tc *benchv1alpha1.TestCase) time.Time {
 	ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
-	storageFull := ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == benchv1alpha1.ReasonPostgresStorageFull
-	if !tc.Spec.Archived && !storageFull {
+	stoppedItself := ready != nil && ready.Status == metav1.ConditionFalse &&
+		(ready.Reason == benchv1alpha1.ReasonPostgresStorageFull || ready.Reason == benchv1alpha1.ReasonBurnFinished)
+	if !tc.Spec.Archived && !stoppedItself {
 		return time.Now()
 	}
 	var stopped time.Time
@@ -68,7 +69,10 @@ func breakdownEnd(tc *benchv1alpha1.TestCase) time.Time {
 		}
 	}
 	if stopped.IsZero() {
-		if ready == nil || ready.Reason != benchv1alpha1.ReasonArchived {
+		// No stop recorded on the targets (archived before that was kept,
+		// or a finished burn switched to Quick and back): when the test
+		// case entered this state.
+		if ready == nil || (ready.Reason != benchv1alpha1.ReasonArchived && ready.Reason != benchv1alpha1.ReasonBurnFinished) {
 			return time.Now()
 		}
 		stopped = ready.LastTransitionTime.Time
