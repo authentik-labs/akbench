@@ -512,6 +512,101 @@ func TestMetricsRange(t *testing.T) {
 	}
 }
 
+// A chart over days asks for a window as long as its step. Over the raw
+// series that reads every sample in the range, so it has to be answered
+// from the recording rules, like a long compare window.
+func TestMetricsRangeLongWindowUsesRecordingRules(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheusRange(t, func(query string) [][2]any {
+		seen[query] = true
+		return [][2]any{{1700000000, "7"}}
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet,
+		"/api/v1/metrics/range?testids=login&metric=http_req_duration_p95&start=1699400000&end=1700000000&step=2520s&window=2520s", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	want := `histogram_quantile(0.95, sum by (target) (sum_over_time(` +
+		render.RecordedHTTPReqDuration + `{testid="login"}[2520s])))`
+	if !seen[want] {
+		t.Fatalf("recorded query %q was not sent; saw %v", want, seen)
+	}
+	for query := range seen {
+		if strings.Contains(query, "rate(k6_http_req_duration_seconds") {
+			t.Fatalf("the raw query ran although the recording rules answered: %q", query)
+		}
+	}
+	body := decodeBody[struct {
+		Series []struct {
+			Points []struct {
+				Value float64 `json:"value"`
+			} `json:"points"`
+		} `json:"series"`
+	}](t, rec)
+	if len(body.Series) != 1 || len(body.Series[0].Points) != 1 || body.Series[0].Points[0].Value != 7 {
+		t.Fatalf("series = %+v", body.Series)
+	}
+}
+
+// A Prometheus without the recording rules (the management cluster's), or a
+// test older than them, has no recorded points: the raw query answers.
+func TestMetricsRangeLongWindowFallsBackToRaw(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheusRange(t, func(query string) [][2]any {
+		seen[query] = true
+		if strings.Contains(query, render.RecordedHTTPReqs) {
+			return nil
+		}
+		return [][2]any{{1700000000, "42"}}
+	})
+
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+	rec := do(t, s, http.MethodGet,
+		"/api/v1/metrics/range?testids=login&metric=http_reqs&start=1699900000&end=1700000000&step=10m&window=10m", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	if want := `sum by (target) (rate(k6_http_reqs_total{testid="login"}[10m]))`; !seen[want] {
+		t.Fatalf("raw fallback %q was not sent; saw %v", want, seen)
+	}
+	body := decodeBody[struct {
+		Series []struct {
+			Points []struct {
+				Value float64 `json:"value"`
+			} `json:"points"`
+		} `json:"series"`
+	}](t, rec)
+	if len(body.Series) != 1 || len(body.Series[0].Points) != 1 || body.Series[0].Points[0].Value != 42 {
+		t.Fatalf("series = %+v", body.Series)
+	}
+}
+
+// Below recordedRangeMinWindow, and for a metric without recording rules,
+// only the raw query runs.
+func TestMetricsRangeShortWindowAndGaugesStayRaw(t *testing.T) {
+	seen := map[string]bool{}
+	prom := fakePrometheusRange(t, func(query string) [][2]any {
+		seen[query] = true
+		return [][2]any{{1700000000, "1"}}
+	})
+	s, _ := newServer(t, Config{PrometheusURL: prom.URL})
+
+	for _, path := range []string{
+		"/api/v1/metrics/range?testids=login&metric=http_reqs&start=1699999000&end=1700000000&step=90s&window=90s",
+		"/api/v1/metrics/range?testids=login&metric=checks&start=1699400000&end=1700000000&step=1h&window=1h",
+	} {
+		requireStatus(t, do(t, s, http.MethodGet, path, nil), http.StatusOK)
+	}
+	for query := range seen {
+		if strings.Contains(query, "testid_target:") {
+			t.Fatalf("a recorded query ran where the raw one should have: %q", query)
+		}
+	}
+	if want := `sum by (target) (rate(k6_http_reqs_total{testid="login"}[90s]))`; !seen[want] {
+		t.Fatalf("raw query %q was not sent; saw %v", want, seen)
+	}
+}
+
 // A series with no samples in the window has to serialize as "points":[],
 // not "points":null - the frontend iterates every series unconditionally,
 // and null is not iterable in JS.
