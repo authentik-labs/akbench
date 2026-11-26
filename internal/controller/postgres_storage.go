@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,6 +50,7 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 	if maxSize == "" {
 		// Keep a grown size: CNPGCluster must never render a size below
 		// what the volumes already are.
+		meta.RemoveStatusCondition(&topo.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
 		if st != nil && st.Size == "" {
 			topo.Status.PostgresStorage = nil
 		} else if st != nil {
@@ -58,6 +60,9 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 	}
 	limit, err := resource.ParseQuantity(maxSize)
 	if err != nil {
+		// Nothing below can judge the volume against a maximum it can't
+		// read, so a condition set under an earlier, valid one is stale.
+		meta.RemoveStatusCondition(&topo.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
 		r.Recorder.Eventf(topo, corev1.EventTypeWarning, "InvalidMaxStorageSize", "cannot parse postgres maxStorageSize %q: %v", maxSize, err)
 		return 0
 	}
@@ -79,6 +84,9 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 		return postgresStorageCheckInterval
 	}
 	if len(pvcs) == 0 {
+		// Without a volume (not created yet, or deleted by a reset) there is
+		// nothing to be full.
+		meta.RemoveStatusCondition(&topo.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
 		return postgresStorageCheckInterval
 	}
 	usageFunc := r.VolumeUsage
@@ -91,41 +99,100 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 		return postgresStorageCheckInterval
 	}
 
-	now := metav1.Now()
-	st.LastChecked = &now
-	st.UsedBytes, st.CapacityBytes = 0, 0
-	var current resource.Quantity
-	resizing := false
-	for _, pvc := range pvcs {
-		requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		if requested.Cmp(current) > 0 {
-			current = requested
-		}
-		if capacity, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok && capacity.Cmp(requested) < 0 {
-			resizing = true
-		}
-		// Track the fullest volume by ratio; they all grow together.
-		if u, ok := usage[pvc.Name]; ok && u.capacity > 0 &&
-			(st.CapacityBytes == 0 || u.used*st.CapacityBytes > st.UsedBytes*u.capacity) {
-			st.UsedBytes, st.CapacityBytes = u.used, u.capacity
-		}
-	}
+	reading := readPostgresStorage(pvcs, usage)
 	// Recover a grown size the status lost (or never had), so CNPGCluster
 	// doesn't render one smaller than the volumes already are.
-	if grown, err := resource.ParseQuantity(st.Size); err != nil || current.Cmp(grown) > 0 {
-		st.Size = current.String()
+	if grown, err := resource.ParseQuantity(st.Size); err != nil || reading.current.Cmp(grown) > 0 {
+		st.Size = reading.current.String()
 	}
-	if resizing {
+	if reading.capacity == 0 {
+		// No running pod mounts the volumes right now (postgres being
+		// rescheduled, a CNPG switchover, a node drain). That says nothing
+		// about how full they are, so it counts as a failed reading: the
+		// last usage and ConditionPostgresStorageExhausted stay as they
+		// were, rather than resuming a stopped burn only to stop it again
+		// at the next reading.
+		log.Info("Skipped postgres volume usage check, no running Pod mounts its PersistentVolumeClaims")
 		return postgresStorageCheckInterval
 	}
 
-	next, grow := render.NextPostgresStorageSize(current, limit, st.UsedBytes, st.CapacityBytes)
-	if !grow {
-		if render.PostgresStorageFull(st.UsedBytes, st.CapacityBytes) && current.Cmp(limit) >= 0 {
-			r.Recorder.Eventf(topo, corev1.EventTypeWarning, "PostgresStorageAtMax",
-				"postgres volume is %d%% full and already at maxStorageSize %s", st.UsedBytes*100/st.CapacityBytes, maxSize)
+	now := metav1.Now()
+	st.LastChecked = &now
+	st.UsedBytes, st.CapacityBytes = reading.used, reading.capacity
+	var growErr error
+	if !reading.resizing {
+		growErr = r.growPostgresStorage(ctx, rc, topo, pvcs, reading, limit)
+	}
+	setPostgresStorageExhausted(topo, reading, limit, growErr)
+	return postgresStorageCheckInterval
+}
+
+// postgresStorageReading is one usage reading of a deployment's postgres
+// volumes.
+type postgresStorageReading struct {
+	// current is the largest size any of the PVCs requests.
+	current resource.Quantity
+	// resizing is true while a PVC hasn't reached the size it requests.
+	resizing bool
+	// used and capacity are the fullest volume's filesystem usage in bytes,
+	// both 0 when no PVC had a usage entry. pvcCapacity is that volume's
+	// PVC status capacity.
+	used, capacity int64
+	pvcCapacity    resource.Quantity
+}
+
+// readPostgresStorage summarizes pvcs and their usage.
+func readPostgresStorage(pvcs []corev1.PersistentVolumeClaim, usage map[string]volumeUsage) postgresStorageReading {
+	var reading postgresStorageReading
+	for _, pvc := range pvcs {
+		requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if requested.Cmp(reading.current) > 0 {
+			reading.current = requested
 		}
-		return postgresStorageCheckInterval
+		capacity, hasCapacity := pvc.Status.Capacity[corev1.ResourceStorage]
+		if hasCapacity && capacity.Cmp(requested) < 0 {
+			reading.resizing = true
+		}
+		// Track the fullest volume by ratio; they all grow together.
+		if u, ok := usage[pvc.Name]; ok && u.capacity > 0 &&
+			(reading.capacity == 0 || u.used*reading.capacity > reading.used*u.capacity) {
+			reading.used, reading.capacity = u.used, u.capacity
+			reading.pvcCapacity = capacity
+		}
+	}
+	return reading
+}
+
+// percent is how full the reading's fullest volume is.
+func (s postgresStorageReading) percent() int64 {
+	return s.used * 100 / s.capacity
+}
+
+// atMax reports whether the reading shows a full volume that has finished
+// growing to limit. The kubelet caches volume stats for about a minute, so
+// a reading right after the last resize can still be of the old, smaller
+// volume, full; it only counts once its capacity is about the PVC's
+// (filesystem overhead keeps it a little below).
+func (s postgresStorageReading) atMax(limit resource.Quantity) bool {
+	return !s.resizing && s.current.Cmp(limit) >= 0 && render.PostgresStorageFull(s.used, s.capacity) &&
+		s.capacity*10 >= s.pvcCapacity.Value()*9
+}
+
+// growPostgresStorage grows the deployment's postgres volumes when reading
+// shows them full and they are below limit. It returns the error that kept
+// a full volume from growing.
+func (r *AuthentikDeploymentReconciler) growPostgresStorage(
+	ctx context.Context, rc client.Client, topo *benchv1alpha1.AuthentikDeployment, pvcs []corev1.PersistentVolumeClaim,
+	reading postgresStorageReading, limit resource.Quantity,
+) error {
+	st := topo.Status.PostgresStorage
+	next, grow := render.NextPostgresStorageSize(reading.current, limit, reading.used, reading.capacity)
+	if !grow {
+		if render.PostgresStorageFull(reading.used, reading.capacity) && reading.current.Cmp(limit) >= 0 {
+			r.Recorder.Eventf(topo, corev1.EventTypeWarning, "PostgresStorageAtMax",
+				"postgres volume is %d%% full and already at maxStorageSize %s", reading.percent(), limit.String())
+		}
+		return nil
 	}
 
 	if topo.Spec.Postgres.Mode == benchv1alpha1.PostgresEmbedded {
@@ -135,7 +202,7 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 			pvc.Spec.Resources.Requests[corev1.ResourceStorage] = next
 			if err := rc.Patch(ctx, pvc, patch); err != nil {
 				r.Recorder.Eventf(topo, corev1.EventTypeWarning, "PostgresStorageGrowFailed", "failed to grow PVC %s to %s: %v", pvc.Name, next.String(), err)
-				return postgresStorageCheckInterval
+				return fmt.Errorf("grow PVC %s to %s: %w", pvc.Name, next.String(), err)
 			}
 		}
 	}
@@ -143,9 +210,42 @@ func (r *AuthentikDeploymentReconciler) reconcilePostgresStorage(ctx context.Con
 	// Cluster with it later in this same reconcile.
 	st.Size = next.String()
 	r.Recorder.Eventf(topo, corev1.EventTypeNormal, "PostgresStorageGrown", "growing postgres volumes from %s to %s, %d%% were used",
-		current.String(), next.String(), st.UsedBytes*100/st.CapacityBytes)
-	log.Info("Grew postgres PersistentVolumeClaims", "from", current.String(), "to", next.String())
-	return postgresStorageCheckInterval
+		reading.current.String(), next.String(), reading.percent())
+	logf.FromContext(ctx).Info("Grew postgres PersistentVolumeClaims", "from", reading.current.String(), "to", next.String())
+	return nil
+}
+
+// setPostgresStorageExhausted records, as ConditionPostgresStorageExhausted,
+// whether the postgres volume is too full to keep putting load on: full at
+// its maximum size (see postgresStorageReading.atMax), full and growing it
+// failed (growErr), or past the hard limit whatever its size - which is what
+// catches a volume whose resize never completes, such as one that needs
+// offline expansion or a CNPG Cluster that can't resize.
+func setPostgresStorageExhausted(topo *benchv1alpha1.AuthentikDeployment, reading postgresStorageReading, limit resource.Quantity, growErr error) {
+	var reason, message string
+	switch {
+	case reading.atMax(limit):
+		reason = benchv1alpha1.ReasonPostgresStorageAtMax
+		message = fmt.Sprintf("postgres volume is %d%% full and already at maxStorageSize %s (raise it or reset the deployment)",
+			reading.percent(), limit.String())
+	case growErr != nil:
+		reason = benchv1alpha1.ReasonPostgresStorageGrowFailed
+		message = fmt.Sprintf("postgres volume is %d%% full and could not grow: %v", reading.percent(), growErr)
+	case render.PostgresStorageAtHardLimit(reading.used, reading.capacity):
+		reason = benchv1alpha1.ReasonPostgresStorageHardLimit
+		message = fmt.Sprintf("postgres volume is %d%% full, past the %d%% hard limit (growing it hasn't kept up or isn't completing)",
+			reading.percent(), render.PostgresStorageHardLimitPercent)
+	default:
+		meta.RemoveStatusCondition(&topo.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
+		return
+	}
+	meta.SetStatusCondition(&topo.Status.Conditions, metav1.Condition{
+		Type:               benchv1alpha1.ConditionPostgresStorageExhausted,
+		Status:             metav1.ConditionTrue,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: topo.Generation,
+	})
 }
 
 // postgresPVCs lists the data PVCs of the deployment's operator-managed

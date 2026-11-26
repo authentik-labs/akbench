@@ -143,6 +143,54 @@ func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 	}
 }
 
+// TestLibraryCountsIterationOutcomes ties the outcome counter bench.ts emits
+// to the PromQL that reads it: the compare view's "Failed transactions"
+// (internal/api/metrics.go) and its recording rules
+// (internal/render/recordingrules.go) match k6_<counter>_total{outcome=
+// "failed"}. Renaming the counter or its outcome tag on either side would
+// leave that row empty without anything else failing.
+func TestLibraryCountsIterationOutcomes(t *testing.T) {
+	lib, err := os.ReadFile("../../k6/scripts/" + render.LibFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What bench.ts emits: k6 metric name -> outcome tag values it is
+	// added with. Prometheus remote write exports a k6 Counter "x" as
+	// k6_x_total.
+	counters := map[string]string{}
+	for _, m := range regexp.MustCompile(`const (\w+) = new Counter\("(\w+)"\)`).FindAllStringSubmatch(string(lib), -1) {
+		counters[m[1]] = "k6_" + m[2] + "_total"
+	}
+	emitted := map[string]map[string]bool{}
+	adds := regexp.MustCompile(`(\w+)\.add\([^;]*?\{\s*outcome:\s*"(\w+)"\s*\}\s*\)`)
+	for _, m := range adds.FindAllStringSubmatch(string(lib), -1) {
+		if name, ok := counters[m[1]]; ok {
+			if emitted[name] == nil {
+				emitted[name] = map[string]bool{}
+			}
+			emitted[name][m[2]] = true
+		}
+	}
+
+	matcher := regexp.MustCompile(`(k6_\w+_total)\{[^}]*outcome="(\w+)"`)
+	for _, file := range []string{"../../internal/api/metrics.go", "../../internal/render/recordingrules.go"} {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := matcher.FindAllStringSubmatch(string(src), -1)
+		if len(found) == 0 {
+			t.Errorf("%s matches no outcome-tagged counter; update this test if that is on purpose", file)
+		}
+		for _, m := range found {
+			if !emitted[m[1]][m[2]] {
+				t.Errorf("%s matches %s{outcome=%q}, which %s does not emit (it emits %v)",
+					file, m[1], m[2], render.LibFileName, emitted)
+			}
+		}
+	}
+}
+
 // TestBuiltinScriptsHaveIterationVerdict guards the quick-run verdict: a
 // quick TestRun fails only when k6 exits non-zero, and fail() aborts never
 // reach the built-in checks rate. bench.ts records iteration_failed and puts

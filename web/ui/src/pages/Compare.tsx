@@ -1,6 +1,8 @@
 import { api } from "../api";
 import { ConfigDiffWarning } from "../components/ConfigDiff";
 import { MetricsChart, ResourceCharts } from "../components/MetricsChart";
+import { QueryErrors } from "../components/QueryErrors";
+import { RestartsWarning } from "../components/Restarts";
 import { Alert, Empty, Field, Page, TimeRangeSelect } from "../components/ui";
 import {
     earliestBurnStart,
@@ -217,6 +219,12 @@ export function ComparePage() {
             ) : (
                 <>
                     <h2>Summary</h2>
+                    <QueryErrors errors={comparison.data?.errors} />
+                    <RestartsWarning
+                        testids={selected}
+                        period={summaryWindow}
+                        endSeconds={anchor?.endSeconds}
+                    />
                     <table className="table">
                         <thead>
                             <tr>

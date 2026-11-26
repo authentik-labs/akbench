@@ -5,6 +5,7 @@ import { baselineOf, MatrixGrid } from "../components/Matrix";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
 import { ObjectYaml } from "../components/ObjectYaml";
 import { PullRequestLink } from "../components/PullRequestLink";
+import { QueryErrors } from "../components/QueryErrors";
 import { ConditionList, StatusBadge } from "../components/Status";
 import { burnStatus, TARGET_METRICS } from "../components/Targets";
 import {
@@ -24,6 +25,7 @@ import {
     formatDuration,
     parseTimeRange,
     SINCE_START,
+    summaryWindowNote,
     timeRangeSeconds,
 } from "../format";
 import { k8sNameInput, PULL_REQUEST_LABEL } from "../github";
@@ -365,13 +367,14 @@ export function TestCaseParentView({
             }
         >
             <Alert>{testCase.error ?? testCases.error ?? comparison.error}</Alert>
+            <QueryErrors errors={comparison.data?.errors} />
             <SectionNav sections={SECTIONS} />
 
             <Section
                 id="matrix"
                 title="Children"
                 loading={comparison.loading && comparison.data !== undefined}
-                description="Each template on every variant's deployment. Δ is relative to the baseline variant."
+                description={`Each template on every variant's deployment. ${summaryWindowNote(range, burnEnd !== undefined)} Δ is relative to the baseline variant.`}
                 actions={
                     <span className="row">
                         <select

@@ -111,6 +111,10 @@ func (r *TestCaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, r.Status().Update(ctx, &tc)
 	}
 
+	if stopped, result, err := r.stopOnExhaustedStorage(ctx, &tc, refs); stopped {
+		return result, err
+	}
+
 	var tmpl *benchv1alpha1.TestCaseTemplate
 	usingTemplate := tc.Spec.Inline == "" && tc.Spec.ScriptConfigMapRef == nil
 	if usingTemplate {
@@ -282,10 +286,26 @@ func (r *TestCaseReconciler) burnStart(ctx context.Context, tc *benchv1alpha1.Te
 		// A TestCase outliving its parent starts on its own.
 		return startAt, false, client.IgnoreNotFound(err)
 	}
+	// Restarting after tc's burn was stopped (archived, or out of postgres
+	// storage), the parent's start is usually long past: following it
+	// would start each resumed k6 pod as soon as it is up rather than all
+	// of them together, so tc schedules its own restart instead. A parent
+	// start still ahead (the parent itself was archived and resumed) holds.
+	if burnStopped(tc) && parent.Status.BurnStartAt != nil && !parent.Status.BurnStartAt.After(time.Now()) {
+		return startAt, false, nil
+	}
 	if startAt == nil {
 		startAt = parent.Status.BurnStartAt
 	}
 	return startAt, true, nil
+}
+
+// burnStopped reports whether tc's burn was stopped and hasn't started
+// again since.
+func burnStopped(tc *benchv1alpha1.TestCase) bool {
+	return slices.ContainsFunc(tc.Status.Deployments, func(st benchv1alpha1.TestCaseDeploymentStatus) bool {
+		return st.BurnStoppedAt != nil
+	})
 }
 
 // setBurnStaged records whether a Burn TestCase is staged (see
@@ -330,12 +350,14 @@ func openBurnStartGate(ctx context.Context, tc *benchv1alpha1.TestCase, startAt 
 	now := metav1.Now()
 	for i := range tc.Status.Deployments {
 		st := &tc.Status.Deployments[i]
-		if st.BurningSince == nil && st.BurnWorkloadRef != nil {
-			// A target added once the burn already started starts now.
+		if (st.BurningSince == nil || st.BurnStoppedAt != nil) && st.BurnWorkloadRef != nil {
+			// A target added once the burn already started starts now. A
+			// stopped one starts over, its earlier window replaced.
 			st.BurningSince = startAt.DeepCopy()
 			if startAt.Before(&now) {
 				st.BurningSince = &now
 			}
+			st.BurnStoppedAt = nil
 		}
 	}
 	return result
@@ -350,17 +372,20 @@ func burnDeploymentStaged(dep *appsv1.Deployment) bool {
 }
 
 // keepRecordedStatus carries over what a target's freshly computed status
-// can't know by itself from prev: when its burn started, and, if the target
-// couldn't be resolved this pass (its deployment is gone or not Ready, or
-// its cluster is unreachable), where it and its k6 workload last ran, so a
-// later delete still finds the workload and its telemetry can still be
-// shown.
+// can't know by itself from prev: when its burn started, and when it was
+// stopped, until openBurnStartGate starts it again (burnStart needs the stop
+// to tell a parent's start time from before it, and the earlier window
+// stays shown until then); and, if the target couldn't be resolved this
+// pass (its deployment is gone or not Ready, or its cluster is unreachable),
+// where it and its k6 workload last ran, so a later delete still finds the
+// workload and its telemetry can still be shown.
 func keepRecordedStatus(tc *benchv1alpha1.TestCase, result *targetResult, prev benchv1alpha1.TestCaseDeploymentStatus) {
 	if result.runnerClient == nil {
 		keepRecordedPlacement(&result.status, prev)
 	}
-	if tc.Spec.Profile == benchv1alpha1.ProfileBurn && prev.BurnStoppedAt == nil {
+	if tc.Spec.Profile == benchv1alpha1.ProfileBurn {
 		result.status.BurningSince = prev.BurningSince
+		result.status.BurnStoppedAt = prev.BurnStoppedAt
 	}
 }
 
@@ -543,9 +568,65 @@ func (r *TestCaseReconciler) reconcileDelete(ctx context.Context, tc *benchv1alp
 }
 
 // reconcileArchived stops every k6 Burn Deployment of an archived TestCase
-// and reports it as Archived. An archived TestCase never gives up on a
-// cluster it is known to have run on, since nothing else would stop that load.
+// and reports it as Archived.
 func (r *TestCaseReconciler) reconcileArchived(ctx context.Context, tc *benchv1alpha1.TestCase) (ctrl.Result, error) {
+	return r.reconcileStopped(ctx, tc, benchv1alpha1.ReasonArchived, "test case is archived")
+}
+
+// stopOnExhaustedStorage stops a Burn TestCase's k6 load when a target's
+// postgres volume is too full to keep putting load on: full at its maximum
+// size, full and unable to grow, or past the hard limit. A Burn keeps
+// writing until the volume is full, and a postgres with no space left cannot
+// even restart, so the load stops while there is still room - on every
+// target, since a comparison with one side stopped means nothing. The
+// deployments stay up for inspection, and the load starts again once the
+// volume has room. stopped reports that the caller is done, with the result
+// to return.
+func (r *TestCaseReconciler) stopOnExhaustedStorage(
+	ctx context.Context, tc *benchv1alpha1.TestCase, refs []corev1.LocalObjectReference,
+) (stopped bool, _ ctrl.Result, _ error) {
+	if tc.Spec.Profile != benchv1alpha1.ProfileBurn {
+		return false, ctrl.Result{}, nil
+	}
+	exhausted, err := r.exhaustedPostgresStorage(ctx, tc, refs)
+	if err != nil {
+		return true, ctrl.Result{}, err
+	}
+	if len(exhausted) == 0 {
+		return false, ctrl.Result{}, nil
+	}
+	result, err := r.reconcileStopped(ctx, tc, benchv1alpha1.ReasonPostgresStorageFull,
+		"k6 load stopped until postgres has room again: "+strings.Join(exhausted, "; "))
+	return true, result, err
+}
+
+// exhaustedPostgresStorage describes the targets among refs whose postgres
+// volume is too full to keep putting load on (see
+// render.PostgresStorageExhausted), each as its name and why. A target that
+// no longer exists is skipped.
+func (r *TestCaseReconciler) exhaustedPostgresStorage(ctx context.Context, tc *benchv1alpha1.TestCase, refs []corev1.LocalObjectReference) ([]string, error) {
+	var names []string
+	for _, ref := range refs {
+		var topo benchv1alpha1.AuthentikDeployment
+		if err := r.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: tc.Namespace}, &topo); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, fmt.Errorf("get AuthentikDeployment %q: %w", ref.Name, err)
+		}
+		if render.PostgresStorageExhausted(&topo) {
+			cond := meta.FindStatusCondition(topo.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
+			names = append(names, topo.Name+": "+cond.Message)
+		}
+	}
+	return names, nil
+}
+
+// reconcileStopped stops every k6 Burn Deployment of a TestCase that must
+// not put load on its targets, and reports why as its Ready condition's
+// reason and message. It never gives up on a cluster the TestCase is known
+// to have run on, since nothing else would stop that load.
+func (r *TestCaseReconciler) reconcileStopped(ctx context.Context, tc *benchv1alpha1.TestCase, reason, message string) (ctrl.Result, error) {
 	pending, err := r.stopAllBurnDeployments(ctx, tc, false)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -563,7 +644,7 @@ func (r *TestCaseReconciler) reconcileArchived(ctx context.Context, tc *benchv1a
 	}
 	meta.RemoveStatusCondition(&tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
 	setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
-		benchv1alpha1.ReasonArchived, "test case is archived")
+		reason, message)
 	tc.Status.Phase = benchv1alpha1.PhaseFor(tc.Status.Conditions)
 	tc.Status.ObservedGeneration = tc.Generation
 	if err := r.Status().Update(ctx, tc); err != nil {

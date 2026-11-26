@@ -1,5 +1,6 @@
 import {
     colorFor,
+    deltaTone,
     formatDuration,
     readableTextOn,
     formatMetricValue,
@@ -121,13 +122,18 @@ export function TargetKey({ index }: { index: number }) {
     );
 }
 
+/**
+ * The metrics a targets table compares. Not "checks": k6 only reports it as
+ * the pass rate since its pod started, so it does not cover the window the
+ * rest of the table does. "iteration_failed" is the windowed failure figure.
+ */
 export const TARGET_METRICS = [
     "iterations",
     "http_reqs",
     "iteration_duration_p95",
     "http_req_duration_p99",
     "http_req_failed",
-    "checks",
+    "iteration_failed",
 ];
 
 export function TargetTable({
@@ -279,14 +285,10 @@ export function Delta({
     if (value === undefined) {
         return <span className="muted">-</span>;
     }
-    const improved = better === "lower" ? value < 0 : value > 0;
+    const tone = deltaTone(value, better);
     const arrow = value > 0 ? "▲" : value < 0 ? "▼" : "";
     return (
-        <span
-            className={
-                Math.abs(value) < 0.005 ? "muted" : improved ? "delta better" : "delta worse"
-            }
-        >
+        <span className={tone === "flat" ? "muted" : `delta ${tone}`}>
             {arrow} {Math.abs(value * 100).toFixed(1)}%
         </span>
     );

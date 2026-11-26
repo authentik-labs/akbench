@@ -13,6 +13,8 @@ import {
 import { ObjectYaml } from "../components/ObjectYaml";
 import { ProfileBreakdownSection } from "../components/ProfileBreakdown";
 import { PullRequestLink } from "../components/PullRequestLink";
+import { QueryErrors } from "../components/QueryErrors";
+import { RestartsWarning } from "../components/Restarts";
 import { Rollout } from "../components/Rollout";
 import { Badge, ConditionList, StatusBadge } from "../components/Status";
 import { buildTargetRows, burnStatus, TargetTable } from "../components/Targets";
@@ -43,6 +45,7 @@ import {
     parseTimeRange,
     shortTag,
     SINCE_START,
+    summaryWindowNote,
     timeRangeSeconds,
     newestFirst,
 } from "../format";
@@ -975,6 +978,8 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
             />
             {rollingOut && statusSection}
 
+            <QueryErrors errors={summary.data?.errors} />
+            <RestartsWarning testids={[name]} period={summaryWindow} endSeconds={metricsEnd} />
             <Section
                 id="targets"
                 title="Targets & timeline"
@@ -984,7 +989,7 @@ function TestCaseLeafView({ testCase }: { testCase: ReturnType<typeof useResourc
                         ? anchor
                             ? `The last 5 minutes of the latest completed run (${new Date(anchor.endSeconds * 1000).toLocaleString()}).`
                             : "Shows once a run has completed."
-                        : "Same script and load on each target. Δ is relative to the baseline target."
+                        : `Same script and load on each target. ${summaryWindowNote(timelineRange, burnEnd !== undefined)} Δ is relative to the baseline target.`
                 }
                 actions={
                     profile === "Burn" && (

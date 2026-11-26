@@ -5,19 +5,14 @@
  * in this file already uses them) but just alias the real --ak-global--*
  * tokens, so this app looks like part of authentik rather than a lookalike.
  * Spacing, type sizes, radii, z-index and motion all come from the theme
- * scale too - prefer a token over a raw px value. Only the token groups
- * this file uses are imported: the package's
- * index.css also carries the raw palette and a PatternFly (--pf-*) bridge,
- * neither of which anything here reads. Dark mode: @goauthentik/theme keys
- * its dark values off html[data-theme="dark"], not a prefers-color-scheme
- * media query - main.tsx sets that attribute from the OS preference. */
-@import "@goauthentik/theme/color.css";
-@import "@goauthentik/theme/typography.css";
-@import "@goauthentik/theme/shape.css";
-@import "@goauthentik/theme/shadow.css";
-@import "@goauthentik/theme/spacing.css";
-@import "@goauthentik/theme/motion.css";
-@import "@goauthentik/theme/z-index.css";
+ * scale too - prefer a token over a raw px value. The theme ships a single
+ * stylesheet, index.css (the per-group files went away in 2.1.0). It also
+ * carries the raw palette and a PatternFly (--pf-*) bridge, neither of
+ * which anything here reads; about 5 KB gzipped in all. Dark mode:
+ * @goauthentik/theme keys its dark values off html[data-theme="dark"], not
+ * a prefers-color-scheme media query - main.tsx sets that attribute from
+ * the OS preference. */
+@import "@goauthentik/theme/index.css";
 @import "@goauthentik/fonts/faces.css";
 
 :root {

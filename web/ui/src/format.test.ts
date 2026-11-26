@@ -3,6 +3,7 @@ import {
     archivedBurnWindow,
     buildLabel,
     colorFor,
+    deltaTone,
     earliestBurnStart,
     formatDuration,
     formatMetricValue,
@@ -16,9 +17,11 @@ import {
     seriesAverage,
     SINCE_START,
     stepFor,
+    summaryWindowNote,
     targetNameOf,
     timeRangeSeconds,
     topActors,
+    windowFor,
 } from "./format";
 
 import { describe, expect, it } from "vitest";
@@ -130,6 +133,22 @@ describe("formatDuration", () => {
     });
 });
 
+describe("summaryWindowNote", () => {
+    it("names the stretch up to now", () => {
+        expect(summaryWindowNote(4 * 3600 + 120)).toBe("Values cover the last 4h 2m.");
+        expect(summaryWindowNote(3 * 86400 + 4 * 3600)).toBe("Values cover the last 3d 4h.");
+    });
+
+    it("drops a zero second unit from a round span", () => {
+        expect(summaryWindowNote(3600)).toBe("Values cover the last 1h.");
+        expect(summaryWindowNote(7 * 86400)).toBe("Values cover the last 7d.");
+    });
+
+    it("names the end of a burn that has stopped", () => {
+        expect(summaryWindowNote(900, true)).toBe("Values cover the final 15m of the burn.");
+    });
+});
+
 describe("relativeDelta", () => {
     it("is the change relative to the baseline", () => {
         expect(relativeDelta(0.362, 0.421)).toBeCloseTo(-0.14, 3);
@@ -143,6 +162,22 @@ describe("relativeDelta", () => {
     });
 });
 
+describe("deltaTone", () => {
+    it("follows the metric's good direction", () => {
+        expect(deltaTone(0.1, "higher")).toBe("better");
+        expect(deltaTone(-0.1, "higher")).toBe("worse");
+        expect(deltaTone(-0.1, "lower")).toBe("better");
+        expect(deltaTone(0.1, "lower")).toBe("worse");
+    });
+
+    it("is flat under half a percent either way", () => {
+        expect(deltaTone(0, "higher")).toBe("flat");
+        expect(deltaTone(0.0049, "lower")).toBe("flat");
+        expect(deltaTone(-0.0049, "higher")).toBe("flat");
+        expect(deltaTone(0.005, "higher")).toBe("better");
+    });
+});
+
 describe("stepFor", () => {
     it("never goes finer than 15s", () => {
         expect(stepFor(900)).toBe("15s");
@@ -150,6 +185,23 @@ describe("stepFor", () => {
 
     it("keeps long ranges to about 240 points", () => {
         expect(stepFor(7 * 86400)).toBe("2520s");
+    });
+});
+
+describe("windowFor", () => {
+    it("leaves the default window while points are at most a minute apart", () => {
+        expect(windowFor(900)).toBeUndefined();
+        expect(windowFor(4 * 3600)).toBeUndefined();
+    });
+
+    it("leaves the default just past that, where a window would be under two minutes", () => {
+        expect(windowFor(6 * 3600)).toBeUndefined();
+    });
+
+    it("covers the whole step on a long range", () => {
+        expect(windowFor(12 * 3600)).toBe("180s");
+        expect(windowFor(7 * 86400)).toBe("2520s");
+        expect(windowFor(7 * 86400)).toBe(stepFor(7 * 86400));
     });
 });
 
@@ -304,6 +356,31 @@ describe("archivedBurnWindow", () => {
             start: undefined,
             end: s("2026-10-16T00:37:20Z"),
         });
+    });
+
+    it("spans the burn of a test stopped because postgres ran out of storage", () => {
+        const deployments = [
+            { burningSince: "2026-10-14T10:00:00Z", burnStoppedAt: "2026-10-16T00:00:00Z" },
+        ];
+        const stopped = {
+            type: "Ready",
+            status: "False",
+            reason: "PostgresStorageFull",
+            lastTransitionTime: "2026-10-16T00:00:00Z",
+        };
+        expect(
+            archivedBurnWindow({ spec: {}, status: { conditions: [stopped], deployments } }),
+        ).toEqual({ start: s("2026-10-14T10:00:00Z"), end: s("2026-10-16T00:00:00Z") });
+        // Restarting, the stop is still recorded but no longer the end.
+        expect(
+            archivedBurnWindow({
+                spec: {},
+                status: {
+                    conditions: [{ ...stopped, reason: "DependencyNotReady" }],
+                    deployments,
+                },
+            }),
+        ).toBeUndefined();
     });
 
     it("is undefined for an active test", () => {

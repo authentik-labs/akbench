@@ -321,9 +321,21 @@ func TestObservabilityStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := string(values.Raw)
-	for _, want := range []string{`"storageSpec":{"volumeClaimTemplate"`, `"storage":{"volumeClaimTemplate"`, `"storage":"20Gi"`, `"retentionSize":"16GB"`, `"storageClassName":"incus-block"`} {
+	for _, want := range []string{`"storageSpec":{"volumeClaimTemplate"`, `"storage":{"volumeClaimTemplate"`, `"storage":"100Gi"`, `"retentionSize":"87040MB"`, `"retention":"60d"`, `"storageClassName":"incus-block"`} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("kube-prometheus-stack values missing %s", want)
+		}
+	}
+
+	wc.Spec.Prometheus = &benchv1alpha1.PrometheusSpec{Retention: "1y", StorageSize: "500Gi"}
+	values, err = KubePrometheusStackHelmValues(wc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = string(values.Raw)
+	for _, want := range []string{`"storage":"500Gi"`, `"retentionSize":"435200MB"`, `"retention":"1y"`} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("spec.prometheus override missing %s", want)
 		}
 	}
 }

@@ -211,7 +211,8 @@ export interface TestCaseDeploymentStatus {
     ready: boolean;
     burnWorkloadRef?: { name: string };
     burningSince?: string;
-    // Set once archiving stopped this target's burn; burningSince is then kept.
+    // Set once archiving, or postgres running out of storage, stopped this
+    // target's burn; burningSince is then kept until the burn starts again.
     burnStoppedAt?: string;
 }
 
@@ -412,6 +413,15 @@ export interface WorkloadClusterSpec {
     controlPlane: MachineSpec;
     workerPools: WorkerPoolSpec[];
     incus?: IncusProviderSpec;
+    prometheus?: PrometheusSpec;
+}
+
+export interface PrometheusSpec {
+    // retention is a Prometheus duration, e.g. "60d" (the default).
+    retention?: string;
+    // storageSize defaults to 100Gi; metrics older than retention are
+    // also dropped once the volume is 85% full.
+    storageSize?: string;
 }
 
 export type AddonState = "Ready" | "Progressing" | "Waiting" | "Failed";
@@ -452,6 +462,21 @@ export interface CompareMetric {
     label: string;
     unit: string;
     better: "higher" | "lower";
+}
+
+/** internal/api/restarts.go's response: container restarts per deployment. */
+export interface RestartsResponse {
+    window: string;
+    // restarts is keyed by container name; a target that stayed up has none.
+    // started counts the pods that started within the window the same way:
+    // replaced pods, whose restarts do not show in restarts.
+    targets: {
+        testid: string;
+        target: string;
+        restarts: Record<string, number>;
+        started?: Record<string, number>;
+    }[];
+    errors?: Record<string, string>;
 }
 
 export interface CompareResponse {

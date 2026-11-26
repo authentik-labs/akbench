@@ -5,12 +5,14 @@
 import { api } from "../api";
 import {
     colorFor,
+    deltaTone,
     formatMetricValue,
     palettes,
     relativeDelta,
     seriesAverage,
     smoothPoints,
     stepFor,
+    windowFor,
 } from "../format";
 import { RangeResponse } from "../types";
 import { useResource } from "../useResource";
@@ -270,8 +272,11 @@ function drawReport(ctx: CanvasRenderingContext2D, input: DrawInput) {
             valuesBottom = Math.max(valuesBottom, vy);
             const delta = j === input.baseline ? undefined : relativeDelta(value, baselineValue);
             if (delta !== undefined) {
-                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}% vs ${names[input.baseline]}`;
-                ctx.fillStyle = delta >= 0 === (metric.better === "higher") ? t.good : t.bad;
+                // Same rule as the pages' Delta: one decimal, and no win or
+                // loss color for a change that is flat.
+                const label = `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(1)}% vs ${names[input.baseline]}`;
+                const tone = deltaTone(delta, metric.better);
+                ctx.fillStyle = tone === "flat" ? t.muted : tone === "better" ? t.good : t.bad;
                 fitFont(ctx, label, colW - 16, 22, 600, family);
                 ctx.fillText(label, vx, vy + 34);
                 valuesBottom = Math.max(valuesBottom, vy + 34);
@@ -344,6 +349,7 @@ function fetchRanges(
     const end = endSeconds ?? Math.floor(Date.now() / 1000);
     const start = end - rangeSeconds;
     const step = stepFor(rangeSeconds);
+    const window = windowFor(rangeSeconds);
     return Promise.all(
         picks.map(({ metric: m, source }) => {
             const testid = sources[source]?.testid;
@@ -351,8 +357,8 @@ function fetchRanges(
                 return Promise.resolve(undefined);
             }
             return m.resource
-                ? api.resourceRange([testid], m.resource, start, end, step, m.component)
-                : api.metricsRange([testid], m.key, start, end, step);
+                ? api.resourceRange([testid], m.resource, start, end, step, m.component, window)
+                : api.metricsRange([testid], m.key, start, end, step, window);
         }),
     ).then((responses) => ({ responses, start, end, picks }));
 }

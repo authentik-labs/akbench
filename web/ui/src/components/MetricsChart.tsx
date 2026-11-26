@@ -6,6 +6,7 @@ import {
     relativeDelta,
     seriesAverage,
     stepFor,
+    windowFor,
     topActors,
 } from "../format";
 import { useDarkTheme } from "../theme";
@@ -18,6 +19,7 @@ import {
     WorkerMetric,
 } from "../types";
 import { useResource } from "../useResource";
+import { queryErrorNotes } from "./QueryErrors";
 import { Delta } from "./Targets";
 import { Column, Table } from "./ui";
 
@@ -277,6 +279,8 @@ export function MetricsChart({
                     window.start,
                     window.end,
                     step ?? stepFor(rangeSeconds),
+                    // A caller's own step keeps the server's default window.
+                    step === undefined ? windowFor(rangeSeconds) : undefined,
                 )
                 .then((response) => ({ response, window }));
         },
@@ -303,7 +307,9 @@ export function MetricsChart({
             datasets={datasets}
             theme={theme}
             window={windowed?.window}
-            error={error}
+            // A test whose Prometheus could not be queried has no line; say so
+            // rather than leave it looking like a test without data.
+            error={error ?? (queryErrorNotes(data?.errors).join("; ") || undefined)}
             height={height}
         />
     );
@@ -513,6 +519,7 @@ export function ResourceCharts({
                         window.end,
                         stepFor(rangeSeconds),
                         component,
+                        windowFor(rangeSeconds),
                     ),
                 ),
             ).then((responses) => ({ responses, window }));
@@ -625,6 +632,7 @@ export function TrendTable({
         return error ? <div className="alert error">{error}</div> : null;
     }
     const { responses, first, slice } = data;
+    const partial = queryErrorNotes(...responses.map((r) => r.response.errors));
     const withDate = rangeSeconds > 86400;
     const multi =
         new Set(responses.flatMap((r) => r.response.series.map((s) => s.target))).size > 1;
@@ -659,6 +667,7 @@ export function TrendTable({
                     <h3 style={{ display: "inline" }}>Trend over the window</h3>
                 </summary>
                 {error && <div className="alert error">{error}</div>}
+                {partial.length > 0 && <div className="alert error">{partial.join("; ")}</div>}
                 <table className="table">
                     <thead>
                         <tr>

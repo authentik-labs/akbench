@@ -58,6 +58,19 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * summaryWindowNote says which stretch of time a summary table's values
+ * cover, e.g. "Values cover the last 3d 4h." A table of rates and
+ * percentiles reads very differently over a minute than over days, and
+ * each page picks its own window. ended is for a burn that has stopped,
+ * whose window ends when it did rather than now.
+ */
+export function summaryWindowNote(seconds: number, ended = false): string {
+    // "1h", not formatDuration's "1h 0m": the picker's ranges are round.
+    const span = formatDuration(seconds).replace(/ 0[hm]$/, "");
+    return ended ? `Values cover the final ${span} of the burn.` : `Values cover the last ${span}.`;
+}
+
+/**
  * relativeDelta is value's change relative to baseline (0.1 = 10% higher),
  * or undefined when either side is missing or the baseline is zero.
  */
@@ -72,12 +85,39 @@ export function relativeDelta(
 }
 
 /**
+ * deltaTone says how a relative change reads for a metric where `better` is
+ * the good direction. Under half a percent either way is "flat": it rounds
+ * to 0.0% or so, and coloring it would claim a win or a loss.
+ */
+export function deltaTone(delta: number, better: "higher" | "lower"): "flat" | "better" | "worse" {
+    if (Math.abs(delta) < 0.005) {
+        return "flat";
+    }
+    return (better === "lower" ? delta < 0 : delta > 0) ? "better" : "worse";
+}
+
+/**
  * stepFor picks a range query step that keeps a chart around 240 points,
  * never finer than 15s - a 7 day range at a fixed 15s step would be ~40k
  * points per series, past Prometheus' own 11k-point limit.
  */
 export function stepFor(rangeSeconds: number): string {
     return `${Math.max(15, Math.ceil(rangeSeconds / 240))}s`;
+}
+
+/**
+ * windowFor is what each point of a chart over rangeSeconds should
+ * aggregate over, or undefined for the server's default (1m). Up to four
+ * hours stepFor's points are at most a minute apart, so 1m windows cover
+ * the range. Beyond that they would sample one minute out of each step -
+ * one in 42 over a week - so the window grows with the step and a point
+ * covers everything since the previous one. Not below two minutes: the
+ * server answers those from its 1m recording rules
+ * (internal/api/metrics.go's recordedRangeMinWindow).
+ */
+export function windowFor(rangeSeconds: number): string | undefined {
+    const step = stepFor(rangeSeconds);
+    return Number.parseInt(step, 10) >= 120 ? step : undefined;
 }
 
 /**
@@ -337,19 +377,29 @@ export function earliestBurnStart(
 
 /**
  * archivedBurnWindow is when an archived test burned, in unix seconds: from
- * its earliest target's burn start to its latest burn stop. Test cases
- * archived before the operator kept burningSince only know the end, taken
- * from when their Ready condition turned Archived. Undefined for a test
- * that isn't archived, or whose end isn't known.
+ * its earliest target's burn start to its latest burn stop. The same goes
+ * for a test whose burn the operator stopped because a target's postgres
+ * ran out of storage, while it stays stopped. Test cases archived before
+ * the operator kept burningSince only know the end, taken from when their
+ * Ready condition turned Archived. Undefined for a test that isn't archived
+ * or stopped, or whose end isn't known.
  */
 export function archivedBurnWindow(tc: {
     spec: { archived?: boolean };
     status?: {
-        conditions?: { type: string; reason?: string; lastTransitionTime?: string }[];
+        conditions?: {
+            type: string;
+            status?: string;
+            reason?: string;
+            lastTransitionTime?: string;
+        }[];
         deployments?: { burningSince?: string; burnStoppedAt?: string }[];
     };
 }): { start?: number; end: number } | undefined {
-    if (!tc.spec.archived) {
+    const storageFull = tc.status?.conditions?.some(
+        (c) => c.type === "Ready" && c.status === "False" && c.reason === "PostgresStorageFull",
+    );
+    if (!tc.spec.archived && !storageFull) {
         return undefined;
     }
     const deployments = tc.status?.deployments ?? [];

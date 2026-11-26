@@ -193,6 +193,182 @@ var _ = Describe("TestCase Controller", func() {
 		})
 	})
 
+	Context("Burn profile, postgres volume full", func() {
+		const resourceName = "burn-storage-full"
+		typeNamespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+		var r *TestCaseReconciler
+
+		// setStorage records ad's postgres volume as size, with used of
+		// capacity bytes in use, and whether it is exhausted at its
+		// maximum, the way AuthentikDeploymentReconciler does.
+		setStorage := func(ad *benchv1alpha1.AuthentikDeployment, size string, used, capacity int64, exhausted bool) {
+			var current benchv1alpha1.AuthentikDeployment
+			Expect(k8sClient.Get(context.Background(), client.ObjectKeyFromObject(ad), &current)).To(Succeed())
+			current.Status.PostgresStorage = &benchv1alpha1.PostgresStorageStatus{Size: size, UsedBytes: used, CapacityBytes: capacity}
+			meta.RemoveStatusCondition(&current.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
+			if exhausted {
+				meta.SetStatusCondition(&current.Status.Conditions, metav1.Condition{
+					Type: benchv1alpha1.ConditionPostgresStorageExhausted, Status: metav1.ConditionTrue,
+					Reason: benchv1alpha1.ReasonPostgresStorageAtMax, Message: "postgres volume is 83% full and already at maxStorageSize 12Gi",
+				})
+			}
+			Expect(k8sClient.Status().Update(context.Background(), &current)).To(Succeed())
+		}
+		burnDeployments := func() []appsv1.Deployment {
+			var deps appsv1.DeploymentList
+			Expect(k8sClient.List(context.Background(), &deps, client.InNamespace("default"),
+				client.MatchingLabels{benchv1alpha1.LabelTestCase: resourceName})).To(Succeed())
+			return deps.Items
+		}
+		reconcileOnce := func() benchv1alpha1.TestCase {
+			_, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			return tc
+		}
+		startAtFile := func() string {
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: "k6-script-" + resourceName, Namespace: "default"}, &cm)).To(Succeed())
+			return cm.Data[render.StartAtFileName]
+		}
+		// startBurn reconciles until every burn Deployment is staged and the
+		// start gate open, returning the TestCase.
+		startBurn := func() benchv1alpha1.TestCase {
+			reconcileOnce()
+			for _, dep := range burnDeployments() {
+				markBurnDeploymentStaged(dep.Name)
+			}
+			reconcileOnce()
+			return reconcileOnce()
+		}
+
+		BeforeEach(func() {
+			r = &TestCaseReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(100), Tracker: testTracker}
+			tc := &benchv1alpha1.TestCase{
+				Name: resourceName, Namespace: "default",
+				Spec: benchv1alpha1.TestCaseSpec{
+					DeploymentRefs: []corev1.LocalObjectReference{{Name: topo.Name}},
+					Profile:        benchv1alpha1.ProfileBurn,
+					VUs:            8,
+					Flow:           "default-authentication-flow",
+				},
+			}
+			Expect(k8sClient.Create(context.Background(), tc)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			forceDelete(context.Background(), &benchv1alpha1.TestCase{Name: typeNamespacedName.Name, Namespace: typeNamespacedName.Namespace})
+		})
+
+		It("stops the k6 load, and starts it again together once the volume has room", func() {
+			tc := startBurn()
+			Expect(burnDeployments()).To(HaveLen(1))
+			firstStart := findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince
+			Expect(firstStart).NotTo(BeNil())
+
+			// Full, but the volume can still grow to the 12Gi default
+			// maximum: auto-growth handles it and the load keeps running.
+			setStorage(topo, "8Gi", 7<<30, 8<<30, false)
+			reconcileOnce()
+			Expect(burnDeployments()).To(HaveLen(1))
+
+			setStorage(topo, "12Gi", 10<<30, 12<<30, true)
+			tc = reconcileOnce()
+			Expect(burnDeployments()).To(BeEmpty())
+			Expect(tc.Status.Phase).To(Equal(benchv1alpha1.PhaseFailed))
+			ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(benchv1alpha1.ReasonPostgresStorageFull))
+			Expect(ready.Message).To(ContainSubstring(topo.Name + ": postgres volume is 83% full"))
+			stopped := findDeploymentStatus(tc.Status.Deployments, topo.Name)
+			Expect(stopped.BurningSince.Equal(firstStart)).To(BeTrue())
+			Expect(stopped.BurnStoppedAt).NotTo(BeNil())
+
+			// Room again: the k6 pod comes back and waits at a closed gate,
+			// the earlier window still recorded until the burn restarts.
+			setStorage(topo, "12Gi", 2<<30, 12<<30, false)
+			tc = reconcileOnce()
+			Expect(burnDeployments()).To(HaveLen(1))
+			Expect(startAtFile()).To(BeEmpty())
+			resuming := findDeploymentStatus(tc.Status.Deployments, topo.Name)
+			Expect(resuming.BurningSince.Equal(firstStart)).To(BeTrue())
+			Expect(resuming.BurnStoppedAt).NotTo(BeNil())
+
+			tc = startBurn()
+			resumed := findDeploymentStatus(tc.Status.Deployments, topo.Name)
+			Expect(resumed.BurnStoppedAt).To(BeNil())
+			Expect(resumed.BurningSince.After(time.Now())).To(BeTrue(), "a fresh start, ahead of now")
+			Expect(startAtFile()).To(Equal(strconv.FormatInt(resumed.BurningSince.Unix(), 10)))
+		})
+
+		It("stops every target's load when one target is full", func() {
+			other := createReadyDeployment(context.Background(), "testcase-deployment-2", "authentik-2", "authentik-2-server.ns.svc.cluster.local")
+			DeferCleanup(forceDelete, context.Background(), other)
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(context.Background(), typeNamespacedName, &tc)).To(Succeed())
+			tc.Spec.DeploymentRefs = append(tc.Spec.DeploymentRefs, corev1.LocalObjectReference{Name: other.Name})
+			Expect(k8sClient.Update(context.Background(), &tc)).To(Succeed())
+			startBurn()
+			Expect(burnDeployments()).To(HaveLen(2))
+
+			setStorage(other, "12Gi", 10<<30, 12<<30, true)
+			tc = reconcileOnce()
+			Expect(burnDeployments()).To(BeEmpty())
+			ready := meta.FindStatusCondition(tc.Status.Conditions, benchv1alpha1.ConditionReady)
+			Expect(ready.Message).To(ContainSubstring(other.Name))
+			Expect(ready.Message).NotTo(ContainSubstring(topo.Name + ":"))
+			for _, st := range tc.Status.Deployments {
+				Expect(st.BurnStoppedAt).NotTo(BeNil(), st.Name)
+			}
+
+			setStorage(other, "12Gi", 2<<30, 12<<30, false)
+			tc = startBurn()
+			Expect(burnDeployments()).To(HaveLen(2))
+			a := findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince
+			b := findDeploymentStatus(tc.Status.Deployments, other.Name).BurningSince
+			Expect(a.Equal(b)).To(BeTrue(), "both targets restart together")
+		})
+
+		It("restarts a parent-gated child together rather than at its parent's past start", func() {
+			ctx := context.Background()
+			m := &benchv1alpha1.TestCase{
+				Name: "storage-gate-parent", Namespace: "default",
+				Spec: benchv1alpha1.TestCaseSpec{
+					Variants:   []benchv1alpha1.TestCaseVariant{{Name: "a", Tag: "x"}},
+					Templates:  []string{"login"},
+					Deployment: &benchv1alpha1.AuthentikDeploymentSpec{ClusterRef: corev1.LocalObjectReference{Name: testClusterName}},
+					Profile:    benchv1alpha1.ProfileBurn,
+				},
+			}
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+			DeferCleanup(forceDelete, ctx, m)
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &tc)).To(Succeed())
+			tc.Labels = map[string]string{benchv1alpha1.LabelParent: m.Name}
+			Expect(k8sClient.Update(ctx, &tc)).To(Succeed())
+			// The parent started its children an hour ago; this one has
+			// been burning since.
+			parentStart := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+			m.Status.BurnStartAt = &parentStart
+			Expect(k8sClient.Status().Update(ctx, m)).To(Succeed())
+			tc = startBurn()
+			Expect(startAtFile()).To(Equal(strconv.FormatInt(findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince.Unix(), 10)))
+
+			setStorage(topo, "12Gi", 10<<30, 12<<30, true)
+			reconcileOnce()
+			Expect(burnDeployments()).To(BeEmpty())
+
+			setStorage(topo, "12Gi", 2<<30, 12<<30, false)
+			reconcileOnce()
+			Expect(startAtFile()).To(BeEmpty(), "the parent's start an hour ago would release the k6 pod right away")
+			tc = startBurn()
+			resumed := findDeploymentStatus(tc.Status.Deployments, topo.Name).BurningSince
+			Expect(resumed.After(time.Now())).To(BeTrue())
+			Expect(startAtFile()).To(Equal(strconv.FormatInt(resumed.Unix(), 10)))
+		})
+	})
+
 	Context("Quick profile", func() {
 		const resourceName = "quick-login"
 		typeNamespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}

@@ -1,7 +1,9 @@
 package render
 
 import (
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
 )
@@ -10,6 +12,10 @@ const (
 	// postgresStorageGrowPercent is how full (used/capacity) a postgres
 	// volume gets before auto-growth enlarges it.
 	postgresStorageGrowPercent = 80
+	// PostgresStorageHardLimitPercent is how full a postgres volume may get
+	// before a Burn's load stops, whatever its size or maximum: past it,
+	// growing the volume hasn't kept up or isn't happening.
+	PostgresStorageHardLimitPercent = 95
 	// postgresStorageGrowFactor is how much each auto-growth step enlarges
 	// a volume by, as a fraction of its current size.
 	postgresStorageGrowFactor = 1.5
@@ -68,6 +74,42 @@ func CNPGDataPVCLabels(t *benchv1alpha1.AuthentikDeployment) map[string]string {
 // use is full enough to grow.
 func PostgresStorageFull(used, capacity int64) bool {
 	return capacity > 0 && used*100 >= capacity*postgresStorageGrowPercent
+}
+
+// PostgresStorageAtHardLimit reports whether a volume with used of capacity
+// bytes in use is past PostgresStorageHardLimitPercent.
+func PostgresStorageAtHardLimit(used, capacity int64) bool {
+	return capacity > 0 && used*100 >= capacity*PostgresStorageHardLimitPercent
+}
+
+// PostgresStorageExhausted reports whether the deployment's postgres volume
+// is too full to keep putting load on it: the deployment controller set
+// ConditionPostgresStorageExhausted. When that is because the volume is full
+// at its maximum size, the maximum must not have been raised since, so
+// raising it resumes the load right away rather than at the next usage
+// reading. Always false where auto-growth doesn't apply.
+func PostgresStorageExhausted(t *benchv1alpha1.AuthentikDeployment) bool {
+	cond := meta.FindStatusCondition(t.Status.Conditions, benchv1alpha1.ConditionPostgresStorageExhausted)
+	maxSize := PostgresMaxStorageSize(t)
+	if cond == nil || cond.Status != metav1.ConditionTrue || maxSize == "" {
+		return false
+	}
+	if cond.Reason != benchv1alpha1.ReasonPostgresStorageAtMax {
+		return true
+	}
+	st := t.Status.PostgresStorage
+	if st == nil {
+		return false
+	}
+	limit, err := resource.ParseQuantity(maxSize)
+	if err != nil {
+		return false
+	}
+	size, err := resource.ParseQuantity(st.Size)
+	if err != nil {
+		return false
+	}
+	return size.Cmp(limit) >= 0
 }
 
 // NextPostgresStorageSize decides whether a postgres volume of size current,

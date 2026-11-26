@@ -50,6 +50,14 @@ type CompareMetric struct {
 // resolution would show up as lag.
 const recordedMinWindow = model.Duration(time.Hour)
 
+// recordedRangeMinWindow is the shortest per-point window metricsRange
+// answers from the recording rules. A chart over more than a few hours asks
+// for a window as long as its step, so that a point covers everything since
+// the previous one; over the raw series that reads every sample in the
+// range, which is what the rules exist to avoid. Shorter than this and a
+// point would average fewer than two of the rules' 1m samples.
+const recordedRangeMinWindow = model.Duration(2 * time.Minute)
+
 // fill renders Query for one label selector and range window. A query with
 // a range selector ("[%s]" or "[%[2]s]") takes both; one without (a plain
 // gauge) takes only the selector.
@@ -129,12 +137,32 @@ var compareMetrics = []CompareMetric{
 			` / sum by (target) (sum_over_time(` + render.RecordedHTTPReqs + `{%[1]s}[%[2]s]))`,
 	},
 	{
-		Key: "checks", Label: "Passing checks", Unit: unitRatio, Better: betterHigher,
+		Key: "iteration_failed", Label: "Failed transactions", Unit: unitRatio, Better: betterLower,
+		// From bench.ts's iteration_outcomes counter, so it covers the
+		// selected window - unlike "checks" below. bench.ts adds to both
+		// outcomes on every iteration, so the failed series exists as soon
+		// as the test does and a window without failures reads 0. No data
+		// means the window predates the counter, or the script doesn't wrap
+		// its default function in bench.ts's iteration().
+		Query: `sum by (target) (rate(k6_iteration_outcomes_total{%[1]s, outcome="failed"}[%[2]s]))` +
+			` / sum by (target) (rate(k6_iteration_outcomes_total{%[1]s}[%[2]s]))`,
+		Recorded: `sum by (target) (sum_over_time(` + render.RecordedIterationsFailed + `{%[1]s}[%[2]s]))` +
+			` / sum by (target) (sum_over_time(` + render.RecordedIterationOutcomes + `{%[1]s}[%[2]s]))`,
+	},
+	{
+		// k6 exports a check's pass rate only as its ratio since the k6 pod
+		// started, so this ignores the selected window - a test that failed
+		// for a day and has been fine since still reads low. "Failed
+		// transactions" above is the windowed figure.
+		Key: "checks", Label: "Passing checks (since start)", Unit: unitRatio, Better: betterHigher,
 		Query: `avg by (target) (k6_checks_rate{%s})`,
 	},
 	{
+		// max_over_time: the gauge read at one instant is only the VU count
+		// at the window's end, which is the peak for a fixed-VU test but
+		// not for a ramping one, and is gone once the k6 pod has exited.
 		Key: metricKeyVUs, Label: "Peak VUs", Unit: metricKeyVUs, Better: betterHigher,
-		Query: `max by (target) (k6_vus{%s})`,
+		Query: `max by (target) (max_over_time(k6_vus{%s}[%s]))`,
 	},
 }
 
@@ -531,7 +559,8 @@ type rangeResponse struct {
 }
 
 // metricsRange answers GET
-// /metrics/range?testids=a,b&metric=<key>&start=&end=[&window=][&step=], the
+// /metrics/range?testids=a,b&metric=<key>&start=&end=[&window=][&step=]
+// (window is what each point aggregates over, default 1m), the
 // per-test time series behind the compare view's charts and a TestCase's own
 // metrics panel. It is the only place a Burn TestCase's metrics can be
 // viewed at all: Burn has no TestRun history the way Quick does, since it
@@ -601,10 +630,9 @@ func (s *Server) metricsRange(w http.ResponseWriter, r *http.Request) {
 	var errs promErrors
 	for _, id := range testids {
 		selector := fmt.Sprintf("testid=%q", id)
-		query := metric.fill(selector, window)
 		var series []promSeries
 		for _, baseURL := range s.prometheusURLsForTestID(r.Context(), id) {
-			got, err := s.promRangeMulti(r.Context(), baseURL, query, start, end, step)
+			got, err := s.rangeSeries(r.Context(), baseURL, *metric, selector, window, start, end, step)
 			if err != nil {
 				errs.add(id, baseURL, err)
 				continue
@@ -652,6 +680,28 @@ func (s *Server) metricsRange(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Errors = errs.byTestID
 	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// rangeSeries answers one metric of metricsRange for one Prometheus, from
+// the recording rules when each point covers a long enough window. Like
+// compareSamples, a recorded result without a single point falls back to
+// the raw query: a Prometheus without the rules, or data that predates
+// them.
+func (s *Server) rangeSeries(
+	ctx context.Context, baseURL string, m CompareMetric, selector, window, start, end, step string,
+) ([]promSeries, error) {
+	if d, err := model.ParseDuration(window); err == nil && m.Recorded != "" && d >= recordedRangeMinWindow {
+		series, err := s.promRangeMulti(ctx, baseURL, fmt.Sprintf(m.Recorded, selector, window), start, end, step)
+		if err != nil {
+			return nil, err
+		}
+		for _, ser := range series {
+			if len(ser.Points) > 0 {
+				return series, nil
+			}
+		}
+	}
+	return s.promRangeMulti(ctx, baseURL, m.fill(selector, window), start, end, step)
 }
 
 // promMatrixResponse is the query_range shape: one entry per distinct label
