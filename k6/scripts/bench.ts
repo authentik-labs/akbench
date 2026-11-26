@@ -76,8 +76,10 @@ export function loadUsers(): User[] {
     return users as unknown as User[];
 }
 
-// userFor walks the user list so concurrent VUs never authenticate as the
-// same user. stride is the highest VU count the scenario reaches.
+// userFor walks the user list so VUs at the same iteration never
+// authenticate as the same user; ones that have drifted apart can, as can
+// any two once there are more VUs than users. stride is the highest VU
+// count the scenario reaches.
 export function userFor(users: User[], stride: number = vus): User {
     return users[(__VU - 1 + __ITER * stride) % users.length];
 }

@@ -84,8 +84,8 @@ const (
 )
 
 // compareMetrics is the fixed summary every test comparison reports. Kept
-// small on purpose: anything deeper belongs in the Grafana dashboards the
-// compare view embeds alongside this table.
+// small on purpose: anything deeper belongs in the Grafana dashboards each
+// workload cluster ships.
 // Every aggregation groups `by (target)`: a testid's own TestCase can now
 // drive more than one AuthentikDeployment at once (TestCase.Deployments()),
 // each tagged with its own k6 `target`, and collapsing that away here would
@@ -430,8 +430,8 @@ func (e *promErrors) failed() (string, bool) {
 }
 
 // compare answers GET /metrics/compare?testids=a,b,c[&window=5m][&time=...],
-// the numeric half of the compare view (the other half being an embedded
-// Grafana dashboard).
+// the summary table of the UI's test case, parent and compare pages (their
+// charts come from metricsRange).
 func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("testids")
 	if raw == "" {
@@ -705,9 +705,10 @@ func (s *Server) rangeSeries(
 }
 
 // promMatrixResponse is the query_range shape: one entry per distinct label
-// set. Every CompareMetric.Query and resourceMetric.Query aggregates down to
-// a single series (sum(...)/avg(...)/max(...) with no "by"), so promRange
-// only ever reads the first result entry.
+// set. A resourceMetric.Query aggregates down to a single series (sum(...)
+// with no "by"), so promRange only ever reads the first result entry; a
+// CompareMetric.Query keeps one series per target, which promRangeMulti
+// reads.
 type promMatrixResponse struct {
 	Status string `json:"status"`
 	Error  string `json:"error"`
