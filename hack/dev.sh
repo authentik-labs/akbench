@@ -18,6 +18,11 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_API_TOKEN="${BENCH_API_TOKEN:-dev-token-for-local-development-only}"
 export BENCH_API_TOKEN
 
+# One namespace for both processes: left unset, the operator seeds and
+# reconciles in "default" while the web API reads "authentik-bench" (each
+# binary's own default), and the UI comes up empty.
+export BENCH_NAMESPACE="${BENCH_NAMESPACE:-default}"
+
 pids=()
 cleanup() {
   echo "==> Stopping dev environment"
