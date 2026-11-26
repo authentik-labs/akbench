@@ -49,6 +49,26 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			},
 		},
 		{
+			Name: "oauth-code", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "A whole OAuth2 authorization-code login straight against authentik, with no relying party: " +
+					"authorize, login and consent flows, then the code exchanged for tokens. The application has no policy " +
+					"bindings; compare with oauth-code-policies.",
+				Script:       mustEmbeddedScript("oauth-code.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
+			Name: "oauth-code-policies", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "oauth-code against an application that only admits users who pass a group binding and an " +
+					"expression policy, which authentik evaluates on every authorization request. Needs the built-in " +
+					"fixture users: the group is one of theirs.",
+				Script:       mustEmbeddedScript("oauth-code.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthPolicies},
+			},
+		},
+		{
 			Name: "oauth-client-credentials", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description:  "Requests client_credentials tokens straight from authentik's OAuth2 token endpoint, no flow or relying party involved.",

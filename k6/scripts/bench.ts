@@ -298,6 +298,51 @@ export function expectRedirect(flow: FlowRef, result: FlowResult): string {
     return result.to;
 }
 
+// OAuthClient is an OAuth2 client k6 itself logs in to, with no relying
+// party in front: the oauth-token and oauth-policies dependencies' own.
+export interface OAuthClient {
+    id: string;
+    redirectURI: string;
+    scope: string;
+}
+
+// authorizationCode walks /authorize/ to the client's redirect URI as user:
+// the login flow, then the provider's consent flow. The redirect URI is
+// never requested, only its code is read. authentik decides whether user
+// may access the application on the way, so one who may not never gets
+// there and the iteration fails.
+export function authorizationCode(trace: Trace, user: User, client: OAuthClient): string {
+    const query = [
+        `client_id=${encodeURIComponent(client.id)}`,
+        `redirect_uri=${encodeURIComponent(client.redirectURI)}`,
+        "response_type=code",
+        `scope=${encodeURIComponent(client.scope)}`,
+        `state=${__VU}-${__ITER}`,
+    ].join("&");
+    let next = `/application/o/authorize/?${query}`;
+    for (let hop = 0; hop < 8; hop++) {
+        if (next.startsWith(client.redirectURI)) {
+            const code = next.match(/[?&]code=([^&#]+)/);
+            if (!code) {
+                fail(`redirect to ${next} has no authorization code`);
+            }
+            return decodeURIComponent(code[1]);
+        }
+        const flow = flowRef(next);
+        if (flow) {
+            next = expectRedirect(flow, walkFlow(trace, flow, loginStages(user)));
+            continue;
+        }
+        const res = http.get(resolveURL(authentikBase, next), params(trace, { redirects: 0 }));
+        const location = res.headers["Location"];
+        if (res.status < 300 || res.status >= 400 || !location) {
+            fail(`authorize: expected a redirect from ${res.url}, got status ${res.status}`);
+        }
+        next = resolveURL(res.url, location);
+    }
+    fail(`authorize: no redirect to ${client.redirectURI} after 8 hops`);
+}
+
 // tokenURL is authentik's OAuth2 token endpoint, shared by every provider.
 export const tokenURL = `${authentikBase}/application/o/token/`;
 
