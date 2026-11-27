@@ -270,7 +270,8 @@ export function ComparePage() {
                     <p className="muted">
                         CPU and memory of each test's authentik server and worker pods, summed per
                         target - one line per test, same as the charts above. Δ is relative to a
-                        test's own baseline target, never to another test.
+                        test's own baseline target, not to another test's. Tests with a single
+                        target each have none, and are compared with the first one selected.
                     </p>
                     <ResourceCharts
                         testids={selected}
@@ -279,6 +280,7 @@ export function ComparePage() {
                                 .filter((tc) => selected.includes(tc.metadata.name))
                                 .map((tc) => [tc.metadata.name, testCaseBaselineTarget(tc)]),
                         )}
+                        acrossSingleTargetTests
                         rangeSeconds={rangeSeconds}
                         endSeconds={anchor?.endSeconds}
                     />

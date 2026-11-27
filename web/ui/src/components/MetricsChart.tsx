@@ -417,16 +417,19 @@ function AverageTable({
     columns,
     rows,
     baselines,
+    acrossSingles,
 }: {
     columns: AverageColumn[];
     rows: AverageRow[];
     /** Keys of the rows to compare the others in their group against. */
     baselines?: string[];
+    /** Compare groups of one row with each other (see baselineRows). */
+    acrossSingles?: boolean;
 }) {
     if (rows.length === 0) {
         return null;
     }
-    const bases = baselineRows(rows, baselines);
+    const bases = baselineRows(rows, baselines, acrossSingles);
     return (
         <div
             className="panel table-scroll"
@@ -501,6 +504,7 @@ export function ResourceCharts({
     rangeSeconds = 900,
     wide,
     baseline,
+    acrossSingleTargetTests,
     refreshMs = 15000,
 }: {
     testids: string[];
@@ -514,6 +518,12 @@ export function ResourceCharts({
      * baseline (default: that test's first line).
      */
     baseline?: string | Record<string, string | undefined>;
+    /**
+     * When every test has a single line, compare the tests with each other
+     * (against the first) rather than show no Δ at all. For a page whose
+     * tests the reader picked to compare.
+     */
+    acrossSingleTargetTests?: boolean;
     refreshMs?: number;
 }) {
     const { data, error } = useResource(
@@ -581,6 +591,7 @@ export function ResourceCharts({
                             (typeof baseline === "string" ? baseline : baseline?.[l.testid]),
                     )
                     .map((l) => `${l.testid}::${l.target}`)}
+                acrossSingles={acrossSingleTargetTests}
             />
             <div className={wide ? "grid2 wide" : "grid2"}>
                 {charts.map((c) => (
