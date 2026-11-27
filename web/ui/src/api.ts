@@ -242,6 +242,8 @@ export const api = {
     testCases: () => request<List<TestCase>>("/api/v1/testcases").then((r) => r.items ?? []),
     testCase: (name: string) => request<TestCase>(`/api/v1/testcases/${seg(name)}`),
     configDiff: (name: string) => request<ConfigDiff>(`/api/v1/testcases/${seg(name)}/config-diff`),
+    configDiffAcross: (testids: string[]) =>
+        request<ConfigDiff>(`/api/v1/config-diff?testids=${encodeURIComponent(testids.join(","))}`),
     createTestCase: (obj: ObjectInput<TestCaseSpec>) =>
         request<TestCase>("/api/v1/testcases", json("POST", obj)),
     updateTestCase: (name: string, obj: { spec: TestCaseSpec }) =>

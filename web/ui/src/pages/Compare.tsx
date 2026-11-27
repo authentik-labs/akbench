@@ -1,5 +1,5 @@
 import { api } from "../api";
-import { ConfigDiffWarning } from "../components/ConfigDiff";
+import { ConfigDiffAcross } from "../components/ConfigDiff";
 import { MetricsChart, ResourceCharts } from "../components/MetricsChart";
 import { QueryErrors } from "../components/QueryErrors";
 import { RestartsWarning } from "../components/Restarts";
@@ -155,9 +155,7 @@ export function ComparePage() {
             subtitle={`Pick tests to put side by side. The table summarizes the last ${summaryWindow} of each; the charts plot them over time.`}
         >
             <Alert>{comparison.error ?? testCases.error}</Alert>
-            {selected.map((testid) => (
-                <ConfigDiffWarning key={testid} testid={testid} />
-            ))}
+            <ConfigDiffAcross testids={selected} />
             {anchor && (
                 <Alert kind="info">
                     All selected tests are Quick - showing data as of their latest completed run (

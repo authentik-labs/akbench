@@ -1,6 +1,11 @@
 import { ConfigDiff, PARENT_LABEL, TestCase } from "../types";
 import {
     configDiffFor,
+    configDiffSummary,
+    configGroupPrefix,
+    groupDifferences,
+    parseConfigUnderTest,
+    withoutCovered,
     configDiffNotices,
     configPathUnder,
     configUnderTestOwner,
@@ -63,6 +68,11 @@ describe("configDiffNotices", () => {
         ).toEqual([]);
     });
 
+    it("says nothing about a deployment that is only not installed yet", () => {
+        const pending = [{ name: "pr", reason: "it has no HelmRelease yet", waiting: true }];
+        expect(configDiffNotices("t", diff({ pending }), undefined)).toEqual([]);
+    });
+
     it("replaces the last result with a failed fetch", () => {
         const pending = [{ name: "pr", reason: "it has no HelmRelease yet" }];
         expect(configDiffNotices("t", diff({ pending }), "Forbidden")).toEqual([
@@ -92,6 +102,73 @@ describe("withUnderTest and withoutUnderTest", () => {
             "values.c",
         ]);
         expect(withoutUnderTest(undefined, "values.a")).toEqual([]);
+    });
+    it("keeps the other settings a wider entry covered under test", () => {
+        const underTest = ["values.a.b", "values.a.c", "values.a.c.d", "values.z"];
+        expect(withoutUnderTest(["values.a", "values.z"], "values.a.b", underTest)).toEqual([
+            "values.a.c",
+            "values.a.c.d",
+            "values.z",
+        ]);
+        // Un-marking a whole part drops everything below it.
+        expect(withoutUnderTest(["values"], "values.a", underTest)).toEqual(["values.z"]);
+    });
+    it("drops entries an action on a whole part makes redundant", () => {
+        expect(withoutCovered(["values.a.b", "values.a", "values.c"], "values.a")).toEqual([
+            "values.a",
+            "values.c",
+        ]);
+    });
+});
+
+describe("parseConfigUnderTest", () => {
+    it("reads one path per line or comma, once each", () => {
+        expect(parseConfigUnderTest(" values.a \n\nvalues.b, values.a\n")).toEqual([
+            "values.a",
+            "values.b",
+        ]);
+        expect(parseConfigUnderTest("  \n")).toEqual([]);
+    });
+});
+
+describe("groupDifferences", () => {
+    it("groups by chart key for values and by first segment otherwise", () => {
+        expect(configGroupPrefix("values.postgresql.auth.database")).toBe("values.postgresql");
+        expect(configGroupPrefix("values.server")).toBe("values.server");
+        expect(configGroupPrefix("cnpg.storage.size")).toBe("cnpg");
+        expect(configGroupPrefix("values.env[X].value")).toBe("values.env");
+        const paths = ["cnpg.a", "values.x.a", "cnpg.b", "chart.version"];
+        const groups = groupDifferences(paths.map((path) => ({ path, values: {} })));
+        expect(groups.map((g) => [g.prefix, g.differences.map((d) => d.path)])).toEqual([
+            ["cnpg", ["cnpg.a", "cnpg.b"]],
+            ["values.x", ["values.x.a"]],
+            ["chart", ["chart.version"]],
+        ]);
+    });
+});
+
+describe("configDiffSummary", () => {
+    it("is undefined for a healthy comparison", () => {
+        expect(configDiffSummary(diff())).toBeUndefined();
+        const underTest = [{ path: "values.a", values: {}, underTest: true }];
+        const pending = [{ name: "pr", reason: "it has no HelmRelease yet", waiting: true }];
+        expect(configDiffSummary(diff({ differences: underTest, pending }))).toBeUndefined();
+    });
+    it("counts what is wrong", () => {
+        expect(
+            configDiffSummary(
+                diff({
+                    differences: [
+                        { path: "values.a", values: {} },
+                        { path: "values.b", values: {} },
+                    ],
+                    unchangedUnderTest: ["values.c"],
+                    pending: [{ name: "pr", reason: "forbidden" }],
+                }),
+            ),
+        ).toBe(
+            "2 settings differ, 1 setting under test doesn't differ, 1 deployment could not be compared",
+        );
     });
 });
 

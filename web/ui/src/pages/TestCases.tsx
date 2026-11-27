@@ -1,6 +1,6 @@
 import { api } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
-import { ConfigDiffWarning } from "../components/ConfigDiff";
+import { ConfigDiffWarning, ConfigUnderTestField } from "../components/ConfigDiff";
 import { LogBreakdownSection } from "../components/LogBreakdown";
 import { MarketingReport } from "../components/MarketingReport";
 import {
@@ -462,6 +462,12 @@ function TestCaseForm({ existing, kindStep }: { existing?: TestCase; kindStep?: 
                                 ))}
                             </select>
                         </Field>
+                    )}
+                    {!parent && selectedDeployments.length > 1 && (
+                        <ConfigUnderTestField
+                            value={spec.configUnderTest}
+                            onChange={(configUnderTest) => patch({ configUnderTest })}
+                        />
                     )}
                 </div>
             ),

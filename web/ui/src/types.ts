@@ -505,6 +505,8 @@ export interface ConfigDifference {
 export interface ConfigPending {
     name: string;
     reason: string;
+    // Only not installed yet: expected, and not worth a notice.
+    waiting?: boolean;
 }
 
 /** Where an External postgres deployment's database is. */
@@ -525,6 +527,8 @@ export interface ConfigDiff {
     differences: ConfigDifference[];
     // configUnderTest entries no difference falls under.
     unchangedUnderTest?: string[];
+    // A parent test case's children, each compared on its own.
+    children?: ConfigDiff[];
 }
 
 export interface RangePoint {

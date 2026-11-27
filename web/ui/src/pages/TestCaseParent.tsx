@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { ActivityLog } from "../components/ActivityLog";
+import { ConfigDiffWarning, ConfigUnderTestField } from "../components/ConfigDiff";
 import { MarketingReport } from "../components/MarketingReport";
 import { baselineOf, MatrixGrid } from "../components/Matrix";
 import { MetricsGrid, ResourceCharts } from "../components/MetricsChart";
@@ -175,6 +176,10 @@ export function ParentFields({
                 extraValuesYAML={spec.extraValues ?? ""}
                 onExtraValuesChange={(v) => patch({ extraValues: v })}
                 showImage={false}
+            />
+            <ConfigUnderTestField
+                value={spec.configUnderTest}
+                onChange={(configUnderTest) => patch({ configUnderTest })}
             />
         </>
     );
@@ -368,6 +373,7 @@ export function TestCaseParentView({
         >
             <Alert>{testCase.error ?? testCases.error ?? comparison.error}</Alert>
             <QueryErrors errors={comparison.data?.errors} />
+            <ConfigDiffWarning testid={name} />
             <SectionNav sections={SECTIONS} />
 
             <Section
