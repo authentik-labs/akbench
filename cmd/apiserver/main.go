@@ -71,7 +71,10 @@ func run() error {
 			"is generated at startup.")
 	flag.StringVar(&tlsKeyFile, "tls-key-file", os.Getenv("BENCH_TLS_KEY_FILE"),
 		"PEM private key for --tls-cert-file.")
-	flag.StringVar(&namespace, "namespace", envOr("BENCH_NAMESPACE", "authentik-bench"),
+	// The same default as the operator's own BENCH_NAMESPACE (cmd/main.go),
+	// where it seeds the built-in templates and fixtures: with different
+	// ones, the two run side by side without either set show an empty UI.
+	flag.StringVar(&namespace, "namespace", envOr("BENCH_NAMESPACE", "default"),
 		"The namespace bench CRs are read from and written to.")
 	flag.StringVar(&prometheusURL, "prometheus-url", os.Getenv("BENCH_PROMETHEUS_URL"),
 		"Base URL of the Prometheus the PromQL proxy forwards to.")
