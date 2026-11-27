@@ -326,19 +326,59 @@ export function requestToken(trace: Trace, grant: string, form: Record<string, s
 export const introspectURL = `${authentikBase}/application/o/introspect/`;
 export const userinfoURL = `${authentikBase}/application/o/userinfo/`;
 
+// reusableLifetime is the shortest access token lifetime, in seconds, a
+// script can reuse a token across iterations with: reusableToken renews 30s
+// before expiry, and anything near that would have the script asking for
+// tokens most of the time.
+const reusableLifetime = 60;
+
+// requireReusable throws unless res's token lives long enough to be reused.
+// For setup(), where a throw aborts the run: without it every iteration
+// would ask for a token and fail, a test of the token endpoint and nothing
+// else.
+export function requireReusable(res: TokenResponse): void {
+    if (!(res.expires_in > reusableLifetime)) {
+        throw new Error(
+            `access token lifetime is ${res.expires_in}s, and this test needs more than ${reusableLifetime}s to reuse a token across iterations ` +
+                "(the provider's access_token_validity)"
+        );
+    }
+}
+
+// ReusableToken is one VU's access token, kept until shortly before it
+// expires. get returns it, asking for a new one first when needed; reset
+// drops it, for when authentik says the token itself is no good (a
+// deployment reset under a running burn leaves every VU holding a token
+// that no longer exists). Not for any failed request: under overload that
+// would add a token grant, and its writes, to every iteration that failed.
+export interface ReusableToken {
+    get(trace: Trace): string;
+    reset(): void;
+}
+
 // reusableToken wraps a grant so each VU asks for a new access token only
 // shortly before its last one expires: a script measuring what a resource
 // server does with a token keeps issuing them out of its iterations.
-export function reusableToken(issue: (trace: Trace) => TokenResponse): (trace: Trace) => string {
+export function reusableToken(issue: (trace: Trace) => TokenResponse): ReusableToken {
     let token = "";
     let expires = 0;
-    return (trace: Trace) => {
-        if (Date.now() >= expires) {
-            const res = issue(trace);
-            token = res.access_token;
-            expires = Date.now() + (res.expires_in - 30) * 1000;
-        }
-        return token;
+    return {
+        get(trace: Trace): string {
+            if (Date.now() >= expires) {
+                const res = issue(trace);
+                // setup() checked this once; a lifetime that changed since
+                // fails the iteration rather than go unnoticed.
+                if (!(res.expires_in > reusableLifetime)) {
+                    fail(`access token lifetime is ${res.expires_in}s, and this test needs more than ${reusableLifetime}s`);
+                }
+                token = res.access_token;
+                expires = Date.now() + (res.expires_in - 30) * 1000;
+            }
+            return token;
+        },
+        reset(): void {
+            expires = 0;
+        },
     };
 }
 

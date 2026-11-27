@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check } from "k6";
-import { benchOptions, introspectURL, iteration, newTrace, params, requestToken, reusableToken } from "./bench.ts";
+import { benchOptions, introspectURL, iteration, newTrace, params, requestToken, requireReusable, reusableToken } from "./bench.ts";
 import type { Trace } from "./bench.ts";
 
 // What a resource server does with an opaque token on every API call it
@@ -25,16 +25,22 @@ function clientCredentials(trace: Trace) {
 // The first grant creates the service account; one request here keeps the
 // VUs from racing that create.
 export function setup() {
-    clientCredentials(newTrace(kind));
+    requireReusable(clientCredentials(newTrace(kind)));
 }
 
 const accessToken = reusableToken(clientCredentials);
 
 export default iteration(() => {
     const trace = newTrace(kind);
-    const res = http.post(introspectURL, { token: accessToken(trace), client_id: clientID, client_secret: clientSecret }, params(trace));
+    const res = http.post(introspectURL, { token: accessToken.get(trace), client_id: clientID, client_secret: clientSecret }, params(trace));
     // authentik answers 200 {"active": false} for a token it does not accept
     // (and for a client it could not authenticate), so the status alone
     // says nothing.
-    return check(res, { "token is active": (r) => r.status === 200 && r.json("active") === true });
+    const ok = check(res, { "token is active": (r) => r.status === 200 && r.json("active") === true });
+    // Answered, and the token is not active: gone, so get another. An error
+    // or a timeout says nothing about the token.
+    if (res.status === 200 && !ok) {
+        accessToken.reset();
+    }
+    return ok;
 });
