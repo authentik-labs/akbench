@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -99,6 +100,20 @@ func (c *CapacityChecker) fit(ctx context.Context, namespace, cluster string, pl
 	return "", capacity.Fit(state.Pool(placement, ignore), groups)
 }
 
+// effectiveRequests is what the scheduler reserves for a container with
+// these resources: its requests, and for a resource with a limit but no
+// request, the limit - Kubernetes defaults the request to it. Counting the
+// requests alone would admit a limits-only spec that cannot be scheduled.
+func effectiveRequests(r corev1.ResourceRequirements) corev1.ResourceList {
+	if len(r.Limits) == 0 {
+		return r.Requests
+	}
+	effective := corev1.ResourceList{}
+	maps.Copy(effective, r.Limits)
+	maps.Copy(effective, r.Requests)
+	return effective
+}
+
 // deploymentPods is every pod an AuthentikDeployment schedules onto its
 // cluster's authentik pool, grouped the way its PlacementMode constrains
 // them (render.ServerWorkerAffinity): Dedicated spreads, Packed co-locates
@@ -109,10 +124,10 @@ func deploymentPods(d *benchv1alpha1.AuthentikDeployment) []capacity.Group {
 	}
 	var release []capacity.Pod
 	for i := range d.Spec.Server.Replicas {
-		release = append(release, pod(fmt.Sprintf("server pod %d", i+1), d.Spec.Server.Resources.Requests))
+		release = append(release, pod(fmt.Sprintf("server pod %d", i+1), effectiveRequests(d.Spec.Server.Resources)))
 	}
 	for i := range d.Spec.Worker.Replicas {
-		release = append(release, pod(fmt.Sprintf("worker pod %d", i+1), d.Spec.Worker.Resources.Requests))
+		release = append(release, pod(fmt.Sprintf("worker pod %d", i+1), effectiveRequests(d.Spec.Worker.Resources)))
 	}
 	var cnpg []capacity.Pod
 	switch d.Spec.Postgres.Mode {
@@ -158,9 +173,9 @@ func ownDeploymentPod(name string) func(*corev1.Pod) bool {
 // runnerPod is the k6 pod a TestCase runs per target - a Burn Deployment's
 // one replica, or one Quick run's Job.
 func runnerPod(tc *benchv1alpha1.TestCase, target string) capacity.Pod {
-	requests := render.DefaultRunnerResources().Requests
+	resources := render.DefaultRunnerResources()
 	if tc.Spec.RunnerResources != nil {
-		requests = tc.Spec.RunnerResources.Requests
+		resources = *tc.Spec.RunnerResources
 	}
-	return capacity.Pod{Name: fmt.Sprintf("k6 runner for %q", target), Requests: requests, Deployment: target}
+	return capacity.Pod{Name: fmt.Sprintf("k6 runner for %q", target), Requests: effectiveRequests(resources), Deployment: target}
 }
