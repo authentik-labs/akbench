@@ -150,6 +150,25 @@ func TestDependencyBlueprintCombinesAllEntries(t *testing.T) {
 	}
 }
 
+// The oauth-token client maps email and profile next to openid: the
+// oauth-userinfo template asks for them, and authentik quietly drops a
+// scope the provider does not map, which would leave that test measuring
+// an empty UserInfo.
+func TestOAuthTokenClientMapsUserinfoScopes(t *testing.T) {
+	got := string(renderBlueprint(t, dependencyBlueprint{
+		OAuthToken: &oauthTokenBlueprint{"oauth-cc-c-d", "secret", "oauth-te-c-d", "secret2", "http://localhost/cb"},
+	}))
+	client, _, found := strings.Cut(got, `client_id: "oauth-te-c-d"`)
+	if !found {
+		t.Fatalf("no exchange client in the blueprint:\n%s", got)
+	}
+	for _, scope := range []string{"openid", "email", "profile", "offline_access"} {
+		if !strings.Contains(client, "[managed, goauthentik.io/providers/oauth2/scope-"+scope+"]") {
+			t.Errorf("the oauth-token client does not map the %s scope:\n%s", scope, client)
+		}
+	}
+}
+
 func TestDependencyEndpoints(t *testing.T) {
 	tc := &benchv1alpha1.TestCase{Name: "c", Namespace: "ns"}
 	got := dependencyEndpoints(tc, "d", &benchv1alpha1.TestCaseTemplateSpec{Dependencies: []benchv1alpha1.TestCaseDependency{
