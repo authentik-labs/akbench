@@ -447,7 +447,7 @@ func HelmRelease(t *benchv1alpha1.AuthentikDeployment, kubeConfigSecretName stri
 			// this long first.
 			Timeout: &metav1.Duration{Duration: helmInstallTimeout},
 			// Explicit, rather than Flux's default "[TargetNamespace-]Name"
-			// composition, so ServiceEndpoint's "<release>-server" naming
+			// composition, so ServiceEndpoint's "<release>-authentik-server" naming
 			// stays correct regardless of what the target namespace is
 			// named.
 			ReleaseName: HelmReleaseName(t),

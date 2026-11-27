@@ -3,7 +3,8 @@ package api
 // The in-browser kubectl shell: a real interactive shell on a PTY, with
 // KUBECONFIG pointed at a per-session copy of the merged kubeconfig
 // ShellKubeconfigReconciler maintains (the management cluster plus every
-// Ready WorkloadCluster), bridged to xterm.js over a WebSocket.
+// Ready WorkloadCluster), bridged to the web terminal (ghostty-web) over a
+// WebSocket.
 //
 // Auth: a browser's WebSocket API cannot set an Authorization header, so the
 // handshake carries a ticket instead of the bearer token:
@@ -22,7 +23,7 @@ package api
 // Wire protocol, client -> server: text frames carrying JSON,
 // {"type":"data","data":"<keystrokes>"} or
 // {"type":"resize","cols":80,"rows":24}. Server -> client: binary frames of
-// raw PTY output, which xterm.js decodes itself (so a multi-byte character
+// raw PTY output, which the terminal decodes itself (so a multi-byte character
 // split across two reads is never mangled by a premature UTF-8 decode).
 //
 // Lifecycle: one shell per WebSocket. Whichever side ends first (the shell
@@ -69,7 +70,7 @@ const (
 	// shellKillGrace is how long the shell gets to exit after SIGHUP before
 	// everything left in its session is SIGKILLed.
 	shellKillGrace = 2 * time.Second
-	// shellReadLimit allows large pastes, which xterm.js delivers as one
+	// shellReadLimit allows large pastes, which the terminal delivers as one
 	// data message.
 	shellReadLimit = 1 << 20
 )

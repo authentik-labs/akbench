@@ -612,26 +612,14 @@ export function DeploymentSpecFields({
                             }
                         >
                             <option value="Default">Default - pods may share nodes</option>
-                            <option value="Dedicated">Dedicated - one pod per node</option>
-                            <option value="Packed">Packed - all pods on the same node</option>
+                            <option value="Dedicated">
+                                Dedicated - server and worker pods each on their own node
+                            </option>
+                            <option value="Packed">
+                                Packed - server and worker pods on a shared node
+                            </option>
                         </select>
                     </Field>
-                    {spec.placement?.mode === "Dedicated" && (
-                        <Field label="Anti-affinity topology key">
-                            <input
-                                value={spec.placement?.topologyKey ?? ""}
-                                placeholder="kubernetes.io/hostname"
-                                onChange={(e) =>
-                                    patch({
-                                        placement: {
-                                            ...spec.placement,
-                                            topologyKey: e.target.value,
-                                        },
-                                    })
-                                }
-                            />
-                        </Field>
-                    )}
                     <Field label="Node selector" help="Comma-separated key=value">
                         <input
                             defaultValue={Object.entries(spec.placement?.nodeSelector ?? {})

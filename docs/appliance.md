@@ -116,7 +116,7 @@ Everything infrastructure-specific lives in the web UI.
 | `AKBENCH_NAMESPACE` | `default` | Namespace for your akbench objects and infrastructure connections. |
 | `AKBENCH_UI_PORT` | `8443` | Port the web UI serves HTTPS on (publish it with `-p`). |
 | `AKBENCH_API_TOKEN` | generated | Pin the web UI's bearer token. |
-| `AKBENCH_OIDC_ISSUER`, `AKBENCH_OIDC_CLIENT_ID`, `AKBENCH_OIDC_REQUIRED_GROUP`, `AKBENCH_OIDC_SCOPES` | | OIDC login for the web UI (see the main README). |
+| `AKBENCH_OIDC_ISSUER`, `AKBENCH_OIDC_CLIENT_ID`, `AKBENCH_OIDC_REQUIRED_GROUP`, `AKBENCH_OIDC_SCOPES` | | OIDC login for the web UI (see [architecture.md](architecture.md)). |
 | `AKBENCH_VERSION` | the image's own | Operator chart/image and apiserver image version to install. |
 
 Extra arguments to `docker run … <image> <args>` are passed to `k3s server`.

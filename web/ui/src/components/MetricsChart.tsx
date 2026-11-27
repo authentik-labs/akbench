@@ -481,7 +481,7 @@ const RESOURCE_CHARTS = [
  * ResourceCharts renders four big charts - CPU and memory, each for
  * authentik's server and worker pods - with one line per given test and
  * target, under a table of each line's average. Each line is that test's
- * own deployment summed across its pods (internal/api/podmetrics.go), not
+ * own deployment summed across its pods (internal/api/resourcemetrics.go), not
  * broken out per pod: a deployment mid-rollout leaves its old ReplicaSet's
  * pods in the same window as the new one, turning one test into 6+ tangled
  * lines.

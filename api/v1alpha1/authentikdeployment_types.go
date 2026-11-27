@@ -16,23 +16,26 @@ const (
 	// PlacementDefault leaves scheduling to the default scheduler, so pods
 	// may land on nodes shared with other workloads (the noisy-neighbor case).
 	PlacementDefault PlacementMode = "Default"
-	// PlacementDedicated requires one pod per node (via pod anti-affinity) and
-	// applies the given tolerations/nodeSelector, so pods land alone on
+	// PlacementDedicated keeps each server and worker pod off any node running
+	// another pod of the release (via pod anti-affinity) and applies the
+	// given tolerations/nodeSelector, so they land alone on
 	// pre-tainted/pre-labeled nodes. The operator does not create node pools
 	// itself - the target cluster must already have suitable nodes.
 	PlacementDedicated PlacementMode = "Dedicated"
-	// PlacementPacked requires server and worker pods to land on the same
-	// node as every other pod of this release (via pod affinity keyed on
-	// the release's own app.kubernetes.io/instance label, which the bundled
+	// PlacementPacked requires each server and worker pod to land on a node
+	// that already runs a pod of this release (pod affinity keyed on the
+	// release's own app.kubernetes.io/instance label, which the bundled
 	// postgres subchart's pod carries too) - the opposite of Dedicated, for
-	// benchmarking every component sharing one node's resources.
+	// benchmarking components sharing one node's resources. The postgres
+	// pod itself is placed freely.
 	PlacementPacked PlacementMode = "Packed"
 )
 
 // PlacementSpec controls pod scheduling for an AuthentikDeployment's server and
 // worker pods.
 type PlacementSpec struct {
-	// mode selects Default (shared nodes) or Dedicated (one pod per node).
+	// mode selects Default (shared nodes), Dedicated (one server or worker
+	// pod per node) or Packed (server and worker pods together).
 	// +kubebuilder:default=Default
 	// +optional
 	Mode PlacementMode `json:"mode,omitempty"`
@@ -46,7 +49,8 @@ type PlacementSpec struct {
 	// +optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
-	// topologyKey is the anti-affinity deployment key used in Dedicated mode.
+	// topologyKey is not read: Dedicated always spreads by
+	// kubernetes.io/hostname. Kept so existing objects stay valid.
 	// +kubebuilder:default=kubernetes.io/hostname
 	// +optional
 	TopologyKey string `json:"topologyKey,omitempty"`
@@ -265,7 +269,7 @@ type AuthentikDeploymentStatus struct {
 	// +optional
 	PostgresStorage *PostgresStorageStatus `json:"postgresStorage,omitempty"`
 	// serviceEndpoint is the in-cluster host:port a TestCase drives, e.g.
-	// <release>-server.<namespace>.svc.cluster.local:80.
+	// <release>-authentik-server.<namespace>.svc.cluster.local:80.
 	// +optional
 	ServiceEndpoint string `json:"serviceEndpoint,omitempty"`
 	// chartVersion is the authentik chart version helm-controller installed.

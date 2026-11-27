@@ -33,8 +33,9 @@ What each component does.
   metrics-server, csi-incus (the cluster's only `StorageClass`, backed by a
   real Incus storage pool), and - in the `bench-system` namespace -
   kube-prometheus-stack (Prometheus with the remote-write receiver k6 pushes
-  to, node-exporter, kube-state-metrics), Grafana (anonymous-admin, reachable
-  through `cmd/apiserver`'s own reverse proxy - see below), Pyroscope,
+  to, node-exporter, kube-state-metrics), Grafana (behind a generated admin
+  password, reachable through `cmd/apiserver`'s own reverse proxy, which
+  signs in with it - see below), Pyroscope,
   Tempo, Loki with an Alloy DaemonSet shipping every pod's logs to it, and
   the official Grafana MCP server (re-exposed through `cmd/apiserver`'s MCP
   server, see [mcp.md](mcp.md)).
@@ -64,9 +65,13 @@ What each component does.
   needs `allowVolumeExpansion` (the Incus CSI one has it). Placement is
   rendered as explicit pod affinity for every mode, not through the chart's
   `affinity.podAntiAffinity` presets (`internal/render/placement.go`): two
-  deployments never share a node whatever the mode, `Dedicated` also puts
-  each of a deployment's own pods on its own node, `Packed` puts them all
-  on one, and `Default` adds nothing, so a deployment's pods may share.
+  deployments never share a node whatever the mode, `Dedicated` also keeps
+  each server and worker pod off any node running another pod of its Helm
+  release (the bundled postgres pod is one; CNPG's pods are not part of the
+  release), `Packed` instead requires each of them to land on a node that
+  already runs a pod of the release, and `Default` adds neither, so a
+  deployment's pods may share. Postgres pods carry only the rule between
+  deployments themselves.
   Deleting a deployment deletes its `HelmRelease` first and waits for
   helm-controller's own `helm uninstall` before sweeping the target
   namespace - required because the chart's `ClusterRole`/`ClusterRoleBinding`
@@ -92,7 +97,7 @@ What each component does.
   `make fixtures` (the original script) still replaces them on demand.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds the built-in ones at startup (`login`; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through

@@ -430,8 +430,9 @@ func (e *promErrors) failed() (string, bool) {
 }
 
 // compare answers GET /metrics/compare?testids=a,b,c[&window=5m][&time=...],
-// the summary table of the UI's test case, parent and compare pages (their
-// charts come from metricsRange).
+// the summary table of the UI's dashboard, test case, parent and compare
+// pages (their charts come from metricsRange) and of the MCP compare_tests
+// tool.
 func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("testids")
 	if raw == "" {
