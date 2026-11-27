@@ -246,6 +246,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Post("/testcases/{name}/runs", s.createRun)
 			r.Get("/testcases/{name}/config-diff", s.testCaseConfigDiff)
+			r.Get("/config-diff", s.testCasesConfigDiff)
 
 			r.Get("/metrics/query", s.proxyQuery)
 			r.Get("/metrics/compare", s.compare)

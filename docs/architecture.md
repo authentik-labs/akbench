@@ -144,6 +144,18 @@ What each component does.
   guided forms for every CRD, native metrics charts and a Compare view - so
   the whole UI is one Deployment (`make deploy-apiserver`,
   `hack/dev-apiserver.yaml`; `make ui-dev` for a live-reloading dev server).
+  - **Config diff**: a comparison only measures the build if the build is
+    all that differs. `GET /testcases/<name>/config-diff`
+    (`internal/api/configdiff.go`) compares the rendered Helm values, chart
+    and postgres setup of a test case's deployments, and the UI warns on the
+    test case, its parent and the Compare view when they differ in anything
+    but the image (`GET /config-diff?testids=` compares across test cases).
+    It is a warning only: nothing in the operator reads it, and a test runs
+    either way. A test that compares two setups on purpose lists those
+    settings in `spec.configUnderTest` (in its form, or with "Mark as under
+    test" on the warning); they are then shown as under test instead, and
+    warned about if the deployments turn out not to differ there. Credentials
+    are compared but never shown.
   - **`kubectl` shell**: the UI's centerpiece - real shells on a PTY
     (`internal/api/shell.go`) bridged to xterm.js over a WebSocket, with
     `KUBECONFIG` pointed at a per-session copy of the merged kubeconfig
