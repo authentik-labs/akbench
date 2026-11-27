@@ -12,6 +12,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
+	"github.com/authentik-labs/akbench/internal/fixtures"
 )
 
 // K6Image is the k6 image every rendered workload runs. Pinned rather than
@@ -155,8 +156,8 @@ const OAuthRedirectURI = "http://localhost/akbench/callback"
 // OAuthPoliciesGroup is the fixture group the oauth-policies application is
 // bound to. Every fixture user is a member through one of its child groups
 // (internal/fixtures: baselineAccess sits under it), so the binding passes
-// for all of them and has to walk the group tree to find that out.
-const OAuthPoliciesGroup = "Application Access"
+// for all of them, and only by way of inherited membership.
+const OAuthPoliciesGroup = fixtures.AccessRoot
 
 // EnvVars renders the env vars for the dependencies in use.
 func (d DependencyEndpoints) EnvVars() []corev1.EnvVar {

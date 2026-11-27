@@ -52,7 +52,7 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 			Name: "oauth-code", Namespace: namespace,
 			Spec: benchv1alpha1.TestCaseTemplateSpec{
 				Description: "A whole OAuth2 authorization-code login straight against authentik, with no relying party: " +
-					"authorize, login and consent flows, then the code exchanged for tokens. The application has no policy " +
+					"authorize, the login flow, then the code exchanged for tokens. The application has no policy " +
 					"bindings; compare with oauth-code-policies.",
 				Script:       mustEmbeddedScript("oauth-code.ts"),
 				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
@@ -65,6 +65,27 @@ func defaultTestCaseTemplates(namespace string) []benchv1alpha1.TestCaseTemplate
 					"expression policy, which authentik evaluates on every authorization request. Needs the built-in " +
 					"fixture users: the group is one of theirs.",
 				Script:       mustEmbeddedScript("oauth-code.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthPolicies},
+			},
+		},
+		{
+			Name: "oauth-sso", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "Single sign-on to an application: each VU logs in once and keeps its session, then every iteration " +
+					"is only the authorization request and the code exchanged for tokens. The application has no policy " +
+					"bindings; compare with oauth-sso-policies. Each iteration leaves an authorization event behind, " +
+					"which a long run accumulates.",
+				Script:       mustEmbeddedScript("oauth-sso.ts"),
+				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthToken},
+			},
+		},
+		{
+			Name: "oauth-sso-policies", Namespace: namespace,
+			Spec: benchv1alpha1.TestCaseTemplateSpec{
+				Description: "oauth-sso against an application that only admits users who pass a group binding and an " +
+					"expression policy. authentik evaluates them on every authorization request, a much larger share of " +
+					"an iteration here than in oauth-code-policies. Needs the built-in fixture users: the group is one of theirs.",
+				Script:       mustEmbeddedScript("oauth-sso.ts"),
 				Dependencies: []benchv1alpha1.TestCaseDependency{benchv1alpha1.DependencyOAuthPolicies},
 			},
 		},

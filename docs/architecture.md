@@ -106,6 +106,9 @@ What each component does.
   with k6 as the client (no relying party), to an application without and
   with access policies: a group binding to a fixture group and an
   expression policy, both evaluated on every authorization request;
+  `oauth-sso` and `oauth-sso-policies`, the same pair with each VU logging
+  in once and every iteration only authorizing again, as a signed-in user
+  opening another application does;
   `user-settings`, a login and an unchanged save of the user settings form,
   whose prompt validation adds Prometheus series on every save;
   `login-logout`, a login and a logout, each logout broadcasting an outpost
