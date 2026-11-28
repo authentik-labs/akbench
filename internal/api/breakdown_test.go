@@ -31,6 +31,18 @@ func TestBreakdownEndOfArchivedTestCase(t *testing.T) {
 	}
 }
 
+func TestBreakdownEndOfFinishedBurn(t *testing.T) {
+	stopped := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	tc := sampleTestCase("login", "topo", benchv1alpha1.ProfileBurn)
+	tc.Status.Deployments = []benchv1alpha1.TestCaseDeploymentStatus{{Name: "topo", BurnStoppedAt: &metav1.Time{Time: stopped}}}
+	tc.Status.Conditions = []metav1.Condition{{
+		Type: benchv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: benchv1alpha1.ReasonBurnFinished,
+	}}
+	if end := breakdownEnd(tc); !end.Equal(stopped.Add(time.Minute)) {
+		t.Errorf("end of a finished burn = %v, want a minute past the burn stopping", end)
+	}
+}
+
 func TestBreakdownEndOfStorageFullTestCase(t *testing.T) {
 	stopped := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	tc := sampleTestCase("login", "topo", benchv1alpha1.ProfileBurn)

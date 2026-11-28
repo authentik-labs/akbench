@@ -133,6 +133,54 @@ var _ = Describe("Parent TestCase", func() {
 		Expect(m.Status.BurnStartAt.After(time.Now())).To(BeTrue())
 	})
 
+	It("is completed once every child has used its burnDuration, and a finished child does not hold the others' start", func() {
+		reconcileOnce()
+		// Their deployments stay up and Ready after the load stops.
+		var ads benchv1alpha1.AuthentikDeploymentList
+		Expect(k8sClient.List(ctx, &ads, client.InNamespace("default"), client.MatchingLabels{benchv1alpha1.LabelParent: name})).To(Succeed())
+		Expect(ads.Items).NotTo(BeEmpty())
+		for i := range ads.Items {
+			meta.SetStatusCondition(&ads.Items[i].Status.Conditions, metav1.Condition{
+				Type: benchv1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: benchv1alpha1.ReasonReady,
+			})
+			Expect(k8sClient.Status().Update(ctx, &ads.Items[i])).To(Succeed())
+		}
+		setChild := func(template string, conds ...metav1.Condition) {
+			var tc benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name + "-" + template, Namespace: "default"}, &tc)).To(Succeed())
+			tc.Status.Conditions = nil
+			for _, c := range conds {
+				meta.SetStatusCondition(&tc.Status.Conditions, c)
+			}
+			Expect(k8sClient.Status().Update(ctx, &tc)).To(Succeed())
+		}
+		finished := metav1.Condition{Type: benchv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: benchv1alpha1.ReasonBurnFinished}
+		running := metav1.Condition{Type: benchv1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: benchv1alpha1.ReasonReady}
+		staged := metav1.Condition{Type: benchv1alpha1.ConditionBurnStaged, Status: metav1.ConditionTrue, Reason: benchv1alpha1.ReasonReady}
+		parent := func() benchv1alpha1.TestCase {
+			reconcileOnce()
+			var m benchv1alpha1.TestCase
+			Expect(k8sClient.Get(ctx, key, &m)).To(Succeed())
+			return m
+		}
+
+		// One finished, one staged and waiting: the gate opens for it.
+		setChild("login", finished)
+		setChild("oauth-oidc", running, staged)
+		m := parent()
+		Expect(m.Status.Phase).To(Equal(benchv1alpha1.PhaseReady))
+		Expect(m.Status.BurnStartAt).NotTo(BeNil(), "a finished child must not keep the gate shut")
+
+		// Both finished: the parent is, too, and its old start is dropped
+		// so that a later start is gated afresh.
+		setChild("oauth-oidc", finished)
+		m = parent()
+		Expect(m.Status.Phase).To(Equal(benchv1alpha1.PhaseCompleted))
+		Expect(meta.FindStatusCondition(m.Status.Conditions, benchv1alpha1.ConditionReady).Reason).To(Equal(benchv1alpha1.ReasonBurnFinished))
+		Expect(m.Status.BurnStartAt).To(BeNil())
+		Expect(parent().Status.BurnStartAt).To(BeNil(), "nothing is staged to start")
+	})
+
 	It("says why a child stopped for lack of postgres storage", func() {
 		reconcileOnce()
 		fail := func(template, reason, message string) {

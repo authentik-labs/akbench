@@ -11,6 +11,7 @@ import { Link } from "react-router";
 function phaseClass(phase?: string): string {
     switch (phase) {
         case "Ready":
+        case "Completed":
         case "Succeeded":
         case "Provisioned":
         case "True":

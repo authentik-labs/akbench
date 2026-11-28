@@ -276,13 +276,18 @@ export function TestCaseParentView({
     const [params, setParams] = useSearchParams();
     const archivedWindows = rowTestCases.flatMap((tc) => archivedBurnWindow(tc) ?? []);
     const archivedStarts = archivedWindows.flatMap((w) => (w.start !== undefined ? [w.start] : []));
-    const burnStart = m?.spec.archived
+    // Stopped: archived, or every test case's own burn has ended (each at
+    // its time limit, say), so the charts cover the burns and not "now".
+    const stopped =
+        !!m?.spec.archived ||
+        (rowTestCases.length > 0 && archivedWindows.length === rowTestCases.length);
+    const burnStart = stopped
         ? archivedStarts.length
             ? Math.min(...archivedStarts)
             : undefined
         : earliestBurnStart(rowTestCases);
     const burnEnd =
-        m?.spec.archived && archivedWindows.length
+        stopped && archivedWindows.length
             ? Math.floor(Math.max(...archivedWindows.map((w) => w.end))) + 60
             : undefined;
     const defaultRange = burnStart !== undefined ? SINCE_START : FALLBACK_TIMELINE_RANGE;
@@ -311,7 +316,12 @@ export function TestCaseParentView({
     );
     const metrics = (comparison.data?.metrics ?? []).filter((x) => TARGET_METRICS.includes(x.key));
     const metric = metrics.find((x) => x.key === metricKey);
-    const burn = rowTestCases.map((tc) => burnStatus(tc)).find((d) => d !== undefined);
+    // What is still going on, if anything is: one finished test case does
+    // not make the others finished.
+    const unfinished = rowTestCases.filter((tc) => tc.status?.phase !== "Completed");
+    const burn = (unfinished.length ? unfinished : rowTestCases)
+        .map((tc) => burnStatus(tc))
+        .find((d) => d !== undefined);
     const burnedFor =
         burnStart !== undefined && burnEnd !== undefined
             ? formatDuration(burnEnd - 60 - burnStart)

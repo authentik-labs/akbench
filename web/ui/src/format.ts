@@ -386,7 +386,7 @@ export function earliestBurnStart(
  * archivedBurnWindow is when an archived test burned, in unix seconds: from
  * its earliest target's burn start to its latest burn stop. The same goes
  * for a test whose burn the operator stopped because a target's postgres
- * ran out of storage, while it stays stopped. Test cases archived before
+ * ran out of storage or its time limit was up, while it stays stopped. Test cases archived before
  * the operator kept burningSince only know the end, taken from when their
  * Ready condition turned Archived. Undefined for a test that isn't archived
  * or stopped, or whose end isn't known.
@@ -403,10 +403,13 @@ export function archivedBurnWindow(tc: {
         deployments?: { burningSince?: string; burnStoppedAt?: string }[];
     };
 }): { start?: number; end: number } | undefined {
-    const storageFull = tc.status?.conditions?.some(
-        (c) => c.type === "Ready" && c.status === "False" && c.reason === "PostgresStorageFull",
+    const stoppedItself = tc.status?.conditions?.some(
+        (c) =>
+            c.type === "Ready" &&
+            c.status === "False" &&
+            (c.reason === "PostgresStorageFull" || c.reason === "BurnFinished"),
     );
-    if (!tc.spec.archived && !storageFull) {
+    if (!tc.spec.archived && !stoppedItself) {
         return undefined;
     }
     const deployments = tc.status?.deployments ?? [];
@@ -414,8 +417,10 @@ export function archivedBurnWindow(tc: {
     const starts = deployments.flatMap((d) => (d.burningSince ? [seconds(d.burningSince)] : []));
     const stops = deployments.flatMap((d) => (d.burnStoppedAt ? [seconds(d.burnStoppedAt)] : []));
     if (stops.length === 0) {
+        // Or a burn that finished and has since lost its targets' own stop
+        // times (switched to Quick and back).
         const archivedAt = tc.status?.conditions?.find(
-            (c) => c.type === "Ready" && c.reason === "Archived",
+            (c) => c.type === "Ready" && (c.reason === "Archived" || c.reason === "BurnFinished"),
         )?.lastTransitionTime;
         if (archivedAt) {
             stops.push(seconds(archivedAt));

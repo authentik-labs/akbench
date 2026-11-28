@@ -629,7 +629,7 @@ export function ComparisonForm({
                                 onChange={(e) => setVus(Number(e.target.value))}
                             />
                         </Field>
-                        <Field label="Time limit">
+                        <Field label="Time limit" help="The load stops after this long under load">
                             <input
                                 value={burnDuration}
                                 placeholder="8760h"

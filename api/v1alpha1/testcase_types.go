@@ -17,9 +17,9 @@ const (
 	// ProfileQuick runs vus*iterations logins then exits. Bounded, executed
 	// by creating a TestRun.
 	ProfileQuick TestProfile = "Quick"
-	// ProfileBurn runs forever (until the TestCase is deleted or switched
-	// back to Quick), self-healed by an owned Deployment. Used to keep a
-	// target under sustained load.
+	// ProfileBurn runs until its burnDuration is up, or the TestCase is
+	// archived, deleted or switched back to Quick, self-healed by an owned
+	// Deployment. Used to keep a target under sustained load.
 	ProfileBurn TestProfile = "Burn"
 )
 
@@ -101,7 +101,12 @@ type TestCaseSpec struct {
 	// +optional
 	QuickDuration string `json:"quickDuration,omitempty"`
 
-	// burnDuration caps a Burn run - effectively unlimited by default.
+	// burnDuration is how long a Burn is under load in total: once its k6
+	// load has run that long, it is stopped and the test case is Completed.
+	// Time spent stopped (archived, or waiting for postgres storage) does
+	// not count, and the count carries on when the load resumes. Raising
+	// it on a completed test case runs the load for the difference.
+	// Effectively unlimited by default. A k6 duration ("90m", "36h", "7d").
 	// +kubebuilder:default="8760h"
 	// +optional
 	BurnDuration string `json:"burnDuration,omitempty"`
@@ -295,6 +300,18 @@ type TestCaseStatus struct {
 	// archived or not Burn.
 	// +optional
 	BurnStartAt *metav1.Time `json:"burnStartAt,omitempty"`
+
+	// burnConsumedSeconds is how long this Burn test case has been under
+	// load in stretches that have ended (stopped by archiving, a full
+	// postgres volume, its burnDuration, or a switch away from Burn). With
+	// burnStretchSince it is the clock spec.burnDuration is measured on.
+	// +optional
+	BurnConsumedSeconds int64 `json:"burnConsumedSeconds,omitempty"`
+
+	// burnStretchSince is when the stretch of load running now started: the
+	// shared start of its targets. Unset while no k6 load is running.
+	// +optional
+	BurnStretchSince *metav1.Time `json:"burnStretchSince,omitempty"`
 
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`

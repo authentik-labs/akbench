@@ -32,8 +32,15 @@ export function DashboardPage() {
     const clusters = useResource(() => api.clusters(), [], 30000);
     const alerts = useResource(() => api.alerts(), [], 30000);
 
+    // Live burns only: one that finished at its time limit has nothing to poll.
     const burnTests = (testCases.data ?? [])
-        .filter((tc) => tc.spec.profile === "Burn" && !tc.spec.archived && !isParent(tc))
+        .filter(
+            (tc) =>
+                tc.spec.profile === "Burn" &&
+                !tc.spec.archived &&
+                !isParent(tc) &&
+                tc.status?.phase !== "Completed",
+        )
         .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
     const burnIDs = burnTests.map((tc) => tc.metadata.name);
     const live = useResource(

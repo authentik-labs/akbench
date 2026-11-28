@@ -34,6 +34,8 @@ func (r *TestCaseReconciler) reconcileParent(ctx context.Context, tc *benchv1alp
 			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 		}
 		tc.Status.Deployments = nil
+		// The burn clock is that load's: a parent's children keep their own.
+		tc.Status.BurnConsumedSeconds, tc.Status.BurnStretchSince = 0, nil
 		meta.RemoveStatusCondition(&tc.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
 	}
 
@@ -165,7 +167,7 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 		}
 		phase := benchv1alpha1.PhaseFor(conditions())
 		switch phase {
-		case benchv1alpha1.PhaseReady, benchv1alpha1.PhaseArchived:
+		case benchv1alpha1.PhaseReady, benchv1alpha1.PhaseArchived, benchv1alpha1.PhaseCompleted:
 		case benchv1alpha1.PhaseFailed:
 			failed = append(failed, obj.GetName())
 			if ready := meta.FindStatusCondition(conditions(), benchv1alpha1.ConditionReady); ready.Reason == benchv1alpha1.ReasonPostgresStorageFull {
@@ -179,6 +181,8 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 
 	tc.Status.Children = nil
 	staged := true
+	// completed counts the children that used up their burnDuration.
+	completed := 0
 	for _, template := range tc.Spec.Templates {
 		var child benchv1alpha1.TestCase
 		child.Name = tc.ChildName(template)
@@ -186,7 +190,13 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 		if err != nil {
 			return err
 		}
-		staged = staged && meta.IsStatusConditionTrue(child.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
+		// A completed child will not stage again: it must not hold the
+		// others' start gate shut.
+		if phase == benchv1alpha1.PhaseCompleted {
+			completed++
+		} else {
+			staged = staged && meta.IsStatusConditionTrue(child.Status.Conditions, benchv1alpha1.ConditionBurnStaged)
+		}
 		row := benchv1alpha1.TestCaseChildStatus{Template: template, TestCase: child.Name, Phase: phase}
 		for _, v := range tc.Spec.Variants {
 			var ad benchv1alpha1.AuthentikDeployment
@@ -206,6 +216,11 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 	switch {
 	case tc.Spec.Archived || tc.Spec.Profile != benchv1alpha1.ProfileBurn:
 		tc.Status.BurnStartAt = nil
+	case completed > 0 && completed == len(tc.Spec.Templates):
+		// Every child has finished: nothing is staged to start, and a
+		// later start (after burnDuration is raised) needs a gate of its
+		// own, not this long-past one.
+		tc.Status.BurnStartAt = nil
 	case tc.Status.BurnStartAt == nil && staged:
 		tc.Status.BurnStartAt = &metav1.Time{Time: time.Now().Add(burnStartLead).Truncate(time.Second)}
 		logf.FromContext(ctx).Info("Scheduled burn start", "startAt", tc.Status.BurnStartAt.Time)
@@ -224,6 +239,9 @@ func (r *TestCaseReconciler) updateParentStatus(ctx context.Context, tc *benchv1
 	case len(notReady) > 0:
 		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
 			benchv1alpha1.ReasonDependencyNotReady, "waiting for: "+strings.Join(notReady, ", "))
+	case completed > 0 && completed == len(tc.Spec.Templates):
+		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionFalse,
+			benchv1alpha1.ReasonBurnFinished, "every test case has been under load for its burnDuration")
 	default:
 		setCondition(r.Recorder, tc, &tc.Status.Conditions, tc.Generation, benchv1alpha1.ConditionReady, metav1.ConditionTrue,
 			benchv1alpha1.ReasonReady, "every test case and deployment is ready")

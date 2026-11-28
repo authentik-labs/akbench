@@ -61,7 +61,9 @@ export function buildTargetRows(
             deploymentName: ref.name,
             target,
             deployment,
-            ready: status?.ready,
+            // A burn that finished at its time limit has no runner any more,
+            // which is not the same as one that is not ready.
+            ready: testCase.status?.phase === "Completed" ? undefined : status?.ready,
             burnWorkload: status?.burnWorkloadRef?.name,
             values:
                 results.find((r) => r.testid === testCase.metadata.name && r.target === target)
@@ -75,12 +77,21 @@ export function buildTargetRows(
  * target and its k6 pod is ready (the operator then starts them all at
  * once - with the rest of its parent's children, if it has one), counting down
  * to that shared start, or how long it has been
- * burning since - so operator restarts don't reset it. Undefined for a
- * Quick or archived test.
+ * burning since - so operator restarts don't reset it - or that it ran for
+ * its whole time limit and was stopped. Undefined for a Quick or archived
+ * test.
  */
 export function burnStatus(tc: TestCase, now = Date.now()): string | undefined {
     if (tc.spec.profile !== "Burn" || tc.spec.archived) {
         return undefined;
+    }
+    // Stopped by the operator at its time limit: no longer waiting to start.
+    if (
+        tc.status?.conditions?.some(
+            (c) => c.type === "Ready" && c.status === "False" && c.reason === "BurnFinished",
+        )
+    ) {
+        return `finished at its time limit of ${tc.spec.burnDuration ?? "8760h"}`;
     }
     const since = (tc.status?.deployments ?? []).flatMap((d) =>
         d.burningSince && !d.burnStoppedAt ? [Date.parse(d.burningSince)] : [],
