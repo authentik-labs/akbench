@@ -69,7 +69,7 @@ spec:
           env:
             # Matches where this dev session's own AuthentikDeployment/etc.
             # objects actually live - see the namespace-mismatch bug this
-            # session already hit once with the Next.js UI's own apiserver.
+            # session already hit once with a locally run apiserver.
             - name: BENCH_NAMESPACE
               value: default
             # The management cluster's own Prometheus - reachable directly

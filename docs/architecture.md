@@ -33,8 +33,9 @@ What each component does.
   metrics-server, csi-incus (the cluster's only `StorageClass`, backed by a
   real Incus storage pool), and - in the `bench-system` namespace -
   kube-prometheus-stack (Prometheus with the remote-write receiver k6 pushes
-  to, node-exporter, kube-state-metrics), Grafana (anonymous-admin, reachable
-  through `cmd/apiserver`'s own reverse proxy - see below), Pyroscope,
+  to, node-exporter, kube-state-metrics), Grafana (behind a generated admin
+  password, reachable through `cmd/apiserver`'s own reverse proxy, which
+  signs in with it - see below), Pyroscope,
   Tempo, Loki with an Alloy DaemonSet shipping every pod's logs to it, and
   the official Grafana MCP server (re-exposed through `cmd/apiserver`'s MCP
   server, see [mcp.md](mcp.md)).
@@ -61,10 +62,16 @@ What each component does.
   StatefulSet's PVC (its `volumeClaimTemplates` are immutable); CNPG gets the
   new size through `spec.storage.size`, which `status.postgresStorage.size`
   keeps from ever shrinking back to spec's `storageSize`. The StorageClass
-  needs `allowVolumeExpansion` (the Incus CSI one has it). Placement's
-  `Dedicated` mode uses the chart's own `affinity.podAntiAffinity: hard`
-  preset; `Default` explicitly sets `none` so pods can share a node (the
-  chart's own root default is `soft`, which would already bias them apart).
+  needs `allowVolumeExpansion` (the Incus CSI one has it). Placement is
+  rendered as explicit pod affinity for every mode, not through the chart's
+  `affinity.podAntiAffinity` presets (`internal/render/placement.go`): two
+  deployments never share a node whatever the mode, `Dedicated` also keeps
+  each server and worker pod off any node running another pod of its Helm
+  release (the bundled postgres pod is one; CNPG's pods are not part of the
+  release), `Packed` instead requires each of them to land on a node that
+  already runs a pod of the release, and `Default` adds neither, so a
+  deployment's pods may share. Postgres pods carry only the rule between
+  deployments themselves.
   Deleting a deployment deletes its `HelmRelease` first and waits for
   helm-controller's own `helm uninstall` before sweeping the target
   namespace - required because the chart's `ClusterRole`/`ClusterRoleBinding`
@@ -78,8 +85,9 @@ What each component does.
   whichever Grafana `WorkloadClusterReconciler` installed for the target
   deployment's own cluster - reproducing `roles/runner/tasks/annotate.yml`'s
   behavior.
-- **k6 tag/env contract**: `k6/scripts/login.ts` is ported byte-for-byte from
-  the reference repo; `internal/render` reproduces its exact
+- **k6 tag/env contract**: the built-in scripts share one library,
+  `k6/scripts/bench.ts` (profiles, the flow-executor walk, tracing headers,
+  iteration outcomes); `internal/render` gives them the reference repo's
   `testid`/`target`/`profile` tag scheme and env var contract
   (`TEST_ID`/`TARGET`/`BENCH_HOST`/... ), guarded by `test/contract`.
 - **Fixtures**: the operator seeds synthetic test users at startup
@@ -89,7 +97,7 @@ What each component does.
   `make fixtures` (the original script) still replaces them on demand.
 - **Test-case templates**: `TestCaseTemplate` is a real, UI-editable
   CRD (list/create/edit/delete, Monaco editor for the script) - the operator
-  seeds fifteen built-in ones at startup (`login`; `oauth-oidc`, driving a
+  seeds the built-in ones at startup (`login`; `oauth-oidc`, driving a
   real OAuth2/OIDC authorization-code round trip through
   [BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client);
   `saml`, an SP-initiated SAML login through
@@ -123,8 +131,9 @@ What each component does.
   that adds `spec.vus` VUs every 2 minutes and aborts once authentik's error
   rate or p95 latency crosses its thresholds),
   sourced from the exact same embedded `k6/scripts/*.ts` files the operator
-  binary carries (create-only, so editing one in the UI is never
-  clobbered by a later restart). A template's `spec.dependencies` lists
+  binary carries (reset to the embedded version on every operator start, so
+  an edit to a built-in one in the UI is lost at the next restart; copy it
+  under another name to keep changes). A template's `spec.dependencies` lists
   extra services the operator provisions per TestCase and target, together
   with the authentik objects they need (via a blueprint import):
   `oidc-client` ([BeryJu/oidc-test-client](https://github.com/BeryJu/oidc-test-client)
@@ -149,7 +158,7 @@ What each component does.
   the whole UI is one Deployment (`make deploy-apiserver`,
   `hack/dev-apiserver.yaml`; `make ui-dev` for a live-reloading dev server).
   - **`kubectl` shell**: the UI's centerpiece - real shells on a PTY
-    (`internal/api/shell.go`) bridged to xterm.js over a WebSocket, with
+    (`internal/api/shell.go`) bridged to ghostty-web over a WebSocket, with
     `KUBECONFIG` pointed at a per-session copy of the merged kubeconfig
     `ShellKubeconfigReconciler` maintains, so every context (the
     management cluster plus each Ready `WorkloadCluster`) is one tab away.

@@ -341,8 +341,9 @@ spec:
                         properties:
                           mode:
                             default: Default
-                            description: mode selects Default (shared nodes) or Dedicated
-                              (one pod per node).
+                            description: |-
+                              mode selects Default (shared nodes), Dedicated (one server or worker
+                              pod per node) or Packed (server and worker pods together).
                             enum:
                             - Default
                             - Dedicated
@@ -398,8 +399,9 @@ spec:
                             type: array
                           topologyKey:
                             default: kubernetes.io/hostname
-                            description: topologyKey is the anti-affinity deployment
-                              key used in Dedicated mode.
+                            description: |-
+                              topologyKey is not read: Dedicated always spreads by
+                              kubernetes.io/hostname. Kept so existing objects stay valid.
                             type: string
                         type: object
                       postgres:
@@ -723,8 +725,8 @@ spec:
                     type: integer
                   profile:
                     description: |-
-                      TestProfile decides how k6 runs a test - see the package doc comment for
-                      the quick/burn distinction ported from the Ansible benchmark harness.
+                      TestProfile decides how k6 runs a test - see ProfileQuick and ProfileBurn
+                      for the distinction, ported from the Ansible benchmark harness.
                     enum:
                     - Quick
                     - Burn
@@ -844,7 +846,7 @@ spec:
                     default: login
                     description: |-
                       template names a TestCaseTemplate object (e.g. "login", "oauth-oidc" -
-                      the two the operator seeds by default, see
+                      two of those the operator seeds by default, see
                       internal/controller/seedtemplates.go) - which k6 script runs, plus any
                       extra provisioning that template's flow needs (e.g. oauth-oidc's own
                       oidc-test-client and OAuth2 provider/application). Ignored when inline

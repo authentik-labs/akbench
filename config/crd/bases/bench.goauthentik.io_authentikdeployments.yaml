@@ -153,8 +153,9 @@ spec:
                 properties:
                   mode:
                     default: Default
-                    description: mode selects Default (shared nodes) or Dedicated
-                      (one pod per node).
+                    description: |-
+                      mode selects Default (shared nodes), Dedicated (one server or worker
+                      pod per node) or Packed (server and worker pods together).
                     enum:
                     - Default
                     - Dedicated
@@ -210,8 +211,9 @@ spec:
                     type: array
                   topologyKey:
                     default: kubernetes.io/hostname
-                    description: topologyKey is the anti-affinity deployment key used
-                      in Dedicated mode.
+                    description: |-
+                      topologyKey is not read: Dedicated always spreads by
+                      kubernetes.io/hostname. Kept so existing objects stay valid.
                     type: string
                 type: object
               postgres:
@@ -602,7 +604,7 @@ spec:
               serviceEndpoint:
                 description: |-
                   serviceEndpoint is the in-cluster host:port a TestCase drives, e.g.
-                  <release>-server.<namespace>.svc.cluster.local:80.
+                  <release>-authentik-server.<namespace>.svc.cluster.local:80.
                 type: string
             type: object
         required:

@@ -274,7 +274,7 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 	mcp.AddTool(server, tool("get_test_case", "Get test case", "Get one TestCase by name."),
 		getObject("testcases"))
 	mcp.AddTool(server, tool("list_test_runs", "List test runs",
-		"List TestRuns (executions of Quick TestCases, one per target deployment) with their status: phase, start and completion times, and k6's end-of-test summary where available."),
+		"List TestRuns (executions of Quick TestCases, one per target deployment) with their status: phase, start and completion times, and the spec each ran with."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListTestRunsInput) (*mcp.CallToolResult, any, error) {
 			params := url.Values{}
 			if in.TestCase != "" {
@@ -322,7 +322,7 @@ func (s *Server) newMCPServer(read http.Handler) *mcp.Server {
 			return mcpText(body), nil, nil
 		})
 	mcp.AddTool(server, tool("compare_tests", "Compare tests",
-		"Summary table per (testid, target): request and transaction throughput, p95/p99 request duration, p95 transaction duration, failed-request ratio, passing-check ratio and peak VUs, computed over a trailing window. A metric with no data is absent, not zero."),
+		"Summary table per (testid, target): request and transaction throughput, p95/p99 request duration, p95 transaction duration, failed-request and failed-transaction ratios and peak VUs, computed over a trailing window, plus the passing-check ratio since the k6 pod started. A metric with no data is absent, not zero."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mcpCompareInput) (*mcp.CallToolResult, any, error) {
 			params := url.Values{paramTestIDs: {strings.Join(in.TestIDs, ",")}}
 			if in.Window != "" {

@@ -22,7 +22,7 @@ const fixturesUsersKey = "users.json"
 // namespace when they aren't there yet: the fixtures Secret every k6
 // workload mounts and the blueprint ConfigMap AuthentikDeploymentReconciler
 // imports into each deployment - so a fresh install can run a test case
-// without `make fixtures` first. Create-only, like
+// without `make fixtures` first. Create-only, unlike
 // SeedDefaultTestCaseTemplates: fixtures loaded any other way (e.g. `make
 // fixtures` with more users) are never replaced. The two must describe the
 // same users, so nothing is generated unless both are missing.

@@ -51,9 +51,10 @@ injects code at these markers.
 
 ### New APIs
 Use `kubebuilder create api --group bench --version v1alpha1 --kind <Kind>` so
-`PROJECT`, the samples and RBAC helper roles stay in sync. The project has no
-webhooks; defaulting lives in `+kubebuilder:default` markers and the
-controllers.
+`PROJECT`, the samples and RBAC helper roles stay in sync. The project has
+validating webhooks for AuthentikDeployment and TestCase
+(`internal/webhook/v1alpha1`) but no defaulting ones; defaulting lives in
+`+kubebuilder:default` markers and the controllers.
 
 ### E2E Tests Require an Isolated Kind Cluster
 `make test-e2e` creates and deletes its own Kind cluster. Never point it at a

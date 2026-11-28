@@ -32,9 +32,9 @@ import (
 //     to match that preset's own behavior, since PlacementSpec.TopologyKey
 //     has no equivalent once we're not going through the chart's preset -
 //     use ExtraValuesRef for a custom key).
-//   - Packed: a required *affinity* term for this release's own pods (they
-//     must land together) - unchanged from this function's previous
-//     Packed-only form.
+//   - Packed: a required *affinity* term for this release's own pods (each
+//     must join a node already running one; the scheduler lets the first
+//     through) - unchanged from this function's previous Packed-only form.
 //   - Default: no extra term - a deployment's own pods may share nodes with
 //     each other (the noisy-neighbor case the benchmark compares against),
 //     just never with another deployment's.

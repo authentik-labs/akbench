@@ -8,8 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// TestProfile decides how k6 runs a test - see the package doc comment for
-// the quick/burn distinction ported from the Ansible benchmark harness.
+// TestProfile decides how k6 runs a test - see ProfileQuick and ProfileBurn
+// for the distinction, ported from the Ansible benchmark harness.
 // +kubebuilder:validation:Enum=Quick;Burn
 type TestProfile string
 
@@ -59,7 +59,7 @@ type TestCaseSpec struct {
 	RunnerClusterRef *corev1.LocalObjectReference `json:"runnerClusterRef,omitempty"`
 
 	// template names a TestCaseTemplate object (e.g. "login", "oauth-oidc" -
-	// the two the operator seeds by default, see
+	// two of those the operator seeds by default, see
 	// internal/controller/seedtemplates.go) - which k6 script runs, plus any
 	// extra provisioning that template's flow needs (e.g. oauth-oidc's own
 	// oidc-test-client and OAuth2 provider/application). Ignored when inline

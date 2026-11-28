@@ -309,7 +309,7 @@ export const api = {
     // CPU/memory for each testid's own deployment, summed across its pods -
     // scoped by namespace, not by a testid label the way metricsRange's
     // queries are (cAdvisor never tags container metrics with a k6 testid).
-    // Same RangeResponse shape as metricsRange (see internal/api/podmetrics.go).
+    // Same RangeResponse shape as metricsRange (see internal/api/resourcemetrics.go).
     resourceRange: (
         testids: string[],
         resource: "cpu" | "memory",
