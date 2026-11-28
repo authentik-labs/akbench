@@ -159,6 +159,9 @@ export interface TestCaseSpec {
     // baselineRef is the deployment the others are compared against; unset or
     // stale means the first one (testCaseBaseline).
     baselineRef?: { name: string };
+    // Settings the deployments differ on by design; only the config diff
+    // reads it (ConfigDiffWarning).
+    configUnderTest?: string[];
     runnerClusterRef?: { name: string };
     template?: string;
     inline?: string;
@@ -488,6 +491,47 @@ export interface CompareResponse {
     // Keyed by testid: a testid whose Prometheus couldn't be queried, while
     // the others in the same request still could.
     errors?: Record<string, string>;
+}
+
+/** One setting that is not the same on every deployment of a test case. */
+export interface ConfigDifference {
+    path: string;
+    // Keyed by deployment name; a deployment without an entry does not set it.
+    values: Record<string, string>;
+    // Set for a credential, whose values are only ever shown as "(set)".
+    note?: string;
+    // The test case compares this setting on purpose (configUnderTest).
+    underTest?: boolean;
+}
+
+/** A deployment the config diff could not compare, and why. */
+export interface ConfigPending {
+    name: string;
+    reason: string;
+    // Only not installed yet: expected, and not worth a notice.
+    waiting?: boolean;
+}
+
+/** Where an External postgres deployment's database is. */
+export interface ConfigDatabase {
+    host?: string;
+    port?: string;
+    name?: string;
+    user?: string;
+}
+
+/** internal/api/configdiff.go's ConfigDiff. */
+export interface ConfigDiff {
+    testid: string;
+    targets: string[];
+    pending?: ConfigPending[];
+    // External databases by deployment: shown, not compared.
+    databases?: Record<string, ConfigDatabase>;
+    differences: ConfigDifference[];
+    // configUnderTest entries no difference falls under.
+    unchangedUnderTest?: string[];
+    // A parent test case's children, each compared on its own.
+    children?: ConfigDiff[];
 }
 
 export interface RangePoint {
