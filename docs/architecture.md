@@ -106,6 +106,13 @@ What each component does.
   token until it expires;
   `oauth-refresh-rotation`, an authorization-code login once per VU and
   then one refresh token rotation per iteration;
+  `oauth-code` and `oauth-code-policies`, a whole authorization-code login
+  with k6 as the client (no relying party), to an application without and
+  with access policies: a group binding to a fixture group and an
+  expression policy, both evaluated on every authorization request;
+  `oauth-sso` and `oauth-sso-policies`, the same pair with each VU logging
+  in once and every iteration only authorizing again, as a signed-in user
+  opening another application does;
   `user-settings`, a login and an unchanged save of the user settings form,
   whose prompt validation adds Prometheus series on every save;
   `login-logout`, a login and a logout, each logout broadcasting an outpost
@@ -136,7 +143,10 @@ What each component does.
   the first's tokens for token exchange, the first also taking authorization
   codes and refresh tokens; no service, client secrets reach k6 from a
   Secret) and `policy-flows` (the two login flows the `*-policy-login`
-  templates walk; no service). Their addresses, source slugs and IdP
+  templates walk; no service) and `oauth-policies` (an OAuth2 provider whose
+  application is bound to the fixture group `Application Access` and an
+  expression policy; no service, and it needs the built-in fixture users).
+  Their addresses, source slugs and IdP
   test credentials reach k6 as env vars (`render.DependencyEndpoints`).
 - **Web UI**: `internal/api` is a REST/JSON backend (chi router) that CRUDs
   every CRD as unstructured objects (the CRD schema stays the single source

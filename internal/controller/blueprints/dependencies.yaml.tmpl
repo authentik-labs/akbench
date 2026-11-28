@@ -172,6 +172,59 @@ entries:
       provider: !KeyOf {{ .ExchangeID | quote }}
       name: {{ .ExchangeID | quote }}
 {{- end }}
+{{- with .OAuthPolicies }}
+  # OAuth2Provider + Application k6 logs in to itself (no relying party),
+  # like the oauth-token client, but access to the application is decided by
+  # two policy bindings that both have to pass (policy_engine_mode: all): a
+  # group binding, to a fixture group every user belongs to only through a
+  # child group, and an expression policy reading a user attribute. authentik
+  # evaluates them on every authorization request.
+  - model: authentik_providers_oauth2.oauth2provider
+    id: {{ .ID | quote }}
+    identifiers:
+      name: {{ .ID | quote }}
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: {{ .ID | quote }}
+      client_secret: {{ .Secret | quote }}
+      redirect_uris:
+        - matching_mode: strict
+          url: {{ .RedirectURI | quote }}
+          redirect_uri_type: authorization
+      grant_types:
+        - authorization_code
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+  - model: authentik_core.application
+    id: {{ print .ID "-app" | quote }}
+    identifiers:
+      slug: {{ .ID | quote }}
+    attrs:
+      provider: !KeyOf {{ .ID | quote }}
+      name: {{ .ID | quote }}
+      policy_engine_mode: all
+  - model: authentik_policies_expression.expressionpolicy
+    id: {{ print .ID "-employee" | quote }}
+    identifiers:
+      name: {{ print .ID "-employee" | quote }}
+    attrs:
+      expression: "return request.user.is_active and bool(request.user.attributes.get('employee_number'))"
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      group: !Find [authentik_core.group, [name, {{ .Group | quote }}]]
+      target: !KeyOf {{ print .ID "-app" | quote }}
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 1
+      policy: !KeyOf {{ print .ID "-employee" | quote }}
+      target: !KeyOf {{ print .ID "-app" | quote }}
+{{- end }}
 {{- with .PolicyFlows }}
 {{- $p := .Prefix }}
   # Two login flows that run the same two expression policies before the

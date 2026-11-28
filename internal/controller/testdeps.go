@@ -40,15 +40,19 @@ type dependencyBlueprint struct {
 	// PolicyFlows names its policies, prompt and stages "<Prefix>-...", and
 	// its flows <Prefix>-prompt and <Prefix>-binding.
 	PolicyFlows *policyFlowsBlueprint
+	// OAuthPolicies names its provider, application and expression policy
+	// after ID, and binds the application to the existing group Group.
+	OAuthPolicies *oauthPoliciesBlueprint
 }
 
 type (
-	oidcClientBlueprint  struct{ ID, Secret, RedirectURI string }
-	samlClientBlueprint  struct{ ID, ACSURL, Audience string }
-	oidcSourceBlueprint  struct{ Slug, Secret, IssuerURL string }
-	samlSourceBlueprint  struct{ Slug, SSOURL string }
-	oauthTokenBlueprint  struct{ ID, Secret, ExchangeID, ExchangeSecret, RedirectURI string }
-	policyFlowsBlueprint struct{ Prefix string }
+	oidcClientBlueprint    struct{ ID, Secret, RedirectURI string }
+	samlClientBlueprint    struct{ ID, ACSURL, Audience string }
+	oidcSourceBlueprint    struct{ Slug, Secret, IssuerURL string }
+	samlSourceBlueprint    struct{ Slug, SSOURL string }
+	oauthTokenBlueprint    struct{ ID, Secret, ExchangeID, ExchangeSecret, RedirectURI string }
+	policyFlowsBlueprint   struct{ Prefix string }
+	oauthPoliciesBlueprint struct{ ID, Secret, RedirectURI, Group string }
 )
 
 func (b dependencyBlueprint) render() (string, error) {
@@ -65,6 +69,7 @@ type dependencyIDs struct {
 	oidcClient, samlClient, oidcSource, samlSource string
 	oauthToken, oauthExchange                      string
 	policyFlows                                    string
+	oauthPolicies                                  string
 }
 
 func idsFor(tc *benchv1alpha1.TestCase, deploymentName string) dependencyIDs {
@@ -78,6 +83,7 @@ func idsFor(tc *benchv1alpha1.TestCase, deploymentName string) dependencyIDs {
 		oauthToken:    "oauth-cc-" + suffix,
 		oauthExchange: "oauth-te-" + suffix,
 		policyFlows:   "policy-" + suffix,
+		oauthPolicies: "oauth-pol-" + suffix,
 	}
 }
 
@@ -112,6 +118,10 @@ func dependencyEndpoints(tc *benchv1alpha1.TestCase, deploymentName string, spec
 	if spec.HasDependency(benchv1alpha1.DependencyPolicyFlows) {
 		out.PolicyPromptFlow = ids.policyFlows + "-prompt"
 		out.PolicyBindingFlow = ids.policyFlows + "-binding"
+	}
+	if spec.HasDependency(benchv1alpha1.DependencyOAuthPolicies) {
+		out.OAuthPoliciesClientID = ids.oauthPolicies
+		out.OAuthPoliciesSecretName = ids.oauthPolicies
 	}
 	return out
 }
@@ -222,6 +232,15 @@ func (r *TestCaseReconciler) ensureDependencies(ctx context.Context, rc client.C
 
 	if spec.HasDependency(benchv1alpha1.DependencyPolicyFlows) {
 		blueprint.PolicyFlows = &policyFlowsBlueprint{ids.policyFlows}
+	}
+
+	if spec.HasDependency(benchv1alpha1.DependencyOAuthPolicies) {
+		secret, err := ensureRandomSecret(ctx, rc,
+			types.NamespacedName{Name: ids.oauthPolicies, Namespace: tc.Namespace}, render.OAuthClientSecretKey, 32)
+		if err != nil {
+			return render.DependencyEndpoints{}, fmt.Errorf("ensure oauth policies client secret: %w", err)
+		}
+		blueprint.OAuthPolicies = &oauthPoliciesBlueprint{ids.oauthPolicies, secret, render.OAuthRedirectURI, render.OAuthPoliciesGroup}
 	}
 
 	content, err := blueprint.render()

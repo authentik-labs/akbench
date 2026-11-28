@@ -122,6 +122,7 @@ func TestBuiltinScriptsReadOnlyRenderedEnv(t *testing.T) {
 		OAuthClientID:  "oauth-cc", OAuthSecretName: "oauth-cc",
 		OAuthExchangeClientID: "oauth-te", OAuthExchangeSecretName: "oauth-te",
 		PolicyPromptFlow: "policy-prompt", PolicyBindingFlow: "policy-binding",
+		OAuthPoliciesClientID: "oauth-pol", OAuthPoliciesSecretName: "oauth-pol",
 	}
 	rendered := envValueMap(p.EnvVars())
 

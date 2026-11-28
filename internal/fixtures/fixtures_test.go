@@ -137,3 +137,85 @@ func TestGenerateEmitsKeyOfTags(t *testing.T) {
 		t.Errorf("no plain !KeyOf reference in:\n%s", f.Blueprint[:min(len(f.Blueprint), 800)])
 	}
 }
+
+// The oauth-policies test dependency binds its application to AccessRoot and
+// to an expression policy reading employee_number, and its tests log in as
+// these users: each must be a member of AccessRoot, only through a child
+// group (so that the binding has a group tree to walk), and carry the
+// attribute. A fixture change that breaks this would otherwise only show as
+// refused logins at run time.
+func TestEveryUserReachesAccessRootThroughAChildGroup(t *testing.T) {
+	for _, seed := range []uint64{1, 42, 1337} {
+		f, err := Generate(50, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, _ := parse(t, f)
+
+		parents := map[string][]string{}
+		root := ""
+		for _, e := range entries {
+			if e.Model != "authentik_core.group" {
+				continue
+			}
+			var attrs struct {
+				Parents yaml.Node `yaml:"parents"`
+			}
+			if err := e.Attrs.Decode(&attrs); err != nil {
+				t.Fatal(err)
+			}
+			parents[e.ID] = keyOfRefs(&attrs.Parents)
+			if e.Identifiers["name"] == AccessRoot {
+				root = e.ID
+			}
+		}
+		if root == "" {
+			t.Fatalf("seed %d: no group named %q", seed, AccessRoot)
+		}
+		var under func(id string, seen map[string]bool) bool
+		under = func(id string, seen map[string]bool) bool {
+			if seen[id] {
+				return false
+			}
+			seen[id] = true
+			for _, p := range parents[id] {
+				if p == root || under(p, seen) {
+					return true
+				}
+			}
+			return false
+		}
+
+		users := 0
+		for _, e := range entries {
+			if e.Model != "authentik_core.user" {
+				continue
+			}
+			users++
+			name := e.Identifiers["username"]
+			var attrs struct {
+				Groups     yaml.Node         `yaml:"groups"`
+				Attributes map[string]string `yaml:"attributes"`
+			}
+			if err := e.Attrs.Decode(&attrs); err != nil {
+				t.Fatal(err)
+			}
+			if attrs.Attributes["employee_number"] == "" {
+				t.Errorf("seed %d: user %s has no employee_number", seed, name)
+			}
+			through := false
+			for _, g := range keyOfRefs(&attrs.Groups) {
+				if g == root {
+					t.Errorf("seed %d: user %s is a direct member of %q", seed, name, AccessRoot)
+				}
+				through = through || under(g, map[string]bool{})
+			}
+			if !through {
+				t.Errorf("seed %d: user %s is not under %q through any group", seed, name, AccessRoot)
+			}
+		}
+		if users != 50 {
+			t.Fatalf("seed %d: %d users, want 50", seed, users)
+		}
+	}
+}

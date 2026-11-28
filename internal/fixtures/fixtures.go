@@ -86,6 +86,12 @@ func Generate(users int, seed uint64) (*Fixtures, error) {
 	return &Fixtures{Blueprint: blueprint.Bytes(), Credentials: append(credentials, '\n'), Users: users}, nil
 }
 
+// AccessRoot is the group every access group nests under. Every user is a
+// member of it, but only through a child group (baselineAccess), never
+// directly: what the oauth-policies test dependency binds its application
+// to, so that admitting them depends on inherited membership.
+const AccessRoot = "Application Access"
+
 // baselineAccess is every employee's access, regardless of department.
 var baselineAccess = []string{"Google Workspace Users", "Slack Users", "Zoom Users", "VPN Users"}
 

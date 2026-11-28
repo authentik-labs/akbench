@@ -82,6 +82,7 @@ spec:
                   - saml-idp
                   - oauth-token
                   - policy-flows
+                  - oauth-policies
                   type: string
                 type: array
                 x-kubernetes-list-type: set
