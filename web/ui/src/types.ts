@@ -206,6 +206,9 @@ export interface TestCaseChildStatus {
 export interface TestCaseDeploymentStatus {
     name: string;
     ready: boolean;
+    // The k6 `target` tag this deployment's metrics carry, recorded so it
+    // outlives the deployment.
+    target?: string;
     burnWorkloadRef?: { name: string };
     burningSince?: string;
     // Set once archiving, or postgres running out of storage, stopped this
@@ -284,6 +287,16 @@ export function testCaseDeployments(spec: TestCaseSpec): { name: string }[] {
 export function testCaseBaseline(spec: TestCaseSpec): string | undefined {
     const deployments = testCaseDeployments(spec);
     return deployments.find((d) => d.name === spec.baselineRef?.name)?.name ?? deployments[0]?.name;
+}
+
+/**
+ * testCaseBaselineTarget is testCaseBaseline as the k6 `target` its metrics
+ * carry: the one the TestCase recorded for that deployment, which is the
+ * deployment's own name unless it sets a targetName.
+ */
+export function testCaseBaselineTarget(tc: TestCase): string | undefined {
+    const baseline = testCaseBaseline(tc.spec);
+    return tc.status?.deployments?.find((d) => d.name === baseline)?.target ?? baseline;
 }
 
 export interface TestCaseTemplateSpec {

@@ -78,6 +78,49 @@ export function summaryWindowNote(seconds: number, ended = false): string {
 }
 
 /**
+ * baselineRows picks, for each row of a table of averages, the row its Δ is
+ * relative to. Rows are only compared within their own group (a test case):
+ * two tests run different scripts, so one's CPU against the other's says
+ * nothing. A group's baseline is its row named in baselineKeys, else its
+ * first; a baseline row maps to itself, and a row alone in its group to
+ * undefined, since it has nothing to be compared with.
+ *
+ * acrossSingles is for a page where the reader picked the rows to set side
+ * by side: when every group is a single row (each test has one target),
+ * there is no baseline inside any of them to mix up, and the comparison
+ * between them is the one that was asked for. They are then one group,
+ * compared with the first. With any group of two or more it has no effect.
+ */
+export function baselineRows<T extends { key: string; group?: string }>(
+    rows: T[],
+    baselineKeys: string[] = [],
+    acrossSingles = false,
+): Map<string, T | undefined> {
+    let groups = new Map<string, T[]>();
+    for (const row of rows) {
+        const group = row.group ?? "";
+        groups.set(group, [...(groups.get(group) ?? []), row]);
+    }
+    if (acrossSingles && groups.size > 1 && [...groups.values()].every((g) => g.length === 1)) {
+        // Every row is its own test's baseline, so none is "the" named one:
+        // the first row leads.
+        groups = new Map([["", rows]]);
+        baselineKeys = [];
+    }
+    const result = new Map<string, T | undefined>();
+    for (const members of groups.values()) {
+        const base =
+            members.length > 1
+                ? (members.find((r) => baselineKeys.includes(r.key)) ?? members[0])
+                : undefined;
+        for (const row of members) {
+            result.set(row.key, base);
+        }
+    }
+    return result;
+}
+
+/**
  * relativeDelta is value's change relative to baseline (0.1 = 10% higher),
  * or undefined when either side is missing or the baseline is zero.
  */
