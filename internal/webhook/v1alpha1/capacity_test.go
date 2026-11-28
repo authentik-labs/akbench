@@ -110,6 +110,18 @@ var _ = Describe("Capacity check", func() {
 			Expect(err).To(MatchError(ContainSubstring("1 cluster-autoscaler can add")))
 		})
 
+		It("counts a limit as the request when no request is set", func() {
+			// Kubernetes defaults a missing request to the limit, so this
+			// reserves as much as the rejected deployment above.
+			d := deployment("ak", 4)
+			for _, w := range []*benchv1alpha1.WorkloadSpec{&d.Spec.Server, &d.Spec.Worker} {
+				w.Resources.Limits, w.Resources.Requests = w.Resources.Requests, nil
+			}
+			v := AuthentikDeploymentValidator{Capacity: checker()}
+			_, err := v.ValidateCreate(ctx, d)
+			Expect(err).To(MatchError(ContainSubstring("not enough capacity")))
+		})
+
 		It("won't place a deployment on another deployment's node", func() {
 			remote = append(remote, &corev1.Pod{
 				Name: "other-server", Namespace: "other",
@@ -187,9 +199,36 @@ var _ = Describe("Capacity check", func() {
 			Expect(err).To(MatchError(ContainSubstring(`k6 runner for "b"`)))
 		})
 
+		It("counts a runner's limit as its request when no request is set", func() {
+			tc := testCase("a", "b")
+			tc.Spec.RunnerResources = &corev1.ResourceRequirements{Limits: requests("3", "1Gi")}
+			v := TestCaseValidator{Capacity: checker()}
+			_, err := v.ValidateCreate(ctx, tc)
+			Expect(err).To(MatchError(ContainSubstring(`k6 runner for "b"`)))
+		})
+
 		It("skips targets that don't exist yet", func() {
 			v := TestCaseValidator{Capacity: checker()}
 			Expect(v.ValidateCreate(ctx, testCase("missing"))).To(BeEmpty())
 		})
+	})
+})
+
+var _ = Describe("effectiveRequests", func() {
+	q := resource.MustParse
+	It("is the requests when there are no limits", func() {
+		requests := corev1.ResourceList{corev1.ResourceCPU: q("500m")}
+		Expect(effectiveRequests(corev1.ResourceRequirements{Requests: requests})).To(Equal(requests))
+		Expect(effectiveRequests(corev1.ResourceRequirements{})).To(BeEmpty())
+	})
+
+	It("takes a limit for each resource without a request", func() {
+		got := effectiveRequests(corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{corev1.ResourceCPU: q("500m")},
+			Limits:   corev1.ResourceList{corev1.ResourceCPU: q("2"), corev1.ResourceMemory: q("1Gi")},
+		})
+		Expect(got).To(HaveLen(2))
+		Expect(got.Cpu().String()).To(Equal("500m"), "the request wins where both are set")
+		Expect(got.Memory().String()).To(Equal("1Gi"), "the limit stands in for a missing request")
 	})
 })

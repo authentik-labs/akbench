@@ -50,7 +50,8 @@ What each component does.
 - **`AuthentikDeploymentReconciler`**: renders a Flux `HelmRelease` +
   `HelmRepository` installing the official authentik chart
   (`charts.goauthentik.io`) with the deployment's replica/resource/placement
-  values. All three Postgres modes work: `Embedded` (bundled subchart, with a
+  values (`spec.server.resources` and `spec.worker.resources` only when set;
+  otherwise the chart's defaults apply). All three Postgres modes work: `Embedded` (bundled subchart, with a
   generated password pinned on both sides so they agree), `CNPG` (renders a
   `postgresql.cnpg.io/v1 Cluster`, waits for it healthy, reads its generated
   app secret), `External` (reads a user-supplied secret directly).

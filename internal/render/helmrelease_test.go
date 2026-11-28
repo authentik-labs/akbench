@@ -2,12 +2,14 @@ package render
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
 	benchv1alpha1 "github.com/authentik-labs/akbench/api/v1alpha1"
@@ -207,6 +209,57 @@ func TestHelmValuesEnablesMetrics(t *testing.T) {
 	assertMetricsEnabled(t, values.Server, "server")
 	assertMetricsEnabled(t, values.Worker, "worker")
 	assertMetricsEnabled(t, values.Postgres, "postgresql")
+}
+
+// spec.server.resources and spec.worker.resources were accepted and counted
+// by the admission capacity check but never reached the chart, so the pods
+// ran without the requests and limits their deployment asked for.
+func TestHelmValuesPassesWorkloadResources(t *testing.T) {
+	topo := exampleDeployment()
+	topo.Spec.Server.Resources = corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
+		},
+	}
+	topo.Spec.Worker.Resources = corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+	}
+	raw, err := HelmValues(topo, nil, "secret", &PostgresConnection{Password: "pw"}, "", "")
+	if err != nil {
+		t.Fatalf("HelmValues: %v", err)
+	}
+	values := decodeValues(t, raw.Raw)
+
+	wantServer := map[string]any{
+		"requests": map[string]any{"cpu": "500m"},
+		"limits":   map[string]any{"cpu": "2", "memory": "1Gi"},
+	}
+	if got := values.Server["resources"]; !reflect.DeepEqual(got, wantServer) {
+		t.Errorf("server.resources = %v, want %v", got, wantServer)
+	}
+	wantWorker := map[string]any{"requests": map[string]any{"memory": "256Mi"}}
+	if got := values.Worker["resources"]; !reflect.DeepEqual(got, wantWorker) {
+		t.Errorf("worker.resources = %v, want %v", got, wantWorker)
+	}
+}
+
+// A deployment that sets no resources must render exactly what it did
+// before, or every existing release would be upgraded, restarting its pods
+// under whatever test is running.
+func TestHelmValuesOmitsUnsetWorkloadResources(t *testing.T) {
+	raw, err := HelmValues(exampleDeployment(), nil, "secret", &PostgresConnection{Password: "pw"}, "", "")
+	if err != nil {
+		t.Fatalf("HelmValues: %v", err)
+	}
+	values := decodeValues(t, raw.Raw)
+	if _, present := values.Server["resources"]; present {
+		t.Errorf("server.resources set without spec.server.resources: %v", values.Server["resources"])
+	}
+	if _, present := values.Worker["resources"]; present {
+		t.Errorf("worker.resources set without spec.worker.resources: %v", values.Worker["resources"])
+	}
 }
 
 // TestHelmValuesNoServiceMonitorWithoutClusterRef guards a real regression
