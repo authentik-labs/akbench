@@ -277,10 +277,13 @@ export const api = {
     // -- Metrics. atSeconds anchors the instant query to a unix time instead
     // of "now" - see format.ts's metricsAnchorFromRuns for why a Quick
     // TestCase needs that.
-    compare: (testids: string[], window: string, atSeconds?: number) =>
+    // cost adds the derived CPU-per-transaction figures, which take extra
+    // queries per target: only for a caller that shows them.
+    compare: (testids: string[], window: string, atSeconds?: number, cost = false) =>
         request<CompareResponse>(
             `/api/v1/metrics/compare?testids=${seg(testids.join(","))}&window=${seg(window)}` +
-                (atSeconds !== undefined ? `&time=${atSeconds}` : ""),
+                (atSeconds !== undefined ? `&time=${atSeconds}` : "") +
+                (cost ? "&cost=true" : ""),
         ),
     // Container restarts of each testid's deployments, over the same window
     // and anchor as compare.

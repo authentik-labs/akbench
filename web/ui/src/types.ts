@@ -459,6 +459,9 @@ export interface CompareMetric {
     label: string;
     unit: string;
     better: "higher" | "lower";
+    // Computed from other metrics (internal/api/costmetrics.go): a summary
+    // value only, with no time series to chart.
+    derived?: boolean;
 }
 
 /** internal/api/restarts.go's response: container restarts per deployment. */

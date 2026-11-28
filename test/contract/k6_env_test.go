@@ -173,7 +173,9 @@ func TestLibraryCountsIterationOutcomes(t *testing.T) {
 	}
 
 	matcher := regexp.MustCompile(`(k6_\w+_total)\{[^}]*outcome="(\w+)"`)
-	for _, file := range []string{"../../internal/api/metrics.go", "../../internal/render/recordingrules.go"} {
+	for _, file := range []string{
+		"../../internal/api/metrics.go", "../../internal/api/costmetrics.go", "../../internal/render/recordingrules.go",
+	} {
 		src, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

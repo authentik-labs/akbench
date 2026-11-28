@@ -47,6 +47,15 @@ describe("formatMetricValue", () => {
         expect(formatMetricValue(1.5, "s")).toBe("1.50 s");
     });
 
+    it("renders CPU time apart from durations, to three significant digits", () => {
+        expect(formatMetricValue(0.0612, "cpu-s")).toBe("61.2 CPU-ms");
+        expect(formatMetricValue(0.00043, "cpu-s")).toBe("0.43 CPU-ms");
+        expect(formatMetricValue(0.4, "cpu-s")).toBe("400 CPU-ms");
+        expect(formatMetricValue(2.5, "cpu-s")).toBe("2.50 CPU-s");
+        expect(formatMetricValue(0.9996, "cpu-s")).toBe("1.00 CPU-s");
+        expect(formatMetricValue(0, "cpu-s")).toBe("0 CPU-ms");
+    });
+
     it("renders large plain numbers with no decimals", () => {
         expect(formatMetricValue(1234, "req/s")).toBe("1234");
     });

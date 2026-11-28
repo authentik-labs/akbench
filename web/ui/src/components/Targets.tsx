@@ -126,12 +126,17 @@ export function TargetKey({ index }: { index: number }) {
  * The metrics a targets table compares. Not "checks": k6 only reports it as
  * the pass rate since its pod started, so it does not cover the window the
  * rest of the table does. "iteration_failed" is the windowed failure figure.
+ * The CPU costs are what a transaction took of the deployment's server,
+ * worker and postgres: steadier between runs than the durations beside them.
  */
 export const TARGET_METRICS = [
     "iterations",
     "http_reqs",
     "iteration_duration_p95",
     "http_req_duration_p99",
+    "server_cpu_per_iteration",
+    "worker_cpu_per_iteration",
+    "postgres_cpu_per_iteration",
     "http_req_failed",
     "iteration_failed",
 ];
